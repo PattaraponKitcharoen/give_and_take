@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'item_detail_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -241,8 +242,16 @@ class HomeScreen extends StatelessWidget {
               final data = items[index].data() as Map<String, dynamic>;
               final title = data['title'] ?? 'No Title';
               final coins = data['estimated_coins'] ?? 0;
-
-              return Container(
+              return InkWell( // 🟢 เพิ่มตรงนี้เพื่อให้กดได้
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ItemDetailScreen(itemData: data), // 🟢 ส่งข้อมูลไปหน้า Detail
+                    ),
+                  );
+                },
+                child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
@@ -305,7 +314,8 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-              );
+              ),
+            );
             },
           );
         },
