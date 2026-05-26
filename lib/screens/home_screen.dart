@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -188,92 +189,124 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildProductGrid() {
-    final items = [
-      {'title': 'Intro to Python Tutoring', 'rating': '4.9', 'coins': '1,200'},
-      {'title': 'DSLR Camera Kit', 'rating': '5.0', 'coins': '1,800'},
-      {'title': 'Retro Mechanical Keyboard', 'rating': '4.8', 'coins': '850'},
-      {'title': 'Learn Creative Writing', 'rating': '4.7', 'coins': '600'},
-    ];
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(), // ปิดการเลื่อนซ้อนกัน
-        shrinkWrap: true, // ให้ GridView ยืดตามเนื้อหา
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.75, // ปรับสัดส่วนการ์ดให้ทรงสูง
-        ),
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
+      // ใช้ StreamBuilder เพื่อให้ข้อมูลอัปเดตแบบ Real-time ทันทีที่มีคนโพสต์ของใหม่
+      child: StreamBuilder<QuerySnapshot>(
+        // Query: ดึงเฉพาะข้อมูลที่เป็น item และสถานะ active
+        stream: FirebaseFirestore.instance
+            .collection('listings')
+            .where('type', isEqualTo: 'item')
+            .where('status', isEqualTo: 'active')
+            .snapshots(),
+        builder: (context, snapshot) {
+          // เช็คสถานะตอนกำลังโหลด
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: CircularProgressIndicator(color: Color(0xFF008080)),
+              ),
+            );
+          }
+
+          // เช็คกรณีเกิด Error หรือไม่มีข้อมูล
+          if (snapshot.hasError) {
+            return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้', style: TextStyle(color: Colors.grey)),
+              ),
+            );
+          }
+
+          // เอาข้อมูลที่ดึงมาได้ เก็บใส่ตัวแปร items
+          final items = snapshot.data!.docs;
+
+          return GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            shrinkWrap: true,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.75,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // รูปภาพ
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.image, size: 40, color: Colors.black12),
-                    ),
-                  ),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              // แกะข้อมูลออกมาใช้งาน
+              final data = items[index].data() as Map<String, dynamic>;
+              final title = data['title'] ?? 'No Title';
+              final coins = data['estimated_coins'] ?? 0;
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
                 ),
-                // รายละเอียด
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item['title']!,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.image, size: 40, color: Colors.black12), // ตำแหน่งนี้เดี๋ยวเราค่อยมาทำดึงรูปภาพจริงทีหลัง
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.person_outline, size: 16, color: Colors.grey),
+                          Text(
+                            title, // ใช้ตัวแปร title ที่ดึงมาจาก Firebase
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 8),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(Icons.star, size: 14, color: Colors.amber),
+                              const Icon(Icons.person_outline, size: 16, color: Colors.grey),
+                              Row(
+                                children: [
+                                  const Icon(Icons.star, size: 14, color: Colors.amber),
+                                  const SizedBox(width: 4),
+                                  Text('4.5', style: const TextStyle(fontSize: 12)), // ค่ารีวิวจำลองไปก่อน
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Icon(Icons.monetization_on, size: 14, color: tealColor),
                               const SizedBox(width: 4),
-                              Text(item['rating']!, style: const TextStyle(fontSize: 12)),
+                              Text(
+                                '$coins Coins', // ใช้ตัวแปร coins ที่ดึงมาจาก Firebase
+                                style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
                             ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Icon(Icons.monetization_on, size: 14, color: tealColor),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${item['coins']} Coins',
-                            style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
