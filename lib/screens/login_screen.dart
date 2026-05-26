@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // 🟢 1. Import หลังบ้าน Firebase Auth
 import 'main_layout.dart'; // Import หน้าหลักไว้สำหรับเปลี่ยนหน้าหลังจากล็อกอินสำเร็จ
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -264,7 +265,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(width: 4),
                     GestureDetector(
                       onTap: () {
-                        // TODO: ไปหน้า Register ชั่วคราว
+                      // นำทางไปยังหน้าสมัครสมาชิก
+                        Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                        );
                       },
                       child: Text('สมัครสมาชิก', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
