@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
-import 'my_listings_screen.dart';
+import 'my_listing_screen.dart';
 import 'add_post_screen.dart';
 import 'chat_list_screen.dart';
 import 'profile_screen.dart';
@@ -41,7 +41,7 @@ class _MainLayoutState extends State<MainLayout> {
         index: _currentIndex,
         children: const [
           HomeScreen(),       // Index 0
-          MyListingsScreen(), // Index 1
+          MyListingScreen(), // Index 1
           AddPostScreen(),    // Index 2 (หน้าของปุ่ม +)
           ChatListScreen(),   // Index 3
           ProfileScreen(),    // Index 4
