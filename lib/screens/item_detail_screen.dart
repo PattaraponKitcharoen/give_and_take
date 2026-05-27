@@ -108,7 +108,7 @@ class ItemDetailScreen extends StatelessWidget {
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
         ),
         child: ElevatedButton(
-          onPressed: () async {
+          onPressed: () {
             final currentUser = FirebaseAuth.instance.currentUser;
             if (currentUser == null) return;
 
@@ -123,24 +123,8 @@ class ItemDetailScreen extends StatelessWidget {
               return;
             }
 
-            // สร้าง Document ห้องแชทใหม่ลงฐานข้อมูล (ปรับฟิลด์ให้ตรงกับตาราง Schema ล่าสุดของคุณ)
-            final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
-              'participants': [currentUserId, ownerId],
-              'last_message_text': 'สนใจแลกเปลี่ยนสิ่งของครับ', // ใช้ชื่อคีย์ตามตารางเป๊ะๆ
-              'last_sender_id': currentUserId,
-              'updated_at': FieldValue.serverTimestamp(),
-              'created_at': FieldValue.serverTimestamp(),
-            });
-
-            if (context.mounted) {
-              // พอสร้างห้องเสร็จ ก็พากระโดดเข้าหน้าห้องแชททันที
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatScreen(roomId: roomRef.id),
-                ),
-              );
-            }
+            // 🟢 เรียกใช้ Bottom Sheet เพื่อจัดแจงข้อเสนอแทน
+            _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: tealColor,
@@ -159,6 +143,136 @@ class ItemDetailScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
       child: Text(text, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 12)),
+    );
+  }
+
+  // 🟢 ฟังก์ชันเพิ่มใหม่สำหรับแสดงป๊อปอัป
+void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, String ownerId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, 
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        
+        // 🟢 1. ย้ายตัวแปรมาประกาศตรงนี้! (นอก StatefulBuilder)
+        String? selectedMyItemId;
+        int coinOffset = 0;
+        bool requestCoins = false;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                left: 20, right: 20, top: 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 20),
+                  const Text('จัดแจงข้อเสนอแลกเปลี่ยน', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 24),
+
+                  const Text('เลือกสิ่งของของคุณที่จะนำไปแลก', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  FutureBuilder<QuerySnapshot>(
+                    future: FirebaseFirestore.instance.collection('listings')
+                        .where('owner_id', isEqualTo: currentUserId)
+                        .where('status', isEqualTo: 'active').get(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const LinearProgressIndicator();
+                      var items = snapshot.data!.docs;
+                      if (items.isEmpty) return const Text('คุณยังไม่มีสิ่งของในระบบ');
+                      
+                      return DropdownButtonFormField<String>(
+                        decoration: InputDecoration(filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                        hint: const Text('เลือกสิ่งของของคุณ'),
+                        items: items.map((doc) => DropdownMenuItem(value: doc.id, child: Text((doc.data() as Map)['title']))).toList(),
+                        onChanged: (val) => setModalState(() => selectedMyItemId = val),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  const Text('ส่วนต่างเหรียญ (Coins)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(hintText: 'จำนวนเหรียญ', filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                          onChanged: (val) => coinOffset = int.tryParse(val) ?? 0,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      ToggleButtons(
+                        isSelected: [!requestCoins, requestCoins],
+                        onPressed: (index) => setModalState(() => requestCoins = index == 1),
+                        borderRadius: BorderRadius.circular(12),
+                        selectedColor: Colors.white,
+                        fillColor: tealColor,
+                        children: const [Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('แถมให้')), Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('ขอเพิ่ม'))],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  ElevatedButton(
+                    onPressed: () async {
+                      // 🟢 2. เพิ่มแจ้งเตือนถ้าลืมเลือกของ
+                      if (selectedMyItemId == null) {
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ')),
+                         );
+                         return;
+                      }
+                      
+                      // 1. สร้าง Offer (ใช้โค้ด Firebase คอมโบเดิมของคุณได้เลย)
+                      final offerRef = await FirebaseFirestore.instance.collection('offers').add({
+                        'sender_id': currentUserId,
+                        'target_listing_id': itemData['listing_id'] ?? '', 
+                        'offered_listing_id': selectedMyItemId,
+                        'coin_offset': requestCoins ? -coinOffset : coinOffset,
+                        'status': 'pending',
+                        'created_at': FieldValue.serverTimestamp(),
+                      });
+
+                      // 2. สร้างห้องแชท และทักข้อความแรก
+                      final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
+                        'participants': [currentUserId, ownerId],
+                        'active_offer_id': offerRef.id,
+                        'last_message_text': 'ยื่นข้อเสนอแลกเปลี่ยนสิ่งของใหม่',
+                        'last_sender_id': currentUserId,
+                        'updated_at': FieldValue.serverTimestamp(),
+                        'created_at': FieldValue.serverTimestamp(),
+                      });
+
+                      await FirebaseFirestore.instance.collection('chat_rooms').doc(roomRef.id).collection('messages').add({
+                        'sender_id': currentUserId,
+                        'content': 'สวัสดีครับ! ผมขอเสนอแลกสิ่งของ และยินดี${requestCoins ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins ครับ',
+                        'timestamp': FieldValue.serverTimestamp(),
+                        'type': 'system_offer',
+                      });
+
+                      if (context.mounted) {
+                        Navigator.pop(context); // ปิดป๊อปอัป
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(roomId: roomRef.id)));
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: tealColor, minimumSize: const Size(double.infinity, 56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                    child: const Text('ยืนยันและเริ่มสนทนา', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
