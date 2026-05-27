@@ -117,8 +117,26 @@ class ItemDetailScreen extends StatelessWidget {
 
             // ดักเอาไว้ กันไม่ให้ยูสเซอร์เด๋อกดทักแชทไปขอแลกของกับตัวเอง
             if (currentUserId == ownerId) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('นี่คือสิ่งของของคุณเอง')),
+              // 🟢 เปลี่ยนมาใช้ showDialog แทน ScaffoldMessenger เพื่อล็อค UI ให้อยู่กับที่
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  title: const Text(
+                    'แจ้งเตือน', 
+                    style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)
+                  ),
+                  content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        'เข้าใจแล้ว', 
+                        style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)
+                      ),
+                    ),
+                  ],
+                ),
               );
               return;
             }
@@ -147,7 +165,7 @@ class ItemDetailScreen extends StatelessWidget {
   }
 
   // 🟢 ฟังก์ชันเพิ่มใหม่สำหรับแสดงป๊อปอัป
-void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, String ownerId) {
+  void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, String ownerId) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true, 
@@ -156,8 +174,9 @@ void _showOfferBottomSheet(BuildContext context, Color tealColor, String current
       ),
       builder: (context) {
         
-        // 🟢 1. ย้ายตัวแปรมาประกาศตรงนี้! (นอก StatefulBuilder)
+        // 🟢 1. ตัวแปรเก็บข้อมูล
         String? selectedMyItemId;
+        Map<String, dynamic>? selectedMyItemData; // เพิ่มตัวแปรเก็บข้อมูลไอเทมแบบเต็มๆ
         int coinOffset = 0;
         bool requestCoins = false;
 
@@ -192,7 +211,15 @@ void _showOfferBottomSheet(BuildContext context, Color tealColor, String current
                         decoration: InputDecoration(filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
                         hint: const Text('เลือกสิ่งของของคุณ'),
                         items: items.map((doc) => DropdownMenuItem(value: doc.id, child: Text((doc.data() as Map)['title']))).toList(),
-                        onChanged: (val) => setModalState(() => selectedMyItemId = val),
+                        onChanged: (val) {
+                          setModalState(() {
+                            selectedMyItemId = val;
+                            // 🟢 ดึงข้อมูลของชิ้นที่เราเลือกมาเก็บไว้ส่งเข้าแชท
+                            var selectedDoc = items.firstWhere((doc) => doc.id == val);
+                            selectedMyItemData = selectedDoc.data() as Map<String, dynamic>;
+                            selectedMyItemData!['listing_id'] = selectedDoc.id;
+                          });
+                        },
                       );
                     },
                   ),
@@ -224,15 +251,20 @@ void _showOfferBottomSheet(BuildContext context, Color tealColor, String current
 
                   ElevatedButton(
                     onPressed: () async {
-                      // 🟢 2. เพิ่มแจ้งเตือนถ้าลืมเลือกของ
                       if (selectedMyItemId == null) {
                          ScaffoldMessenger.of(context).showSnackBar(
                            const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ')),
                          );
                          return;
                       }
+
+                      // 🟢 2. เช็คเรื่องเหรียญ ถ้าเป็น 0 ไม่ต้องต่อท้ายประโยค
+                      String coinText = "";
+                      if (coinOffset > 0) {
+                        coinText = " และยินดี${requestCoins ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
+                      }
                       
-                      // 1. สร้าง Offer (ใช้โค้ด Firebase คอมโบเดิมของคุณได้เลย)
+                      // 1. สร้าง Offer 
                       final offerRef = await FirebaseFirestore.instance.collection('offers').add({
                         'sender_id': currentUserId,
                         'target_listing_id': itemData['listing_id'] ?? '', 
@@ -242,7 +274,7 @@ void _showOfferBottomSheet(BuildContext context, Color tealColor, String current
                         'created_at': FieldValue.serverTimestamp(),
                       });
 
-                      // 2. สร้างห้องแชท และทักข้อความแรก
+                      // 2. สร้างห้องแชท
                       final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
                         'participants': [currentUserId, ownerId],
                         'active_offer_id': offerRef.id,
@@ -252,11 +284,16 @@ void _showOfferBottomSheet(BuildContext context, Color tealColor, String current
                         'created_at': FieldValue.serverTimestamp(),
                       });
 
+                      // 🟢 3. ส่งข้อความเข้าแชท พร้อมยัด Data รูปภาพเข้าไปด้วย
                       await FirebaseFirestore.instance.collection('chat_rooms').doc(roomRef.id).collection('messages').add({
                         'sender_id': currentUserId,
-                        'content': 'สวัสดีครับ! ผมขอเสนอแลกสิ่งของ และยินดี${requestCoins ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins ครับ',
+                        'content': 'สวัสดีครับ! ผมขอเสนอแลกสิ่งของ$coinText ครับ',
                         'timestamp': FieldValue.serverTimestamp(),
                         'type': 'system_offer',
+                        'offer_data': {
+                           'target_item': itemData, // ของที่อยากได้
+                           'offered_item': selectedMyItemData, // ของที่เราเอาไปแลก
+                        }
                       });
 
                       if (context.mounted) {

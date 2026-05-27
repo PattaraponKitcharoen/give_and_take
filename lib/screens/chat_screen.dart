@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'item_detail_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -65,7 +66,43 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemBuilder: (context, index) {
                     final msg = messages[index].data() as Map<String, dynamic>;
                     bool isMe = msg['sender_id'] == currentUserId;
+                    String type = msg['type'] ?? 'text'; // ดึงประเภทข้อความ
 
+                    // 🟢 ถ้าเป็นข้อความประเภท Offer ให้วาดกล่องเทรดของ
+                    if (type == 'system_offer') {
+                      final offerData = msg['offer_data'] ?? {};
+                      final targetItem = offerData['target_item'] ?? {};
+                      final offeredItem = offerData['offered_item'] ?? {};
+
+                      return Container(
+                        margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF008080), width: 2),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                        ),
+                        child: Column(
+                          children: [
+                            const Text('ข้อเสนอแลกเปลี่ยน', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _buildItemThumbnail(context, offeredItem), // ฝั่งของที่ให้
+                                const Icon(Icons.sync_alt, color: Color(0xFF008080), size: 32),
+                                _buildItemThumbnail(context, targetItem), // ฝั่งของที่อยากได้
+                              ],
+                            ),
+                            const Divider(height: 30),
+                            Text(msg['content'], textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      );
+                    }
+
+                    // 🟢 ถ้าเป็นข้อความธรรมดา วาดกล่องสีๆ เหมือนเดิม
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
@@ -115,3 +152,34 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+// สร้าง Widget ย่อยสำหรับโชว์รูปสินค้าในแชท
+  Widget _buildItemThumbnail(BuildContext context, Map<String, dynamic> item) {
+    return GestureDetector(
+      onTap: () {
+        // พอกดที่รูปในแชท ให้เปิดหน้า ItemDetailScreen ของชิ้นนั้นขึ้นมา
+        Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: item)));
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            // ถ้ามีรูปโชว์รูป ถ้าไม่มีโชว์ไอคอน Placeholder
+            child: (item['thumbnail_url'] != null && item['thumbnail_url'] != '') 
+                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(item['thumbnail_url'], fit: BoxFit.cover))
+                : const Icon(Icons.image, color: Colors.grey, size: 30),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 80,
+            child: Text(item['title'] ?? 'ไม่มีชื่อ', overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
+  }
