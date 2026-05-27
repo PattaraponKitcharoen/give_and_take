@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'edit_listing_screen.dart';
 
 class MyListingScreen extends StatelessWidget {
   const MyListingScreen({super.key});
@@ -11,7 +12,7 @@ class MyListingScreen extends StatelessWidget {
     final Color tealColor = const Color(0xFF008080);
 
     return DefaultTabController(
-      length: 2, // 🟢 กำหนดให้มีแค่ 2 แท็บตามที่คุณออกแบบ
+      length: 2,
       child: Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
@@ -33,10 +34,7 @@ class MyListingScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            // แท็บที่ 1: ดึงรายการของที่เราลงไว้
             _buildMyItemsTab(currentUserId, tealColor),
-            
-            // แท็บที่ 2: ดึงรายการข้อเสนอที่เรายื่นไป
             _buildSentOffersTab(currentUserId, tealColor),
           ],
         ),
@@ -44,12 +42,13 @@ class MyListingScreen extends StatelessWidget {
     );
   }
 
-  // 🟢 ฟังก์ชันวาดแท็บ "ของของฉัน"
+  // 🟢 1. อัปเดตแท็บ "ของของฉัน" ให้มีปุ่มเมนู จัดการแก้ไข/ลบ
   Widget _buildMyItemsTab(String userId, Color tealColor) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('listings')
           .where('owner_id', isEqualTo: userId)
+          .where('status', isEqualTo: 'active') // ดึงมาเฉพาะที่ยังแอคทีฟอยู่
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) return const Center(child: Text('เกิดข้อผิดพลาดในการดึงข้อมูล'));
@@ -62,6 +61,7 @@ class MyListingScreen extends StatelessWidget {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
+            final String itemId = docs[index].id;
             
             return ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -74,10 +74,37 @@ class MyListingScreen extends StatelessWidget {
               ),
               title: Text(data['title'] ?? 'ไม่มีชื่อสินค้า', style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('${data['estimated_coins'] ?? 0} Coins', style: TextStyle(color: tealColor)),
-              trailing: const Icon(Icons.edit, size: 20, color: Colors.grey),
-              onTap: () {
-                // TODO: ในอนาคตค่อยทำปุ่มกดเข้าไปแก้ไขรายละเอียดสินค้า
-              },
+              // 🟢 เปลี่ยนจาก Icon ธรรมดา เป็น PopupMenu
+              // 🟢 แก้ไขตรงนี้ใน _buildMyItemsTab
+              trailing: PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.grey),
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    // 🟢 เปลี่ยนมากระโดดไปหน้า Edit แทน
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => EditListingScreen(
+                          itemId: itemId, 
+                          itemData: data,
+                        ),
+                      ),
+                    );
+                  } else if (value == 'delete') {
+                    _showDeleteConfirmDialog(context, itemId, tealColor);
+                  }
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'edit',
+                    child: Row(children: [Icon(Icons.edit, color: Colors.blue, size: 20), SizedBox(width: 8), Text('แก้ไข')]),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'delete',
+                    child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 20), SizedBox(width: 8), Text('ลบสิ่งของ')]),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -85,10 +112,35 @@ class MyListingScreen extends StatelessWidget {
     );
   }
 
-  // 🟢 ฟังก์ชันวาดแท็บ "ข้อเสนอที่ส่งไป"
+  // 🟢 3. ป๊อปอัปยืนยันการลบ
+  void _showDeleteConfirmDialog(BuildContext context, String itemId, Color tealColor) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('ยืนยันการลบ', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          content: const Text('คุณแน่ใจหรือไม่ที่จะลบสิ่งของชิ้นนี้? ข้อมูลจะไม่สามารถกู้คืนได้'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+              onPressed: () async {
+                // ใช้วิธีลบออกแบบ Hard Delete ไปเลย
+                await FirebaseFirestore.instance.collection('listings').doc(itemId).delete();
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('ลบสิ่งของ', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // แท็บข้อเสนอที่ส่งไป (โค้ดเดิม ไม่เปลี่ยนแปลง)
   Widget _buildSentOffersTab(String userId, Color tealColor) {
     return StreamBuilder<QuerySnapshot>(
-      // เช็คว่ามีข้อเสนอไหนบ้างที่เราเป็นคนกดส่ง (sender_id = เรา)
       stream: FirebaseFirestore.instance
           .collection('offers')
           .where('sender_id', isEqualTo: userId)
@@ -96,11 +148,11 @@ class MyListingScreen extends StatelessWidget {
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          print('🔥 Firebase Index Link: ${snapshot.error}'); // 👈 ปริ้นต์ลง VS Code จะได้กดง่ายๆ
+          print('🔥 Firebase Index Link: ${snapshot.error}'); 
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: SelectableText( // 👈 เปลี่ยนเป็น SelectableText ให้ลากคลุมก๊อปปี้บนจอได้
+              child: SelectableText(
                 'เกิดข้อผิดพลาด (ก๊อปปี้ลิงก์ไปเปิด หรือกดจากหน้า Console):\n\n${snapshot.error}',
                 style: const TextStyle(color: Colors.red),
                 textAlign: TextAlign.center,
@@ -108,6 +160,7 @@ class MyListingScreen extends StatelessWidget {
             ),
           );
         }
+        
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         
         final docs = snapshot.data?.docs ?? [];
@@ -118,7 +171,6 @@ class MyListingScreen extends StatelessWidget {
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
             
-            // แปลงสถานะ (Status) ให้เป็นสีและข้อความที่อ่านง่ายขึ้น
             String statusText = 'รอดำเนินการ';
             Color statusColor = Colors.orange;
             
