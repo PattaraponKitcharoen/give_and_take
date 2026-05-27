@@ -239,15 +239,22 @@ class HomeScreen extends StatelessWidget {
             itemCount: items.length,
             itemBuilder: (context, index) {
               // แกะข้อมูลออกมาใช้งาน
+              // แกะข้อมูลออกมาใช้งาน
               final data = items[index].data() as Map<String, dynamic>;
+              
+              // 🟢 เพิ่มบรรทัดนี้! ยัด ID ของโพสต์ลงไปใน Map ด้วยชื่อ 'listing_id'
+              data['listing_id'] = items[index].id; 
+              
               final title = data['title'] ?? 'No Title';
               final coins = data['estimated_coins'] ?? 0;
-              return InkWell( // 🟢 เพิ่มตรงนี้เพื่อให้กดได้
+              
+              return InkWell( 
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ItemDetailScreen(itemData: data), // 🟢 ส่งข้อมูลไปหน้า Detail
+                      // ตอนนี้ data จะมี listing_id ติดไปด้วยแล้วครับ
+                      builder: (context) => ItemDetailScreen(itemData: data), 
                     ),
                   );
                 },

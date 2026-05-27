@@ -35,27 +35,142 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // 🟢 ฟังก์ชัน: ยกเลิกข้อเสนอ (ฝั่งคนส่ง)
+  // ฟังก์ชันช่วยดึงชื่อผู้ใช้งานปัจจุบันจาก Firestore
+  Future<String> _getCurrentUserName() async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(currentUserId).get();
+      if (doc.exists && doc.data() != null) {
+        final name = doc.data()!['name'];
+        if (name != null && name.toString().trim().isNotEmpty) {
+          return name.toString();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching user name: $e');
+    }
+    return 'ผู้ใช้งาน';
+  }
+
+  // ฟังก์ชัน: ยกเลิกข้อเสนอ (ฝั่งคนส่ง)
   Future<void> _cancelOffer(String offerId) async {
     await FirebaseFirestore.instance.collection('offers').doc(offerId).delete();
-    _sendSystemMessage('คุณได้ยกเลิกข้อเสนอนี้แล้ว');
+    String userName = await _getCurrentUserName();
+    _sendSystemMessage('$userName ได้ยกเลิกข้อเสนอนี้แล้ว');
   }
 
-  // 🟢 ฟังก์ชัน: ปฏิเสธข้อเสนอ (ฝั่งคนรับ)
+  // ฟังก์ชัน: ปฏิเสธข้อเสนอ (ฝั่งคนรับ)
   Future<void> _rejectOffer(String offerId) async {
     await FirebaseFirestore.instance.collection('offers').doc(offerId).update({'status': 'rejected'});
-    _sendSystemMessage('ข้อเสนอถูกปฏิเสธแล้ว');
+    String userName = await _getCurrentUserName();
+    _sendSystemMessage('$userName ได้ปฏิเสธข้อเสนอนี้แล้ว');
   }
 
-  // 🟢 ฟังก์ชัน: ยอมรับข้อเสนอ (ฝั่งคนรับ)
-  Future<void> _acceptOffer(String offerId, String targetItemId, String offeredItemId) async {
-    // 1. อัปเดตสถานะดีลเป็น accepted
-    await FirebaseFirestore.instance.collection('offers').doc(offerId).update({'status': 'accepted'});
-    // 2. เปลี่ยนสถานะของทั้งสองชิ้นให้เป็น exchanged (ป้องกันคนอื่นมากดแลกซ้ำ)
-    await FirebaseFirestore.instance.collection('listings').doc(targetItemId).update({'status': 'exchanged'});
-    await FirebaseFirestore.instance.collection('listings').doc(offeredItemId).update({'status': 'exchanged'});
-    // 3. ยิงข้อความระบบแจ้งข่าวดี
-    _sendSystemMessage('ตกลงแลกเปลี่ยนสิ่งของสำเร็จแล้ว!');
+  // ฟังก์ชัน: ยอมรับข้อเสนอ พร้อมระบบหักเงินเข้ากองกลาง (Escrow)
+  Future<void> _acceptOffer(String offerId) async {
+    final FirebaseFirestore db = FirebaseFirestore.instance;
+
+    try {
+      await db.runTransaction((transaction) async {
+        // 1. อ่านข้อมูล Offer ออกมาก่อน
+        DocumentReference offerRef = db.collection('offers').doc(offerId);
+        DocumentSnapshot offerSnap = await transaction.get(offerRef);
+        
+        if (!offerSnap.exists) throw Exception("ไม่พบข้อมูลข้อเสนอ");
+        Map<String, dynamic> offerData = offerSnap.data() as Map<String, dynamic>;
+        
+        int coinOffset = offerData['coin_offset'] ?? 0;
+        String senderId = offerData['sender_id'];
+        String targetUserId = offerData['target_user_id'];
+        
+        // ดึง ID ของสิ่งของจากฐานข้อมูลโดยตรง (แก้ปัญหาค่า Null)
+        String targetItemId = offerData['target_listing_id'];
+        String offeredItemId = offerData['offered_listing_id'];
+        
+        // ตรวจสอบว่าใครคือคนจ่าย และต้องจ่ายเท่าไหร่
+        String? payerId;
+        int amountToPay = 0;
+        
+        if (coinOffset > 0) {
+          payerId = senderId;
+          amountToPay = coinOffset;
+        } else if (coinOffset < 0) {
+          payerId = targetUserId;
+          amountToPay = coinOffset.abs();
+        }
+
+        // 2. ถ้ามีคนต้องจ่ายเงิน เช็คยอดเงินในกระเป๋าคนจ่าย
+        if (payerId != null && amountToPay > 0) {
+          DocumentReference payerRef = db.collection('users').doc(payerId);
+          DocumentSnapshot payerSnap = await transaction.get(payerRef);
+          
+          if (!payerSnap.exists) throw Exception("ไม่พบข้อมูลผู้ใช้งาน");
+          
+          int currentBalance = (payerSnap.data() as Map<String, dynamic>)['coins_balance'] ?? 0;
+          
+          if (currentBalance < amountToPay) {
+            throw Exception("ยอดเงินของฝั่งที่ต้องจ่ายไม่เพียงพอ");
+          }
+          
+          int newBalance = currentBalance - amountToPay;
+
+          // สั่งหักเงินคนจ่าย
+          transaction.update(payerRef, {'coins_balance': newBalance});
+
+          // บันทึกประวัติลง wallet_transactions
+          DocumentReference walletTxRef = db.collection('wallet_transactions').doc();
+          transaction.set(walletTxRef, {
+            'log_id': walletTxRef.id,
+            'user_id': payerId,
+            'amount': -amountToPay,
+            'balance_after': newBalance,
+            'type': 'escrow_lock',
+            'status': 'success',
+            'reference_id': offerId,
+            'description': 'หักเหรียญเข้ากองกลางสำหรับข้อเสนอแลกเปลี่ยน',
+            'created_at': FieldValue.serverTimestamp(),
+          });
+        }
+
+        // 3. สร้างข้อมูลในตาราง transactions
+        String verifyCode = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
+        DocumentReference mainTxRef = db.collection('transactions').doc();
+        
+        transaction.set(mainTxRef, {
+          'transaction_id': mainTxRef.id,
+          'offer_id': offerId,
+          'listings': [offeredItemId, targetItemId],
+          'members': [senderId, targetUserId],
+          'escrow_coins': amountToPay,
+          'status': 'in_progress',
+          'cancel_reason': '',
+          'verification_code': verifyCode,
+          'confirmed_by_user_ids': [],
+          'created_at': FieldValue.serverTimestamp(),
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+
+        // 4. อัปเดตสถานะของ Offer และ Listings
+        transaction.update(offerRef, {'status': 'accepted'});
+        
+        DocumentReference targetItemRef = db.collection('listings').doc(targetItemId);
+        DocumentReference offeredItemRef = db.collection('listings').doc(offeredItemId);
+        transaction.update(targetItemRef, {'status': 'in_progress'});
+        transaction.update(offeredItemRef, {'status': 'in_progress'});
+      });
+
+      // 5. เมื่อ Transaction ทั้งหมดสำเร็จ ค่อยยิงข้อความระบบแจ้งเตือน
+      String userName = await _getCurrentUserName();
+      _sendSystemMessage('$userName ตกลงแลกเปลี่ยนแล้ว และระบบได้ทำการล็อกเหรียญไว้ในกองกลาง');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('เริ่มการแลกเปลี่ยนเรียบร้อยแล้ว')));
+      }
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ไม่สามารถทำรายการได้: ${e.toString().replaceAll('Exception: ', '')}')));
+      }
+    }
   }
 
   // ตัวช่วยยิงข้อความระบบ
@@ -72,7 +187,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // 🟢 Widget ช่วยสร้างรูปสิ่งของ (ย้ายเข้ามาอยู่ในคลาสเพื่อให้เรียกใช้บริบทง่ายขึ้น)
+  // Widget ช่วยสร้างรูปสิ่งของ
   Widget _buildItemThumbnail(BuildContext context, Map<String, dynamic> item) {
     return GestureDetector(
       onTap: () {
@@ -112,7 +227,6 @@ class _ChatScreenState extends State<ChatScreen> {
         iconTheme: const IconThemeData(color: Colors.black87),
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        // 🟢 ดึงข้อมูลห้องแชทเพื่อเอา active_offer_id มาใช้
         stream: FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).snapshots(),
         builder: (context, roomSnap) {
           if (!roomSnap.hasData) return const Center(child: CircularProgressIndicator());
@@ -142,7 +256,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         bool isMe = msg['sender_id'] == currentUserId;
                         String type = msg['type'] ?? 'text';
 
-                        // --- 1. วาดข้อความระบบ (อยู่ตรงกลาง) ---
+                        // วาดข้อความระบบ (อยู่ตรงกลาง)
                         if (type == 'system_log') {
                           return Center(
                             child: Container(
@@ -157,19 +271,18 @@ class _ChatScreenState extends State<ChatScreen> {
                           );
                         }
 
-                        // --- 2. วาดกล่องข้อเสนอ (ดีล) ---
+                        // วาดกล่องข้อเสนอ (ดีล)
                         if (type == 'system_offer') {
                           final offerDataFromMsg = msg['offer_data'] ?? {};
                           final targetItem = offerDataFromMsg['target_item'] ?? {};
                           final offeredItem = offerDataFromMsg['offered_item'] ?? {};
                           
-                          // 🟢 จัดตำแหน่ง: ของของฉันอยู่ขวาเสมอ!
+                          // จัดตำแหน่ง: ของของฉันอยู่ขวาเสมอ
                           bool isSender = (msg['sender_id'] == currentUserId);
                           var myItemData = isSender ? offeredItem : targetItem;
                           var theirItemData = isSender ? targetItem : offeredItem;
 
                           return StreamBuilder<DocumentSnapshot>(
-                            // 🟢 ดึงสถานะ Offer ล่าสุดแบบ Real-time
                             stream: FirebaseFirestore.instance.collection('offers').doc(activeOfferId).snapshots(),
                             builder: (context, offerSnap) {
                               String offerStatus = 'cancelled';
@@ -193,19 +306,18 @@ class _ChatScreenState extends State<ChatScreen> {
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                       children: [
-                                        _buildItemThumbnail(context, theirItemData), // 👈 ของเขาอยู่ซ้าย
+                                        _buildItemThumbnail(context, theirItemData),
                                         const Icon(Icons.sync_alt, color: Color(0xFF008080), size: 32),
-                                        _buildItemThumbnail(context, myItemData),    // 👉 ของเราอยู่ขวา!
+                                        _buildItemThumbnail(context, myItemData),
                                       ],
                                     ),
                                     const Divider(height: 30),
                                     Text(msg['content'], textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500)),
                                     
-                                    // 🟢 สร้างปุ่ม Action ตามสถานะและบทบาท
+                                    // สร้างปุ่ม Action ตามสถานะและบทบาท
                                     const SizedBox(height: 16),
                                     if (offerStatus == 'pending') ...[
                                       if (isSender) 
-                                        // เราเป็นคนส่ง -> มีสิทธิ์กดยกเลิก
                                         SizedBox(
                                           width: double.infinity,
                                           child: OutlinedButton(
@@ -215,7 +327,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                           ),
                                         )
                                       else 
-                                        // เราเป็นคนรับ -> มีสิทธิ์กดยอมรับ หรือ ปฏิเสธ
                                         Row(
                                           children: [
                                             Expanded(
@@ -228,7 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                             const SizedBox(width: 10),
                                             Expanded(
                                               child: ElevatedButton(
-                                                onPressed: () => _acceptOffer(activeOfferId!, targetItem['listing_id'], offeredItem['listing_id']),
+                                                onPressed: () => _acceptOffer(activeOfferId!),
                                                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
                                                 child: const Text('ยอมรับ', style: TextStyle(color: Colors.white)),
                                               ),
@@ -256,7 +367,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           );
                         }
 
-                        // --- 3. วาดบับเบิลข้อความธรรมดา ---
+                        // วาดบับเบิลข้อความธรรมดา
                         return Align(
                           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                           child: Container(
@@ -275,7 +386,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               
-              // --- ช่องพิมพ์ข้อความด้านล่าง ---
+              // ช่องพิมพ์ข้อความด้านล่าง
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),

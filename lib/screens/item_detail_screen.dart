@@ -267,6 +267,7 @@ class ItemDetailScreen extends StatelessWidget {
                       // 1. สร้าง Offer 
                       final offerRef = await FirebaseFirestore.instance.collection('offers').add({
                         'sender_id': currentUserId,
+                        'target_user_id': ownerId,
                         'target_listing_id': itemData['listing_id'] ?? '', 
                         'offered_listing_id': selectedMyItemId,
                         'coin_offset': requestCoins ? -coinOffset : coinOffset,
