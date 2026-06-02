@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'home_screen.dart';
 import 'my_listing_screen.dart';
 import 'add_post_screen.dart';
@@ -16,15 +18,71 @@ class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
   final Color tealColor = const Color(0xFF008080); // สี Deep Teal
 
-  // ฟังก์ชันช่วยสร้างปุ่มไอคอน เพื่อให้โค้ดดูสะอาดตา
-  Widget _buildNavItem(IconData icon, int index) {
+  // 🟢 อัปเดตฟังก์ชันช่วยสร้างปุ่ม ให้รองรับการวาดจุดแดงเฉพาะปุ่มแชท
+  Widget _buildNavItem(IconData icon, int index, {bool isChat = false}) {
     bool isSelected = _currentIndex == index;
+    
+    // สร้างตัวไอคอนปกติ
+    Widget iconWidget = Icon(
+      icon,
+      color: isSelected ? tealColor : Colors.black54, // ถ้าเลือกอยู่ให้เป็นสี Teal ถ้าไม่เลือกเป็นสีเทาเข้ม
+      size: 28,
+    );
+
+    // 🟢 ถ้าบอกว่าเป็นปุ่มแชท (isChat = true) ให้เอา StreamBuilder มาครอบเพื่อโชว์จุดแดง
+    if (isChat) {
+      iconWidget = StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('chat_rooms')
+            .where('participants', arrayContains: FirebaseAuth.instance.currentUser?.uid ?? '')
+            .snapshots(),
+        builder: (context, snapshot) {
+          bool hasUnreadChat = false;
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+          if (snapshot.hasData && currentUserId != null) {
+            for (var doc in snapshot.data!.docs) {
+              final room = doc.data() as Map<String, dynamic>;
+              final List readBy = room['read_by'] ?? [];
+              final String? lastMessage = room['last_message_text'];
+
+              if (lastMessage != null && !readBy.contains(currentUserId)) {
+                hasUnreadChat = true;
+                break;
+              }
+            }
+          }
+
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? tealColor : Colors.black54,
+                size: 28,
+              ),
+              if (hasUnreadChat)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+    }
+
     return IconButton(
-      icon: Icon(
-        icon,
-        color: isSelected ? tealColor : Colors.black54, // ถ้าเลือกอยู่ให้เป็นสี Teal ถ้าไม่เลือกเป็นสีเทาเข้ม
-        size: 28,
-      ),
+      icon: iconWidget,
       onPressed: () {
         setState(() {
           _currentIndex = index;
@@ -80,7 +138,8 @@ class _MainLayoutState extends State<MainLayout> {
             _buildNavItem(Icons.home, 0),
             _buildNavItem(Icons.grid_view_rounded, 1),
             const SizedBox(width: 48),
-            _buildNavItem(Icons.chat_bubble_outline, 3),
+            // 🟢 ใส่ isChat: true ตรงนี้เพื่อบอกว่านี่คือปุ่มที่ต้องมีจุดแดง
+            _buildNavItem(Icons.chat_bubble_outline, 3, isChat: true), 
             _buildNavItem(Icons.person_outline, 4),
           ],
         ),
