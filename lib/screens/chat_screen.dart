@@ -216,6 +216,108 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ฟังก์ชัน: ยกเลิกดีลที่ตกลงไปแล้ว (Refund และ ปลดล็อกสิ่งของ)
+  Future<void> _cancelAcceptedDeal(String offerId, String reason) async {
+    final FirebaseFirestore db = FirebaseFirestore.instance;
+
+    try {
+      // ค้นหาเอกสาร Transaction ที่ผูกกับ Offer นี้ก่อน
+      final txQuery = await db.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
+      if (txQuery.docs.isEmpty) throw Exception("ไม่พบข้อมูลสัญญากองกลาง");
+      
+      DocumentReference mainTxRef = txQuery.docs.first.reference;
+
+      await db.runTransaction((transaction) async {
+        // ==========================================
+        // โซนที่ 1: อ่านข้อมูลทั้งหมด (READ) ห้ามมีการเขียนในโซนนี้
+        // ==========================================
+        
+        // 1.1 อ่านข้อมูล Transaction สัญญากองกลาง
+        DocumentSnapshot txSnap = await transaction.get(mainTxRef);
+        Map<String, dynamic> txData = txSnap.data() as Map<String, dynamic>;
+
+        if (txData['status'] != 'in_progress') {
+          throw Exception("ไม่สามารถยกเลิกได้ เนื่องจากสถานะไม่ใช่กำลังดำเนินการ");
+        }
+
+        // 1.2 อ่านข้อมูล Offer
+        DocumentReference offerRef = db.collection('offers').doc(offerId);
+        DocumentSnapshot offerSnap = await transaction.get(offerRef);
+        Map<String, dynamic> offerData = offerSnap.data() as Map<String, dynamic>;
+
+        String targetItemId = offerData['target_listing_id'];
+        String offeredItemId = offerData['offered_listing_id'];
+
+        // 1.3 อ่านข้อมูลผู้ใช้ (ถ้ามีเรื่องเงินเข้ามาเกี่ยว)
+        int escrowCoins = txData['escrow_coins'] ?? 0;
+        String? payerId;
+        DocumentSnapshot? payerSnap;
+        DocumentReference? payerRef;
+        int newBalance = 0;
+
+        if (escrowCoins > 0) {
+          int coinOffset = offerData['coin_offset'] ?? 0;
+          String senderId = offerData['sender_id'];
+          String targetUserId = offerData['target_user_id'] ?? offerData['target_owner_id'];
+          
+          payerId = coinOffset > 0 ? senderId : targetUserId;
+          payerRef = db.collection('users').doc(payerId);
+          payerSnap = await transaction.get(payerRef); // ดึงข้อมูลกระเป๋าเงินตรงนี้เลย
+
+          int currentBalance = (payerSnap.data() as Map<String, dynamic>)['coins_balance'] ?? 0;
+          newBalance = currentBalance + escrowCoins; // คำนวณยอดเงินรอไว้
+        }
+
+        // ==========================================
+        // โซนที่ 2: เขียนและอัปเดตข้อมูล (WRITE)
+        // ==========================================
+
+        // 2.1 ปลดล็อกสิ่งของทั้ง 2 ชิ้น กลับเป็น active
+        transaction.update(db.collection('listings').doc(targetItemId), {'status': 'active'});
+        transaction.update(db.collection('listings').doc(offeredItemId), {'status': 'active'});
+
+        // 2.2 ระบบคืนเงิน (ถ้ามีการวางมัดจำไว้)
+        if (payerRef != null && escrowCoins > 0) {
+          transaction.update(payerRef, {'coins_balance': newBalance});
+
+          DocumentReference walletTxRef = db.collection('wallet_transactions').doc();
+          transaction.set(walletTxRef, {
+            'log_id': walletTxRef.id,
+            'user_id': payerId,
+            'amount': escrowCoins,
+            'balance_after': newBalance,
+            'type': 'refund',
+            'status': 'success',
+            'reference_id': mainTxRef.id,
+            'description': 'คืนเหรียญจากระบบกองกลาง (ยกเลิกการแลกเปลี่ยน)',
+            'created_at': FieldValue.serverTimestamp(),
+          });
+        }
+
+        // 2.3 อัปเดตสถานะสัญญากองกลางและ Offer ให้เป็นยกเลิก
+        transaction.update(mainTxRef, {
+          'status': 'cancelled',
+          'cancel_reason': reason,
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+        transaction.update(offerRef, {'status': 'cancelled'});
+      });
+
+      // แจ้งเตือนในแชทเมื่อทุกอย่างเสร็จสิ้น
+      String userName = await _getCurrentUserName();
+      _sendSystemMessage('$userName ได้ยกเลิกการแลกเปลี่ยน ระบบได้ทำการคืนสิ่งของและเหรียญเรียบร้อยแล้ว');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ยกเลิกการแลกเปลี่ยนสำเร็จ')));
+      }
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -358,7 +460,24 @@ class _ChatScreenState extends State<ChatScreen> {
                                           offerStatus == 'accepted' ? 'ตกลงแลกเปลี่ยนแล้ว' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ยกเลิกแล้ว'),
                                           style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'accepted' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)),
                                         ),
-                                      )
+                                      ),
+                                      if (offerStatus == 'accepted') ...[
+                                        const SizedBox(height: 16),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: OutlinedButton(
+                                            onPressed: () {
+                                              // เรียกใช้ฟังก์ชันคืนเงินและของ
+                                              _cancelAcceptedDeal(activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว');
+                                            },
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: Colors.red, 
+                                              side: const BorderSide(color: Colors.red)
+                                            ),
+                                            child: const Text('ยกเลิกดีลนี้'),
+                                          ),
+                                        ),
+                                      ]
                                     ]
                                   ],
                                 ),
