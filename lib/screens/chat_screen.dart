@@ -15,6 +15,26 @@ class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
   final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
 
+  // 🟢 1. สร้าง Key สำหรับควบคุม SnackBar เฉพาะในหน้านี้
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+  // ฟังก์ชันช่วยแสดง SnackBar แบบลอย (ไม่ดัน UI อื่นๆ)
+  void _showFloatingSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    
+    // 🟢 2. สั่งแสดง SnackBar ผ่าน Key แทน context แบบเก่า
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : const Color(0xFF008080),
+        behavior: SnackBarBehavior.floating,
+        // ลดระยะ bottom ลงมาเหลือ 90 ก็พอครับ เพราะมันถูกขังไว้ในหน้านี้แล้ว จะได้ลอยอยู่เหนือช่องพิมพ์แชทพอดี
+        margin: const EdgeInsets.only(bottom: 90, left: 16, right: 16), 
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   Future<void> _sendMessage() async {
     if (_messageController.text.trim().isEmpty) return;
 
@@ -166,14 +186,10 @@ class _ChatScreenState extends State<ChatScreen> {
       String userName = await _getCurrentUserName();
       _sendSystemMessage('$userName ตกลงแลกเปลี่ยนแล้ว และระบบได้ทำการล็อกเหรียญไว้ในกองกลาง');
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('เริ่มการแลกเปลี่ยนเรียบร้อยแล้ว')));
-      }
+      _showFloatingSnackBar('เริ่มการแลกเปลี่ยนเรียบร้อยแล้ว');
 
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ไม่สามารถทำรายการได้: ${e.toString().replaceAll('Exception: ', '')}')));
-      }
+      _showFloatingSnackBar('ไม่สามารถทำรายการได้: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
     }
   }
 
@@ -311,14 +327,10 @@ class _ChatScreenState extends State<ChatScreen> {
       String userName = await _getCurrentUserName();
       _sendSystemMessage('$userName ได้ยกเลิกการแลกเปลี่ยน ระบบได้ทำการคืนสิ่งของและเหรียญเรียบร้อยแล้ว');
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ยกเลิกการแลกเปลี่ยนสำเร็จ')));
-      }
+      _showFloatingSnackBar('ยกเลิกการแลกเปลี่ยนสำเร็จ');
 
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}')));
-      }
+      _showFloatingSnackBar('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
     }
   }
 
@@ -511,323 +523,453 @@ class _ChatScreenState extends State<ChatScreen> {
       _sendSystemMessage('$userName ได้ยืนยันรหัสส่งมอบแล้ว การแลกเปลี่ยนสำเร็จลุล่วง!');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์')));
+        _showFloatingSnackBar('ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์');
+        
+        final txQuery = await db.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
+        if (txQuery.docs.isNotEmpty) {
+           var txData = txQuery.docs.first.data() as Map<String, dynamic>;
+           String partnerId = (txData['members'] as List).firstWhere((id) => id != currentUserId);
+           String transactionId = txQuery.docs.first.id;
+           
+           // หน่วงเวลาเล็กน้อยเพื่อให้ข้อความแชทเด้งก่อน ค่อยโชว์ป๊อปอัป
+           Future.delayed(const Duration(milliseconds: 500), () {
+             _showRatingDialog(context, partnerId, transactionId);
+           });
+        }
       }
 
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}')));
+      _showFloatingSnackBar('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
+    }
+  }
+
+  // ฟังก์ชัน: หน้าต่าง Pop-up ให้คะแนนดาว
+  void _showRatingDialog(BuildContext context, String targetUserId, String transactionId) {
+    int selectedRating = 5; // ค่าเริ่มต้นให้ 5 ดาวเต็ม
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // บังคับให้ต้องกดปุ่มใดปุ่มหนึ่ง (ยืนยัน หรือ ข้าม)
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('ให้คะแนนการแลกเปลี่ยน', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('ความประทับใจต่อคู่กรณีในดีลนี้', style: TextStyle(color: Colors.black54)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          index < selectedRating ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                          size: 36,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            selectedRating = index + 1;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context), 
+                  child: const Text('ข้าม', style: TextStyle(color: Colors.grey))
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _submitReview(targetUserId, transactionId, selectedRating);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
+                  child: const Text('ยืนยัน', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+
+  // ฟังก์ชัน: คำนวณและบันทึกคะแนนลงฐานข้อมูล
+  Future<void> _submitReview(String targetUserId, String transactionId, int rating) async {
+    final FirebaseFirestore db = FirebaseFirestore.instance;
+
+    try {
+      // 1. เช็คก่อนว่าเคยรีวิวดีลนี้ไปหรือยัง (ป้องกันสแปมกดเบิ้ล)
+      final existingReview = await db.collection('reviews')
+          .where('transaction_id', isEqualTo: transactionId)
+          .where('reviewer_id', isEqualTo: currentUserId)
+          .get();
+
+      if (existingReview.docs.isNotEmpty) {
+        _showFloatingSnackBar('คุณได้ให้คะแนนดีลนี้ไปแล้ว', isError: true);
+        return;
       }
+
+      // 2. ใช้ Transaction อ่านค่าเดิมและอัปเดตค่าใหม่
+      await db.runTransaction((transaction) async {
+        DocumentReference userRef = db.collection('users').doc(targetUserId);
+        DocumentSnapshot userSnap = await transaction.get(userRef);
+
+        if (!userSnap.exists) throw Exception('ไม่พบข้อมูลผู้ใช้ของคู่กรณี');
+
+        Map<String, dynamic> userData = userSnap.data() as Map<String, dynamic>;
+        
+        // ดึงค่าเก่าออกมา (ถ้าไม่มีให้มองเป็น 0)
+        num currentSum = userData['total_rating_sum'] ?? 0;
+        num currentCount = userData['rating_count'] ?? 0;
+
+        // คำนวณค่าใหม่
+        num newSum = currentSum + rating;
+        num newCount = currentCount + 1;
+        double newScore = newSum / newCount;
+
+        // อัปเดตตาราง users
+        transaction.update(userRef, {
+          'total_rating_sum': newSum,
+          'rating_count': newCount,
+          'rating_scores': double.parse(newScore.toStringAsFixed(1)), // ปัดเศษให้เหลือทศนิยม 1 ตำแหน่ง
+        });
+
+        // สร้างประวัติลงตาราง reviews
+        DocumentReference reviewRef = db.collection('reviews').doc();
+        transaction.set(reviewRef, {
+          'review_id': reviewRef.id,
+          'transaction_id': transactionId,
+          'reviewer_id': currentUserId,
+          'target_id': targetUserId,
+          'rating': rating,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+      });
+
+      _showFloatingSnackBar('ส่งคะแนนรีวิวเรียบร้อย ขอบคุณครับ!');
+    } catch (e) {
+      _showFloatingSnackBar('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('เจรจาแลกเปลี่ยน', style: TextStyle(color: Colors.black87, fontSize: 18)),
+    // 🟢 3. เอา ScaffoldMessenger มาครอบ Scaffold เอาไว้
+    return ScaffoldMessenger(
+      key: _scaffoldMessengerKey,
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0.5,
-        iconTheme: const IconThemeData(color: Colors.black87),
-      ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).snapshots(),
-        builder: (context, roomSnap) {
-          if (!roomSnap.hasData) return const Center(child: CircularProgressIndicator());
-          
-          final roomData = roomSnap.data!.data() as Map<String, dynamic>? ?? {};
-          final String? activeOfferId = roomData['active_offer_id'];
+        appBar: AppBar(
+          title: const Text('เจรจาแลกเปลี่ยน', style: TextStyle(color: Colors.black87, fontSize: 18)),
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+          iconTheme: const IconThemeData(color: Colors.black87),
+        ),
+        body: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).snapshots(),
+          builder: (context, roomSnap) {
+            if (!roomSnap.hasData) return const Center(child: CircularProgressIndicator());
+            
+            final roomData = roomSnap.data!.data() as Map<String, dynamic>? ?? {};
+            final String? activeOfferId = roomData['active_offer_id'];
 
-          return Column(
-            children: [
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('chat_rooms')
-                      .doc(widget.roomId)
-                      .collection('messages')
-                      .orderBy('timestamp', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                    
-                    final messages = snapshot.data!.docs;
-                    return ListView.builder(
-                      reverse: true, 
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = messages[index].data() as Map<String, dynamic>;
-                        bool isMe = msg['sender_id'] == currentUserId;
-                        String type = msg['type'] ?? 'text';
+            return Column(
+              children: [
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chat_rooms')
+                        .doc(widget.roomId)
+                        .collection('messages')
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                      
+                      final messages = snapshot.data!.docs;
+                      return ListView.builder(
+                        reverse: true, 
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = messages[index].data() as Map<String, dynamic>;
+                          bool isMe = msg['sender_id'] == currentUserId;
+                          String type = msg['type'] ?? 'text';
 
-                        // วาดข้อความระบบ (อยู่ตรงกลาง)
-                        if (type == 'system_log') {
-                          return Center(
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 12),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade200,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(msg['content'], style: const TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ),
-                          );
-                        }
-
-                        // วาดกล่องข้อเสนอ (ดีล)
-                        if (type == 'system_offer') {
-                          final offerDataFromMsg = msg['offer_data'] ?? {};
-                          final targetItem = offerDataFromMsg['target_item'] ?? {};
-                          final offeredItem = offerDataFromMsg['offered_item'] ?? {};
-                          
-                          // จัดตำแหน่ง: ของของฉันอยู่ขวาเสมอ
-                          bool isSender = (msg['sender_id'] == currentUserId);
-                          var myItemData = isSender ? offeredItem : targetItem;
-                          var theirItemData = isSender ? targetItem : offeredItem;
-
-                          return StreamBuilder<DocumentSnapshot>(
-                            stream: FirebaseFirestore.instance.collection('offers').doc(activeOfferId).snapshots(),
-                            builder: (context, offerSnap) {
-                              String offerStatus = 'cancelled';
-                              Map<String, dynamic> offerData = {};
-                              
-                              if (offerSnap.hasData && offerSnap.data!.exists) {
-                                offerData = offerSnap.data!.data() as Map<String, dynamic>;
-                                offerStatus = offerData['status'] ?? 'pending';
-                              }
-
-                              // 🟢 เช็คว่าใครเป็นคนเสนอเงื่อนไขล่าสุด (Turn-based)
-                              String lastOfferBy = offerData['last_offer_by'] ?? offerData['sender_id'] ?? '';
-                              bool isMyTurn = (lastOfferBy != currentUserId); // ถ้าเราไม่ได้เป็นคนยื่นล่าสุด แปลว่าเป็นเทิร์นของเรา
-
-                              // 🟢 จัดรูปแบบข้อความแสดงสถานะเหรียญ (Coins)
-                              int currentOffset = offerData['coin_offset'] ?? 0;
-                              String offsetText = 'แลกของต่อของ (ไม่มีการเพิ่มเหรียญ)';
-                              Color offsetColor = Colors.black54;
-
-                              if (currentOffset > 0) {
-                                bool iAmSender = (currentUserId == offerData['sender_id']);
-                                offsetText = iAmSender ? 'คุณเสนอจ่ายเพิ่ม $currentOffset Coins' : 'อีกฝ่ายเสนอจ่ายเพิ่ม $currentOffset Coins';
-                                offsetColor = iAmSender ? Colors.red : Colors.green;
-                              } else if (currentOffset < 0) {
-                                bool iAmSender = (currentUserId == offerData['sender_id']);
-                                offsetText = iAmSender ? 'คุณขอรับเงินเพิ่ม ${currentOffset.abs()} Coins' : 'อีกฝ่ายขอรับเงินเพิ่ม ${currentOffset.abs()} Coins';
-                                offsetColor = iAmSender ? Colors.green : Colors.red;
-                              }
-
-                              return Container(
-                                margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                                padding: const EdgeInsets.all(16),
+                          // วาดข้อความระบบ (อยู่ตรงกลาง)
+                          if (type == 'system_log') {
+                            return Center(
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: const Color(0xFF008080), width: 2),
-                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                                child: Column(
-                                  children: [
-                                    const Text('ข้อเสนอแลกเปลี่ยน', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold, fontSize: 16)),
-                                    const SizedBox(height: 16),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                      children: [
-                                        _buildItemThumbnail(context, theirItemData),
-                                        const Icon(Icons.sync_alt, color: Color(0xFF008080), size: 32),
-                                        _buildItemThumbnail(context, myItemData),
-                                      ],
-                                    ),
-                                    const Divider(height: 16),
-                                    
-                                    // โชว์สถานะเหรียญปัจจุบันของการต่อรอง
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                child: Text(msg['content'], style: const TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ),
+                            );
+                          }
+
+                          // วาดกล่องข้อเสนอ (ดีล)
+                          if (type == 'system_offer') {
+                            final offerDataFromMsg = msg['offer_data'] ?? {};
+                            final targetItem = offerDataFromMsg['target_item'] ?? {};
+                            final offeredItem = offerDataFromMsg['offered_item'] ?? {};
+                            
+                            // จัดตำแหน่ง: ของของฉันอยู่ขวาเสมอ
+                            bool isSender = (msg['sender_id'] == currentUserId);
+                            var myItemData = isSender ? offeredItem : targetItem;
+                            var theirItemData = isSender ? targetItem : offeredItem;
+
+                            return StreamBuilder<DocumentSnapshot>(
+                              stream: FirebaseFirestore.instance.collection('offers').doc(activeOfferId).snapshots(),
+                              builder: (context, offerSnap) {
+                                String offerStatus = 'cancelled';
+                                Map<String, dynamic> offerData = {};
+                                
+                                if (offerSnap.hasData && offerSnap.data!.exists) {
+                                  offerData = offerSnap.data!.data() as Map<String, dynamic>;
+                                  offerStatus = offerData['status'] ?? 'pending';
+                                }
+
+                                // 🟢 เช็คว่าใครเป็นคนเสนอเงื่อนไขล่าสุด (Turn-based)
+                                String lastOfferBy = offerData['last_offer_by'] ?? offerData['sender_id'] ?? '';
+                                bool isMyTurn = (lastOfferBy != currentUserId); // ถ้าเราไม่ได้เป็นคนยื่นล่าสุด แปลว่าเป็นเทิร์นของเรา
+
+                                // 🟢 จัดรูปแบบข้อความแสดงสถานะเหรียญ (Coins)
+                                int currentOffset = offerData['coin_offset'] ?? 0;
+                                String offsetText = 'แลกของต่อของ (ไม่มีการเพิ่มเหรียญ)';
+                                Color offsetColor = Colors.black54;
+
+                                if (currentOffset > 0) {
+                                  bool iAmSender = (currentUserId == offerData['sender_id']);
+                                  offsetText = iAmSender ? 'คุณเสนอจ่ายเพิ่ม $currentOffset Coins' : 'อีกฝ่ายเสนอจ่ายเพิ่ม $currentOffset Coins';
+                                  offsetColor = iAmSender ? Colors.red : Colors.green;
+                                } else if (currentOffset < 0) {
+                                  bool iAmSender = (currentUserId == offerData['sender_id']);
+                                  offsetText = iAmSender ? 'คุณขอรับเงินเพิ่ม ${currentOffset.abs()} Coins' : 'อีกฝ่ายขอรับเงินเพิ่ม ${currentOffset.abs()} Coins';
+                                  offsetColor = iAmSender ? Colors.green : Colors.red;
+                                }
+
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFF008080), width: 2),
+                                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      const Text('ข้อเสนอแลกเปลี่ยน', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold, fontSize: 16)),
+                                      const SizedBox(height: 16),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                         children: [
-                                          Icon(Icons.monetization_on, color: offsetColor, size: 16),
-                                          const SizedBox(width: 8),
-                                          Text(offsetText, style: TextStyle(color: offsetColor, fontWeight: FontWeight.bold, fontSize: 13)),
+                                          _buildItemThumbnail(context, theirItemData),
+                                          const Icon(Icons.sync_alt, color: Color(0xFF008080), size: 32),
+                                          _buildItemThumbnail(context, myItemData),
                                         ],
                                       ),
-                                    ),
-                                    const Divider(height: 16),
-                                    
-                                    // สร้างปุ่ม Action ตามสถานะและบทบาทการต่อรอง
-                                    if (offerStatus == 'pending') ...[
-                                      if (!isMyTurn)
-                                        Column(
-                                          children: [
-                                            const Text('รออีกฝ่ายพิจารณาข้อเสนอ...', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                                            const SizedBox(height: 12),
-                                            SizedBox(
-                                              width: double.infinity,
-                                              child: OutlinedButton(
-                                                onPressed: () => _cancelOffer(activeOfferId!),
-                                                style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                                                child: const Text('ยกเลิกข้อเสนอ'),
-                                              ),
-                                            ),
-                                          ]
-                                        )
-                                      else 
-                                        Column(
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: OutlinedButton(
-                                                    onPressed: () => _rejectOffer(activeOfferId!),
-                                                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                                                    child: const Text('ปฏิเสธ'),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 10),
-                                                Expanded(
-                                                  child: ElevatedButton(
-                                                    onPressed: () => _showCounterOfferDialog(context, activeOfferId!, offerData),
-                                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                                                    child: const Text('ต่อรอง', style: TextStyle(color: Colors.white)),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 8),
-                                            SizedBox(
-                                              width: double.infinity,
-                                              child: ElevatedButton(
-                                                onPressed: () => _acceptOffer(activeOfferId!),
-                                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
-                                                child: const Text('ยอมรับข้อเสนอ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                              ),
-                                            ),
-                                          ],
-                                        )
-                                    ] else if (offerStatus == 'accepted' || offerStatus == 'in_progress') ...[
-                                      // สรุปผลว่าตกลงแล้ว
+                                      const Divider(height: 16),
+                                      
+                                      // โชว์สถานะเหรียญปัจจุบันของการต่อรอง
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
-                                        child: const Text('ตกลงแลกเปลี่ยนแล้ว', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.monetization_on, color: offsetColor, size: 16),
+                                            const SizedBox(width: 8),
+                                            Text(offsetText, style: TextStyle(color: offsetColor, fontWeight: FontWeight.bold, fontSize: 13)),
+                                          ],
+                                        ),
                                       ),
-                                      // แสดงกล่อง OTP
-                                      StreamBuilder<QuerySnapshot>(
-                                        stream: FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: activeOfferId).limit(1).snapshots(),
-                                        builder: (context, txSnap) {
-                                          if (!txSnap.hasData || txSnap.data!.docs.isEmpty) return const SizedBox();
-                                          var txData = txSnap.data!.docs.first.data() as Map<String, dynamic>;
-                                          var codes = txData['verification_codes'] ?? {};
-                                          String myCode = codes[currentUserId] ?? '------';
-                                          
-                                          return Column(
+                                      const Divider(height: 16),
+                                      
+                                      // สร้างปุ่ม Action ตามสถานะและบทบาทการต่อรอง
+                                      if (offerStatus == 'pending') ...[
+                                        if (!isMyTurn)
+                                          Column(
                                             children: [
-                                              const SizedBox(height: 16),
-                                              Container(
-                                                width: double.infinity,
-                                                padding: const EdgeInsets.all(12),
-                                                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                                                child: Column(
-                                                  children: [
-                                                    const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)),
-                                                    Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: Color(0xFF008080))),
-                                                  ],
-                                                ),
-                                              ),
+                                              const Text('รออีกฝ่ายพิจารณาข้อเสนอ...', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
                                               const SizedBox(height: 12),
                                               SizedBox(
                                                 width: double.infinity,
-                                                child: ElevatedButton(
-                                                  onPressed: () => _showOtpDialog(context, activeOfferId!),
-                                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
-                                                  child: const Text('กรอกรหัสของอีกฝ่าย', style: TextStyle(color: Colors.white)),
+                                                child: OutlinedButton(
+                                                  onPressed: () => _cancelOffer(activeOfferId!),
+                                                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                                                  child: const Text('ยกเลิกข้อเสนอ'),
                                                 ),
+                                              ),
+                                            ]
+                                          )
+                                        else 
+                                          Column(
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: OutlinedButton(
+                                                      onPressed: () => _rejectOffer(activeOfferId!),
+                                                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                                                      child: const Text('ปฏิเสธ'),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: ElevatedButton(
+                                                      onPressed: () => _showCounterOfferDialog(context, activeOfferId!, offerData),
+                                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                                      child: const Text('ต่อรอง', style: TextStyle(color: Colors.white)),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                               const SizedBox(height: 8),
                                               SizedBox(
                                                 width: double.infinity,
-                                                child: OutlinedButton(
-                                                  onPressed: () => _cancelAcceptedDeal(activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว'),
-                                                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                                                  child: const Text('ยกเลิกดีลนี้'),
+                                                child: ElevatedButton(
+                                                  onPressed: () => _acceptOffer(activeOfferId!),
+                                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
+                                                  child: const Text('ยอมรับข้อเสนอ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                                 ),
                                               ),
                                             ],
-                                          );
-                                        }
-                                      )
-                                    ] else ...[
-                                      // กล่องแสดงสถานะ completed, rejected, cancelled
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: offerStatus == 'completed' ? Colors.green.shade50 : (offerStatus == 'rejected' ? Colors.orange.shade50 : Colors.red.shade50),
-                                          borderRadius: BorderRadius.circular(8)
+                                          )
+                                      ] else if (offerStatus == 'accepted' || offerStatus == 'in_progress') ...[
+                                        // สรุปผลว่าตกลงแล้ว
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                          decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                                          child: const Text('ตกลงแลกเปลี่ยนแล้ว', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                         ),
-                                        child: Text(
-                                          offerStatus == 'completed' ? 'แลกเปลี่ยนสำเร็จสมบูรณ์' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ถูกยกเลิกแล้ว'),
-                                          style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'completed' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)),
-                                        ),
-                                      )
-                                    ]
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                        }
-                        
-                        // วาดบับเบิลข้อความธรรมดา
-                        return Align(
-                          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isMe ? const Color(0xFF008080) : Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(15),
+                                        // แสดงกล่อง OTP
+                                        StreamBuilder<QuerySnapshot>(
+                                          stream: FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: activeOfferId).limit(1).snapshots(),
+                                          builder: (context, txSnap) {
+                                            if (!txSnap.hasData || txSnap.data!.docs.isEmpty) return const SizedBox();
+                                            var txData = txSnap.data!.docs.first.data() as Map<String, dynamic>;
+                                            var codes = txData['verification_codes'] ?? {};
+                                            String myCode = codes[currentUserId] ?? '------';
+                                            
+                                            return Column(
+                                              children: [
+                                                const SizedBox(height: 16),
+                                                Container(
+                                                  width: double.infinity,
+                                                  padding: const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                                  child: Column(
+                                                    children: [
+                                                      const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)),
+                                                      Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: Color(0xFF008080))),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 12),
+                                                SizedBox(
+                                                  width: double.infinity,
+                                                  child: ElevatedButton(
+                                                    onPressed: () => _showOtpDialog(context, activeOfferId!),
+                                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
+                                                    child: const Text('กรอกรหัสของอีกฝ่าย', style: TextStyle(color: Colors.white)),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                SizedBox(
+                                                  width: double.infinity,
+                                                  child: OutlinedButton(
+                                                    onPressed: () => _cancelAcceptedDeal(activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว'),
+                                                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                                                    child: const Text('ยกเลิกดีลนี้'),
+                                                  ),
+                                                ),
+                                              ],
+                                            );
+                                          }
+                                        )
+                                      ] else ...[
+                                        // กล่องแสดงสถานะ completed, rejected, cancelled
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: offerStatus == 'completed' ? Colors.green.shade50 : (offerStatus == 'rejected' ? Colors.orange.shade50 : Colors.red.shade50),
+                                            borderRadius: BorderRadius.circular(8)
+                                          ),
+                                          child: Text(
+                                            offerStatus == 'completed' ? 'แลกเปลี่ยนสำเร็จสมบูรณ์' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ถูกยกเลิกแล้ว'),
+                                            style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'completed' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)),
+                                          ),
+                                        )
+                                      ]
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          }
+
+                          // วาดบับเบิลข้อความธรรมดา
+                          return Align(
+                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isMe ? const Color(0xFF008080) : Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: Text(msg['content'], style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
                             ),
-                            child: Text(msg['content'], style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              
-              // ช่องพิมพ์ข้อความด้านล่าง
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
-                child: SafeArea(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _messageController,
-                          decoration: InputDecoration(
-                            hintText: 'พิมพ์ข้อความ...',
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      CircleAvatar(
-                        backgroundColor: const Color(0xFF008080),
-                        child: IconButton(icon: const Icon(Icons.send, color: Colors.white, size: 20), onPressed: _sendMessage),
-                      ),
-                    ],
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
-              ),
-            ],
-          );
-        }
+                
+                // ช่องพิมพ์ข้อความด้านล่าง
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
+                  child: SafeArea(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            decoration: InputDecoration(
+                              hintText: 'พิมพ์ข้อความ...',
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        CircleAvatar(
+                          backgroundColor: const Color(0xFF008080),
+                          child: IconButton(icon: const Icon(Icons.send, color: Colors.white, size: 20), onPressed: _sendMessage),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+        ),
       ),
     );
   }
