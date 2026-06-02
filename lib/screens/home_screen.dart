@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'item_detail_screen.dart';
 import 'item_search_delegate.dart';
+import 'notification_screen.dart';
 
 // 🟢 1. เปลี่ยนเป็น StatefulWidget เพื่อรองรับการเปลี่ยนค่า Filter/Sort
 class HomeScreen extends StatefulWidget {
@@ -102,7 +103,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.black87),
-            onPressed: () {},
+            onPressed: () {
+              // 🟢 กดแล้วให้วิ่งไปหน้า NotificationScreen
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen()));
+            },
           ),
         ],
       ),
