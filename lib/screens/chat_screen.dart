@@ -132,7 +132,8 @@ class _ChatScreenState extends State<ChatScreen> {
         }
 
         // 3. สร้างข้อมูลในตาราง transactions
-        String verifyCode = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
+        String code1 = (100000 + (DateTime.now().millisecondsSinceEpoch % 400000)).toString();
+        String code2 = (500000 + (DateTime.now().millisecondsSinceEpoch % 400000)).toString();
         DocumentReference mainTxRef = db.collection('transactions').doc();
         
         transaction.set(mainTxRef, {
@@ -143,7 +144,10 @@ class _ChatScreenState extends State<ChatScreen> {
           'escrow_coins': amountToPay,
           'status': 'in_progress',
           'cancel_reason': '',
-          'verification_code': verifyCode,
+          'verification_codes': {
+            senderId: code1,
+            targetUserId: code2,
+          }, // แบบใหม่แยก 2 รหัส
           'confirmed_by_user_ids': [],
           'created_at': FieldValue.serverTimestamp(),
           'updated_at': FieldValue.serverTimestamp(),
@@ -318,6 +322,126 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // หน้าต่าง Pop-up สำหรับกรอกรหัส
+  void _showOtpDialog(BuildContext context, String offerId) {
+    final TextEditingController otpController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ยืนยันการรับของ', style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: otpController,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: const InputDecoration(hintText: 'กรอกรหัส 6 หลักของอีกฝ่าย'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _verifyHandoverCode(offerId, otpController.text.trim());
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
+            child: const Text('ยืนยัน', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ฟังก์ชัน: ตรวจสอบรหัส OTP และโอนเงินจบดีล
+  Future<void> _verifyHandoverCode(String offerId, String inputCode) async {
+    final FirebaseFirestore db = FirebaseFirestore.instance;
+
+    try {
+      final txQuery = await db.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
+      if (txQuery.docs.isEmpty) throw Exception("ไม่พบข้อมูลสัญญากองกลาง");
+      
+      DocumentReference mainTxRef = txQuery.docs.first.reference;
+
+      await db.runTransaction((transaction) async {
+        DocumentSnapshot txSnap = await transaction.get(mainTxRef);
+        Map<String, dynamic> txData = txSnap.data() as Map<String, dynamic>;
+
+        if (txData['status'] != 'in_progress') throw Exception("สถานะดีลไม่ถูกต้อง");
+
+        // ตรวจสอบว่ารหัสที่กรอก ตรงกับรหัสของคู่กรณีหรือไม่
+        Map<String, dynamic> codes = txData['verification_codes'] ?? {};
+        String partnerId = (txData['members'] as List).firstWhere((id) => id != currentUserId);
+        String partnerCode = codes[partnerId] ?? '';
+
+        if (inputCode != partnerCode) throw Exception("รหัสยืนยันไม่ถูกต้อง");
+
+        // อ่านข้อมูล Offer
+        DocumentReference offerRef = db.collection('offers').doc(offerId);
+        DocumentSnapshot offerSnap = await transaction.get(offerRef);
+        Map<String, dynamic> offerData = offerSnap.data() as Map<String, dynamic>;
+
+        String targetItemId = offerData['target_listing_id'];
+        String offeredItemId = offerData['offered_listing_id'];
+        
+        int escrowCoins = txData['escrow_coins'] ?? 0;
+        DocumentReference? receiverRef;
+        int newBalance = 0;
+        String? receiverId;
+
+        if (escrowCoins > 0) {
+          int coinOffset = offerData['coin_offset'] ?? 0;
+          String senderId = offerData['sender_id'];
+          String targetUserId = offerData['target_user_id'] ?? offerData['target_owner_id'];
+          
+          // คนรับเงินคือคนละคนกับคนจ่าย (coinOffset > 0 แปลว่าคนส่งเสนอเงินให้ คนรับของคือ target)
+          receiverId = coinOffset > 0 ? targetUserId : senderId;
+          receiverRef = db.collection('users').doc(receiverId);
+          DocumentSnapshot receiverSnap = await transaction.get(receiverRef);
+          
+          int currentBalance = (receiverSnap.data() as Map<String, dynamic>)['coins_balance'] ?? 0;
+          newBalance = currentBalance + escrowCoins;
+        }
+
+        // --- โซนอัปเดตข้อมูล (WRITE) ---
+        transaction.update(db.collection('listings').doc(targetItemId), {'status': 'completed'});
+        transaction.update(db.collection('listings').doc(offeredItemId), {'status': 'completed'});
+
+        if (receiverRef != null && escrowCoins > 0 && receiverId != null) {
+          transaction.update(receiverRef, {'coins_balance': newBalance});
+
+          DocumentReference walletTxRef = db.collection('wallet_transactions').doc();
+          transaction.set(walletTxRef, {
+            'log_id': walletTxRef.id,
+            'user_id': receiverId,
+            'amount': escrowCoins,
+            'balance_after': newBalance,
+            'type': 'escrow_release',
+            'status': 'success',
+            'reference_id': mainTxRef.id,
+            'description': 'ได้รับเหรียญจากระบบกองกลาง (แลกเปลี่ยนสำเร็จ)',
+            'created_at': FieldValue.serverTimestamp(),
+          });
+        }
+
+        transaction.update(mainTxRef, {
+          'status': 'completed',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+        transaction.update(offerRef, {'status': 'completed'});
+      });
+
+      String userName = await _getCurrentUserName();
+      _sendSystemMessage('$userName ได้ยืนยันรหัสส่งมอบแล้ว การแลกเปลี่ยนสำเร็จลุล่วง!');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์')));
+      }
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -448,36 +572,77 @@ class _ChatScreenState extends State<ChatScreen> {
                                             ),
                                           ],
                                         )
-                                    ] else ...[
-                                      // ถ้าสถานะไม่ใช่ pending ให้โชว์ Text สรุปผล
+                                    ] else if (offerStatus == 'accepted' || offerStatus == 'in_progress') ...[
+                                      // สรุปผลว่าตกลงแล้ว
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                         decoration: BoxDecoration(
-                                          color: offerStatus == 'accepted' ? Colors.green.shade50 : (offerStatus == 'rejected' ? Colors.orange.shade50 : Colors.red.shade50),
+                                          color: Colors.green.shade50,
+                                          borderRadius: BorderRadius.circular(8)
+                                        ),
+                                        child: const Text(
+                                          'ตกลงแลกเปลี่ยนแล้ว',
+                                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                        ),
+                                      ),
+                                      // แสดงกล่อง OTP
+                                      StreamBuilder<QuerySnapshot>(
+                                        stream: FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: activeOfferId).limit(1).snapshots(),
+                                        builder: (context, txSnap) {
+                                          if (!txSnap.hasData || txSnap.data!.docs.isEmpty) return const SizedBox();
+                                          var txData = txSnap.data!.docs.first.data() as Map<String, dynamic>;
+                                          var codes = txData['verification_codes'] ?? {};
+                                          String myCode = codes[currentUserId] ?? '------';
+                                          
+                                          return Column(
+                                            children: [
+                                              const SizedBox(height: 16),
+                                              Container(
+                                                width: double.infinity,
+                                                padding: const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                                child: Column(
+                                                  children: [
+                                                    const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)),
+                                                    Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: const Color(0xFF008080))),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: ElevatedButton(
+                                                  onPressed: () => _showOtpDialog(context, activeOfferId!),
+                                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
+                                                  child: const Text('กรอกรหัสของอีกฝ่าย', style: TextStyle(color: Colors.white)),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              SizedBox(
+                                                width: double.infinity,
+                                                child: OutlinedButton(
+                                                  onPressed: () => _cancelAcceptedDeal(activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว'),
+                                                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                                                  child: const Text('ยกเลิกดีลนี้'),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }
+                                      )
+                                    ] else ...[
+                                      // กล่องแสดงสถานะ completed, rejected, cancelled
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: offerStatus == 'completed' ? Colors.green.shade50 : (offerStatus == 'rejected' ? Colors.orange.shade50 : Colors.red.shade50),
                                           borderRadius: BorderRadius.circular(8)
                                         ),
                                         child: Text(
-                                          offerStatus == 'accepted' ? 'ตกลงแลกเปลี่ยนแล้ว' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ยกเลิกแล้ว'),
-                                          style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'accepted' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)),
+                                          offerStatus == 'completed' ? 'แลกเปลี่ยนสำเร็จสมบูรณ์' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ถูกยกเลิกแล้ว'),
+                                          style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'completed' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)),
                                         ),
-                                      ),
-                                      if (offerStatus == 'accepted') ...[
-                                        const SizedBox(height: 16),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: OutlinedButton(
-                                            onPressed: () {
-                                              // เรียกใช้ฟังก์ชันคืนเงินและของ
-                                              _cancelAcceptedDeal(activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว');
-                                            },
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: Colors.red, 
-                                              side: const BorderSide(color: Colors.red)
-                                            ),
-                                            child: const Text('ยกเลิกดีลนี้'),
-                                          ),
-                                        ),
-                                      ]
+                                      )
                                     ]
                                   ],
                                 ),
