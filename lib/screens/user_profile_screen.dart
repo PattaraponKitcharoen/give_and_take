@@ -7,6 +7,32 @@ class UserProfileScreen extends StatelessWidget {
 
   const UserProfileScreen({super.key, required this.userId});
 
+  // 🟢 ฟังก์ชันช่วยดึงข้อมูลไอเทมที่ถูกแลกเปลี่ยนในรีวิวนี้
+  Future<Map<String, dynamic>?> _getExchangedItem(String transactionId) async {
+    try {
+      final txDoc = await FirebaseFirestore.instance.collection('transactions').doc(transactionId).get();
+      if (!txDoc.exists) return null;
+      
+      List<dynamic> listings = txDoc.data()?['listings'] ?? [];
+      if (listings.isEmpty) return null;
+
+      final itemsQuery = await FirebaseFirestore.instance.collection('listings')
+          .where(FieldPath.documentId, whereIn: listings).get();
+
+      for (var doc in itemsQuery.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        // หาว่าชิ้นไหนเป็นของเจ้าของโปรไฟล์นี้ (เพื่อให้โชว์ของถูกชิ้น)
+        if (data['owner_id'] == userId) {
+          data['listing_id'] = doc.id;
+          return data;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching exchanged item: $e');
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tealColor = const Color(0xFF008080);
@@ -40,7 +66,7 @@ class UserProfileScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🟢 1. โซนหัวโปรไฟล์ (รูป, ชื่อ, ไบโอ, คะแนนรวม)
+                // โซนหัวโปรไฟล์
                 Container(
                   color: Colors.white,
                   padding: const EdgeInsets.all(20),
@@ -81,14 +107,13 @@ class UserProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
 
-                // 🟢 2. โซนสิ่งของทั้งหมดของผู้ใช้ (พับเก็บได้)
+                // โซนสิ่งของทั้งหมดของผู้ใช้ (พับเก็บได้)
                 Container(
                   color: Colors.white,
                   child: Theme(
-                    // เอาเส้นคั่นขอบที่ติดมากับค่าเริ่มต้นของ Flutter ออก
                     data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                     child: ExpansionTile(
-                      initiallyExpanded: true, // กางออกเป็นค่าเริ่มต้น
+                      initiallyExpanded: true, 
                       title: const Text('สิ่งของที่ลงแลกเปลี่ยน', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
                       children: [
                         StreamBuilder<QuerySnapshot>(
@@ -119,7 +144,7 @@ class UserProfileScreen extends StatelessWidget {
                                   crossAxisCount: 2,
                                   crossAxisSpacing: 12,
                                   mainAxisSpacing: 12,
-                                  childAspectRatio: 0.8, // ปรับสัดส่วนการ์ดเล็กน้อย
+                                  childAspectRatio: 0.8,
                                 ),
                                 itemCount: items.length,
                                 itemBuilder: (context, index) {
@@ -186,13 +211,13 @@ class UserProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
 
-                // 🟢 3. โซนรายการรีวิวของจริง (พับเก็บได้)
+                // โซนรายการรีวิวของจริง (พับเก็บได้)
                 Container(
                   color: Colors.white,
                   child: Theme(
                     data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                     child: ExpansionTile(
-                      initiallyExpanded: true, // กางออกเป็นค่าเริ่มต้น
+                      initiallyExpanded: true, 
                       title: const Text('รีวิวจากผู้ใช้งาน', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
                       children: [
                         StreamBuilder<QuerySnapshot>(
@@ -224,13 +249,14 @@ class UserProfileScreen extends StatelessWidget {
                             return ListView.builder(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
-                              padding: const EdgeInsets.symmetric(horizontal: 16), // ขยับขอบให้สวยขึ้น
+                              padding: const EdgeInsets.symmetric(horizontal: 16), 
                               itemCount: reviews.length,
                               itemBuilder: (context, index) {
                                 final reviewData = reviews[index].data() as Map<String, dynamic>;
                                 final int star = reviewData['rating'] ?? 5;
                                 final String comment = reviewData['comment'] ?? '';
                                 final String reviewerId = reviewData['reviewer_id'] ?? '';
+                                final String transactionId = reviewData['transaction_id'] ?? '';
 
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 16),
@@ -267,7 +293,59 @@ class UserProfileScreen extends StatelessWidget {
                                         const SizedBox(height: 8),
                                         Text(comment, style: const TextStyle(color: Colors.black87, fontSize: 14)),
                                       ],
-                                      const SizedBox(height: 12),
+                                      
+                                      // 🟢 แสดงการ์ดสิ่งของที่ได้แลกเปลี่ยนไป
+                                      if (transactionId.isNotEmpty) ...[
+                                        const SizedBox(height: 12),
+                                        FutureBuilder<Map<String, dynamic>?>(
+                                          future: _getExchangedItem(transactionId),
+                                          builder: (context, itemSnap) {
+                                            if (!itemSnap.hasData || itemSnap.data == null) return const SizedBox();
+                                            
+                                            final itemData = itemSnap.data!;
+                                            final itemTitle = itemData['title'] ?? 'ไม่มีชื่อสินค้า';
+                                            final itemThumb = itemData['thumbnail_url'] ?? '';
+
+                                            return GestureDetector(
+                                              onTap: () {
+                                                // พอกดก็จะเด้งไปหน้า Detail ซึ่งปุ่มด้านล่างจะเทาและกดไม่ได้อัตโนมัติ
+                                                Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: itemData)));
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.all(8),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade100,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(color: Colors.grey.shade300)
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    ClipRRect(
+                                                      borderRadius: BorderRadius.circular(6),
+                                                      child: itemThumb.isNotEmpty 
+                                                        ? Image.network(itemThumb, width: 40, height: 40, fit: BoxFit.cover)
+                                                        : Container(width: 40, height: 40, color: Colors.grey.shade300, child: const Icon(Icons.image, size: 20, color: Colors.grey)),
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          const Text('แลกเปลี่ยนสิ่งของ:', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                                          Text(itemTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF008080)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                        ]
+                                                      )
+                                                    ),
+                                                    const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey)
+                                                  ]
+                                                )
+                                              )
+                                            );
+                                          }
+                                        ),
+                                      ],
+
+                                      const SizedBox(height: 16),
                                       const Divider(height: 1),
                                     ],
                                   ),
@@ -280,7 +358,7 @@ class UserProfileScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 40), // เผื่อระยะขอบล่างนิดหน่อย
+                const SizedBox(height: 40), 
               ],
             ),
           );
