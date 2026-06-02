@@ -1,12 +1,73 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'item_detail_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+// 🟢 1. เปลี่ยนเป็น StatefulWidget เพื่อรองรับการเปลี่ยนค่า Filter/Sort
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   final Color tealColor = const Color(0xFF008080);
-  final Color bgColor = const Color(0xFFF4F6F8); // สีพื้นหลังออฟไวท์
+  final Color bgColor = const Color(0xFFF4F6F8); 
+
+  // 🟢 2. ตัวแปรเก็บสถานะการกรองข้อมูล
+  String _selectedCategory = 'All';
+  String _sortBy = 'newest'; // newest, coins_asc (น้อยไปมาก), coins_desc (มากไปน้อย)
+  final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+  // 🟢 3. ฟังก์ชันเปิดหน้าต่างเลือกการจัดเรียง (Sort)
+  void _showSortOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('จัดเรียงตาม', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.access_time),
+                title: const Text('โพสต์ล่าสุด'),
+                trailing: _sortBy == 'newest' ? Icon(Icons.check, color: tealColor) : null,
+                onTap: () {
+                  setState(() => _sortBy = 'newest');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.arrow_upward),
+                title: const Text('ราคาประเมิน: น้อยไปมาก'),
+                trailing: _sortBy == 'coins_asc' ? Icon(Icons.check, color: tealColor) : null,
+                onTap: () {
+                  setState(() => _sortBy = 'coins_asc');
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.arrow_downward),
+                title: const Text('ราคาประเมิน: มากไปน้อย'),
+                trailing: _sortBy == 'coins_desc' ? Icon(Icons.check, color: tealColor) : null,
+                onTap: () {
+                  setState(() => _sortBy = 'coins_desc');
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +91,7 @@ class HomeScreen extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.tune, color: Colors.black87),
-            onPressed: () {},
+            onPressed: _showSortOptions, // 🟢 ผูกปุ่มเข้ากับหน้าต่าง Sort
           ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.black87),
@@ -45,7 +106,7 @@ class HomeScreen extends StatelessWidget {
             _buildLocationBar(),
             _buildHeroBanner(),
             _buildCategoryChips(),
-            _buildSectionTitle('Recommended for You'),
+            _buildSectionTitle('สิ่งของแนะนำ'),
             _buildProductGrid(),
             const SizedBox(height: 20),
           ],
@@ -118,48 +179,44 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildCategoryChips() {
-    final categories = ['Skills', 'Home Goods', 'Books', 'Gadgets'];
+    final categories = ['All', 'Skills', 'Home Goods', 'Books', 'Gadgets', 'Fashion'];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
-          children: [
-            // ปุ่ม All (Active)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              margin: const EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: tealColor),
-                borderRadius: BorderRadius.circular(20),
-                color: Colors.white,
+          children: categories.map((cat) {
+            bool isActive = _selectedCategory == cat;
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedCategory = cat;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: isActive ? Colors.white : Colors.white,
+                  border: isActive ? Border.all(color: tealColor, width: 1.5) : Border.all(color: Colors.transparent),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: isActive ? null : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4)],
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      cat == 'All' ? Icons.border_all : _getCategoryIcon(cat), 
+                      size: 18, 
+                      color: isActive ? tealColor : Colors.grey
+                    ),
+                    const SizedBox(width: 4),
+                    Text(cat, style: TextStyle(color: isActive ? tealColor : Colors.black87, fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+                  ],
+                ),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.person_outline, size: 18, color: tealColor),
-                  const SizedBox(width: 4),
-                  Text('All', style: TextStyle(color: tealColor)),
-                ],
-              ),
-            ),
-            // ปุ่มอื่นๆ
-            ...categories.map((cat) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(_getCategoryIcon(cat), size: 18, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(cat, style: const TextStyle(color: Colors.black87)),
-                    ],
-                  ),
-                )),
-          ],
+            );
+          }).toList(),
         ),
       ),
     );
@@ -171,6 +228,7 @@ class HomeScreen extends StatelessWidget {
       case 'Home Goods': return Icons.chair_outlined;
       case 'Books': return Icons.menu_book_outlined;
       case 'Gadgets': return Icons.laptop_mac_outlined;
+      case 'Fashion': return Icons.checkroom_outlined;
       default: return Icons.category_outlined;
     }
   }
@@ -192,40 +250,61 @@ class HomeScreen extends StatelessWidget {
   Widget _buildProductGrid() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      // ใช้ StreamBuilder เพื่อให้ข้อมูลอัปเดตแบบ Real-time ทันทีที่มีคนโพสต์ของใหม่
       child: StreamBuilder<QuerySnapshot>(
-        // Query: ดึงเฉพาะข้อมูลที่เป็น item และสถานะ active
         stream: FirebaseFirestore.instance
             .collection('listings')
             .where('type', isEqualTo: 'item')
             .where('status', isEqualTo: 'active')
             .snapshots(),
         builder: (context, snapshot) {
-          // เช็คสถานะตอนกำลังโหลด
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(20.0),
-                child: CircularProgressIndicator(color: Color(0xFF008080)),
-              ),
+              child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator(color: Color(0xFF008080))),
             );
           }
-
-          // เช็คกรณีเกิด Error หรือไม่มีข้อมูล
-          if (snapshot.hasError) {
-            return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
-          }
+          if (snapshot.hasError) return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(20.0),
-                child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้', style: TextStyle(color: Colors.grey)),
-              ),
-            );
+            return const Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้', style: TextStyle(color: Colors.grey))));
           }
 
-          // เอาข้อมูลที่ดึงมาได้ เก็บใส่ตัวแปร items
-          final items = snapshot.data!.docs;
+          // 🟢 4. การจัดการลอจิก Filter และ Sort ด้วยภาษา Dart (ไม่ต้องง้อ Index Firebase)
+          final rawDocs = snapshot.data!.docs;
+          
+          var filteredDocs = rawDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final ownerId = data['owner_id'] ?? '';
+            final category = data['category'] ?? '';
+
+            // กฎข้อ 1: ห้ามเห็นของตัวเองเด็ดขาด
+            if (ownerId == currentUserId) return false; 
+            
+            // กฎข้อ 2: ถ้าไม่ได้เลือกหมวดหมู่ 'All' ให้กรองเอาเฉพาะหมวดที่ตรง
+            if (_selectedCategory != 'All' && category != _selectedCategory) return false; 
+
+            return true;
+          }).toList();
+
+          // ทำการเรียงลำดับข้อมูล
+          filteredDocs.sort((a, b) {
+            final dataA = a.data() as Map<String, dynamic>;
+            final dataB = b.data() as Map<String, dynamic>;
+            
+            if (_sortBy == 'coins_asc') {
+              return (dataA['estimated_coins'] ?? 0).compareTo(dataB['estimated_coins'] ?? 0);
+            } else if (_sortBy == 'coins_desc') {
+              return (dataB['estimated_coins'] ?? 0).compareTo(dataA['estimated_coins'] ?? 0);
+            } else {
+              // กรณี newest (ล่าสุดขึ้นก่อน)
+              Timestamp timeA = dataA['created_at'] ?? Timestamp.now();
+              Timestamp timeB = dataB['created_at'] ?? Timestamp.now();
+              return timeB.compareTo(timeA);
+            }
+          });
+
+          // เช็คอีกรอบหลังกรองเสร็จ เผื่อว่ากรองแล้วไม่เหลือของเลย
+          if (filteredDocs.isEmpty) {
+            return const Center(child: Padding(padding: EdgeInsets.all(40.0), child: Text('ไม่พบสิ่งของในหมวดหมู่นี้', style: TextStyle(color: Colors.grey))));
+          }
 
           return GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
@@ -236,93 +315,111 @@ class HomeScreen extends StatelessWidget {
               mainAxisSpacing: 12,
               childAspectRatio: 0.75,
             ),
-            itemCount: items.length,
+            itemCount: filteredDocs.length,
             itemBuilder: (context, index) {
-              // แกะข้อมูลออกมาใช้งาน
-              // แกะข้อมูลออกมาใช้งาน
-              final data = items[index].data() as Map<String, dynamic>;
-              
-              // 🟢 เพิ่มบรรทัดนี้! ยัด ID ของโพสต์ลงไปใน Map ด้วยชื่อ 'listing_id'
-              data['listing_id'] = items[index].id; 
+              final data = filteredDocs[index].data() as Map<String, dynamic>;
+              data['listing_id'] = filteredDocs[index].id; 
               
               final title = data['title'] ?? 'No Title';
               final coins = data['estimated_coins'] ?? 0;
+              final thumbnail = data['thumbnail_url'] ?? '';
               
               return InkWell( 
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      // ตอนนี้ data จะมี listing_id ติดไปด้วยแล้วครับ
-                      builder: (context) => ItemDetailScreen(itemData: data), 
-                    ),
-                  );
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: data)));
                 },
                 child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.image, size: 40, color: Colors.black12), // ตำแหน่งนี้เดี๋ยวเราค่อยมาทำดึงรูปภาพจริงทีหลัง
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: thumbnail.isNotEmpty 
+                            ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(thumbnail, fit: BoxFit.cover))
+                            : const Center(child: Icon(Icons.image, size: 40, color: Colors.black12)),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title, // ใช้ตัวแปร title ที่ดึงมาจาก Firebase
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Icon(Icons.person_outline, size: 16, color: Colors.grey),
-                              Row(
-                                children: [
-                                  const Icon(Icons.star, size: 14, color: Colors.amber),
-                                  const SizedBox(width: 4),
-                                  Text('4.5', style: const TextStyle(fontSize: 12)), // ค่ารีวิวจำลองไปก่อน
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Icon(Icons.monetization_on, size: 14, color: tealColor),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$coins Coins', // ใช้ตัวแปร coins ที่ดึงมาจาก Firebase
-                                style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ],
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 8),
+                            // 🟢 อัปเดต: ดึงชื่อเจ้าของโพสต์มาแสดง
+                            // 🟢 โซนที่ 1: ชื่อเจ้าของโพสต์ และ คะแนนรีวิว
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: FutureBuilder<DocumentSnapshot>(
+                                    future: FirebaseFirestore.instance.collection('users').doc(data['owner_id']).get(),
+                                    builder: (context, userSnap) {
+                                      String ownerName = 'กำลังโหลด...';
+                                      if (userSnap.hasData && userSnap.data!.exists) {
+                                        final userData = userSnap.data!.data() as Map<String, dynamic>;
+                                        ownerName = userData['name'] ?? 'ผู้ใช้งาน';
+                                        
+                                        if (ownerName.trim().isEmpty) {
+                                          ownerName = 'ผู้ใช้งาน';
+                                        }
+                                      }
+                                      return Row(
+                                        children: [
+                                          const Icon(Icons.person_outline, size: 16, color: Colors.grey),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              ownerName,
+                                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }
+                                  ),
+                                ),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star, size: 14, color: Colors.amber),
+                                    const SizedBox(width: 4),
+                                    const Text('4.5', style: const TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            // 🟢 โซนที่ 2: ราคาประเมิน (Coins) นำกลับมาใส่ตรงนี้
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Icon(Icons.monetization_on, size: 14, color: tealColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$coins Coins',
+                                  style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
+              );
             },
           );
         },
