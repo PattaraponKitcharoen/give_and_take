@@ -322,6 +322,85 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ฟังก์ชัน: หน้าต่างต่อรองราคา (Counter-Offer Dialog)
+  void _showCounterOfferDialog(BuildContext context, String offerId, Map<String, dynamic> offerData) {
+    final TextEditingController amountController = TextEditingController();
+    bool iWillPay = true; // true = จ่ายเพิ่ม, false = ขอรับเพิ่ม
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('ต่อรองราคา', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButton<bool>(
+                    value: iWillPay,
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: true, child: Text('ฉันจะจ่ายเงินเพิ่ม')),
+                      DropdownMenuItem(value: false, child: Text('ฉันขอรับเงินเพิ่ม')),
+                    ],
+                    onChanged: (value) => setState(() => iWillPay = value!),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      hintText: 'จำนวนเหรียญ (Coins)',
+                      suffixText: 'Coins',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก', style: TextStyle(color: Colors.grey))),
+                ElevatedButton(
+                  onPressed: () {
+                    int amount = int.tryParse(amountController.text.trim()) ?? 0;
+                    if (amount > 0) {
+                      Navigator.pop(context);
+                      _submitCounterOffer(offerId, offerData, amount, iWillPay);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                  child: const Text('ส่งข้อเสนอ', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+
+  // ฟังก์ชัน: บันทึกการต่อรองราคาลงฐานข้อมูล
+  Future<void> _submitCounterOffer(String offerId, Map<String, dynamic> offerData, int amount, bool iWillPay) async {
+    String senderId = offerData['sender_id'];
+    int newCoinOffset = 0;
+    
+    // คำนวณทิศทางของเงิน (+ คือคนเริ่มข้อเสนอจ่าย, - คือคนเริ่มข้อเสนอรับ)
+    if (currentUserId == senderId) {
+      newCoinOffset = iWillPay ? amount : -amount;
+    } else {
+      newCoinOffset = iWillPay ? -amount : amount;
+    }
+
+    await FirebaseFirestore.instance.collection('offers').doc(offerId).update({
+      'coin_offset': newCoinOffset,
+      'last_offer_by': currentUserId, // อัปเดตว่าเราเป็นคนยื่นข้อเสนอล่าสุด
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+
+    String userName = await _getCurrentUserName();
+    String actionText = iWillPay ? 'เสนอจ่ายเงินเพิ่ม $amount Coins' : 'ขอรับเงินเพิ่ม $amount Coins';
+    _sendSystemMessage('$userName ได้ต่อรองเงื่อนไขใหม่: $actionText');
+  }
+
   // หน้าต่าง Pop-up สำหรับกรอกรหัส
   void _showOtpDialog(BuildContext context, String offerId) {
     final TextEditingController otpController = TextEditingController();
@@ -512,8 +591,30 @@ class _ChatScreenState extends State<ChatScreen> {
                             stream: FirebaseFirestore.instance.collection('offers').doc(activeOfferId).snapshots(),
                             builder: (context, offerSnap) {
                               String offerStatus = 'cancelled';
+                              Map<String, dynamic> offerData = {};
+                              
                               if (offerSnap.hasData && offerSnap.data!.exists) {
-                                offerStatus = (offerSnap.data!.data() as Map<String, dynamic>)['status'] ?? 'pending';
+                                offerData = offerSnap.data!.data() as Map<String, dynamic>;
+                                offerStatus = offerData['status'] ?? 'pending';
+                              }
+
+                              // 🟢 เช็คว่าใครเป็นคนเสนอเงื่อนไขล่าสุด (Turn-based)
+                              String lastOfferBy = offerData['last_offer_by'] ?? offerData['sender_id'] ?? '';
+                              bool isMyTurn = (lastOfferBy != currentUserId); // ถ้าเราไม่ได้เป็นคนยื่นล่าสุด แปลว่าเป็นเทิร์นของเรา
+
+                              // 🟢 จัดรูปแบบข้อความแสดงสถานะเหรียญ (Coins)
+                              int currentOffset = offerData['coin_offset'] ?? 0;
+                              String offsetText = 'แลกของต่อของ (ไม่มีการเพิ่มเหรียญ)';
+                              Color offsetColor = Colors.black54;
+
+                              if (currentOffset > 0) {
+                                bool iAmSender = (currentUserId == offerData['sender_id']);
+                                offsetText = iAmSender ? 'คุณเสนอจ่ายเพิ่ม $currentOffset Coins' : 'อีกฝ่ายเสนอจ่ายเพิ่ม $currentOffset Coins';
+                                offsetColor = iAmSender ? Colors.red : Colors.green;
+                              } else if (currentOffset < 0) {
+                                bool iAmSender = (currentUserId == offerData['sender_id']);
+                                offsetText = iAmSender ? 'คุณขอรับเงินเพิ่ม ${currentOffset.abs()} Coins' : 'อีกฝ่ายขอรับเงินเพิ่ม ${currentOffset.abs()} Coins';
+                                offsetColor = iAmSender ? Colors.green : Colors.red;
                               }
 
                               return Container(
@@ -537,37 +638,69 @@ class _ChatScreenState extends State<ChatScreen> {
                                         _buildItemThumbnail(context, myItemData),
                                       ],
                                     ),
-                                    const Divider(height: 30),
-                                    Text(msg['content'], textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500)),
+                                    const Divider(height: 16),
                                     
-                                    // สร้างปุ่ม Action ตามสถานะและบทบาท
-                                    const SizedBox(height: 16),
+                                    // โชว์สถานะเหรียญปัจจุบันของการต่อรอง
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.monetization_on, color: offsetColor, size: 16),
+                                          const SizedBox(width: 8),
+                                          Text(offsetText, style: TextStyle(color: offsetColor, fontWeight: FontWeight.bold, fontSize: 13)),
+                                        ],
+                                      ),
+                                    ),
+                                    const Divider(height: 16),
+                                    
+                                    // สร้างปุ่ม Action ตามสถานะและบทบาทการต่อรอง
                                     if (offerStatus == 'pending') ...[
-                                      if (isSender) 
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: OutlinedButton(
-                                            onPressed: () => _cancelOffer(activeOfferId!),
-                                            style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                                            child: const Text('ยกเลิกข้อเสนอ'),
-                                          ),
-                                        )
-                                      else 
-                                        Row(
+                                      if (!isMyTurn)
+                                        Column(
                                           children: [
-                                            Expanded(
+                                            const Text('รออีกฝ่ายพิจารณาข้อเสนอ...', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                                            const SizedBox(height: 12),
+                                            SizedBox(
+                                              width: double.infinity,
                                               child: OutlinedButton(
-                                                onPressed: () => _rejectOffer(activeOfferId!),
+                                                onPressed: () => _cancelOffer(activeOfferId!),
                                                 style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                                                child: const Text('ปฏิเสธ'),
+                                                child: const Text('ยกเลิกข้อเสนอ'),
                                               ),
                                             ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
+                                          ]
+                                        )
+                                      else 
+                                        Column(
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: OutlinedButton(
+                                                    onPressed: () => _rejectOffer(activeOfferId!),
+                                                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                                                    child: const Text('ปฏิเสธ'),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: ElevatedButton(
+                                                    onPressed: () => _showCounterOfferDialog(context, activeOfferId!, offerData),
+                                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                                    child: const Text('ต่อรอง', style: TextStyle(color: Colors.white)),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            SizedBox(
+                                              width: double.infinity,
                                               child: ElevatedButton(
                                                 onPressed: () => _acceptOffer(activeOfferId!),
                                                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
-                                                child: const Text('ยอมรับ', style: TextStyle(color: Colors.white)),
+                                                child: const Text('ยอมรับข้อเสนอ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                               ),
                                             ),
                                           ],
@@ -576,14 +709,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                       // สรุปผลว่าตกลงแล้ว
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.shade50,
-                                          borderRadius: BorderRadius.circular(8)
-                                        ),
-                                        child: const Text(
-                                          'ตกลงแลกเปลี่ยนแล้ว',
-                                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-                                        ),
+                                        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                                        child: const Text('ตกลงแลกเปลี่ยนแล้ว', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                       ),
                                       // แสดงกล่อง OTP
                                       StreamBuilder<QuerySnapshot>(
@@ -604,7 +731,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                                 child: Column(
                                                   children: [
                                                     const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)),
-                                                    Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: const Color(0xFF008080))),
+                                                    Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: Color(0xFF008080))),
                                                   ],
                                                 ),
                                               ),
@@ -650,7 +777,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             },
                           );
                         }
-
+                        
                         // วาดบับเบิลข้อความธรรมดา
                         return Align(
                           alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
