@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'item_detail_screen.dart';
+import 'item_search_delegate.dart';
 
 // 🟢 1. เปลี่ยนเป็น StatefulWidget เพื่อรองรับการเปลี่ยนค่า Filter/Sort
 class HomeScreen extends StatefulWidget {
@@ -87,7 +88,13 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.search, color: Colors.black87),
-            onPressed: () {},
+            onPressed: () {
+              // 🟢 เรียกใช้ SearchDelegate 
+              showSearch(
+                context: context, 
+                delegate: ItemSearchDelegate(),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.tune, color: Colors.black87),
