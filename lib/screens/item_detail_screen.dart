@@ -378,7 +378,9 @@ class ItemDetailScreen extends StatelessWidget {
                         'participants': [currentUserId, ownerId],
                         'active_offer_id': offerRef.id,
                         'last_message_text': 'ยื่นข้อเสนอแลกเปลี่ยนสิ่งของใหม่',
+                        'last_message_type': 'system_offer', // 🟢 เพิ่มประเภทข้อความ
                         'last_sender_id': currentUserId,
+                        'read_by': [currentUserId], // 🟢 ตั้งให้คนส่งอ่านแล้ว (อีกฝ่ายจะขึ้นจุดแดง)
                         'updated_at': FieldValue.serverTimestamp(),
                         'created_at': FieldValue.serverTimestamp(),
                       });

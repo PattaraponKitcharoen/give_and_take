@@ -45,28 +45,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isEmpty) return;
-
-    final String text = _messageController.text.trim();
-    _messageController.clear();
-
-    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
-      'sender_id': currentUserId,
-      'content': text,
-      'timestamp': FieldValue.serverTimestamp(),
-      'type': 'text',
-      'read_by': [currentUserId],
-    });
-
-    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
-      'last_message_text': text,
-      'last_sender_id': currentUserId,
-      'updated_at': FieldValue.serverTimestamp(),
-      'read_by': [currentUserId],
-    });
-  }
-
   // ฟังก์ชันช่วยดึงชื่อผู้ใช้งานปัจจุบันจาก Firestore
   Future<String> _getCurrentUserName() async {
     try {
@@ -196,6 +174,28 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _sendMessage() async {
+    if (_messageController.text.trim().isEmpty) return;
+
+    final String text = _messageController.text.trim();
+    _messageController.clear();
+
+    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
+      'sender_id': currentUserId,
+      'content': text,
+      'timestamp': FieldValue.serverTimestamp(),
+      'type': 'text',
+    });
+
+    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
+      'last_message_text': text,
+      'last_message_type': 'text', // 🟢 ระบุว่าเป็นแชทปกติ
+      'last_sender_id': currentUserId,
+      'read_by': [currentUserId], 
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+  }
+
   // ตัวช่วยยิงข้อความระบบ
   Future<void> _sendSystemMessage(String text) async {
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
@@ -204,8 +204,12 @@ class _ChatScreenState extends State<ChatScreen> {
       'timestamp': FieldValue.serverTimestamp(),
       'type': 'system_log',
     });
+    
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_text': text,
+      'last_message_type': 'system_log', // 🟢 ระบุว่าเป็นแจ้งเตือนระบบ
+      'last_sender_id': currentUserId, // 🟢 ระบุว่าใครเป็นคนกดทำรายการ
+      'read_by': [currentUserId], // 🟢 ให้คนกดอ่านแล้ว อีกฝ่ายจะเด้งแจ้งเตือน
       'updated_at': FieldValue.serverTimestamp(),
     });
   }

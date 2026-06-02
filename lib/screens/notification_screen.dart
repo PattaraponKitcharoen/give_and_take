@@ -56,9 +56,14 @@ class NotificationScreen extends StatelessWidget {
             final room = doc.data() as Map<String, dynamic>;
             final String lastSender = room['last_sender_id'] ?? '';
             final List readBy = room['read_by'] ?? [];
-            final bool isUnread = !readBy.contains(currentUserId) && room['last_message_text'] != null;
+            final String msgType = room['last_message_type'] ?? 'text'; // ดึงประเภทข้อความ
             
-            // เงื่อนไข: ถ้าเป็นข้อความที่คนอื่นพิมพ์/กดยื่นข้อเสนอ หรือเป็นข้อความที่เรายังไม่อ่าน
+            final bool isUnread = !readBy.contains(currentUserId);
+            
+            // กฎข้อ 1: ไม่เอาข้อความแชทปกติมาโชว์ในหน้าการแจ้งเตือน!
+            if (msgType == 'text') return false; 
+            
+            // กฎข้อ 2: โชว์แจ้งเตือนก็ต่อเมื่ออีกฝ่ายเป็นคนกดปุ่มทำรายการ (lastSender) หรือเป็นแจ้งเตือนที่เรายังไม่อ่าน
             return lastSender != currentUserId || isUnread; 
           }).toList();
 
