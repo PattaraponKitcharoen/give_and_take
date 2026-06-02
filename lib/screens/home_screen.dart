@@ -357,25 +357,29 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 8),
-                            // 🟢 อัปเดต: ดึงชื่อเจ้าของโพสต์มาแสดง
-                            // 🟢 โซนที่ 1: ชื่อเจ้าของโพสต์ และ คะแนนรีวิว
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: FutureBuilder<DocumentSnapshot>(
-                                    future: FirebaseFirestore.instance.collection('users').doc(data['owner_id']).get(),
-                                    builder: (context, userSnap) {
-                                      String ownerName = 'กำลังโหลด...';
-                                      if (userSnap.hasData && userSnap.data!.exists) {
-                                        final userData = userSnap.data!.data() as Map<String, dynamic>;
-                                        ownerName = userData['name'] ?? 'ผู้ใช้งาน';
-                                        
-                                        if (ownerName.trim().isEmpty) {
-                                          ownerName = 'ผู้ใช้งาน';
-                                        }
-                                      }
-                                      return Row(
+                            // 🟢 โซนที่ 1: ชื่อเจ้าของโพสต์ และ คะแนนรีวิว (แก้ไขปัญหาซ้อนกันแล้ว)
+                            FutureBuilder<DocumentSnapshot>(
+                              future: FirebaseFirestore.instance.collection('users').doc(data['owner_id']).get(),
+                              builder: (context, userSnap) {
+                                String ownerName = 'กำลังโหลด...';
+                                double ratingScore = 0.0; // เก็บค่าคะแนนดาว
+
+                                if (userSnap.hasData && userSnap.data!.exists) {
+                                  final userData = userSnap.data!.data() as Map<String, dynamic>;
+                                  ownerName = userData['name'] ?? 'ผู้ใช้งาน';
+                                  if (ownerName.trim().isEmpty) {
+                                    ownerName = 'ผู้ใช้งาน';
+                                  }
+                                  
+                                  // ดึงคะแนนรีวิวออกมา
+                                  ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
+                                }
+
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Row(
                                         children: [
                                           const Icon(Icons.person_outline, size: 16, color: Colors.grey),
                                           const SizedBox(width: 4),
@@ -387,21 +391,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                             ),
                                           ),
                                         ],
-                                      );
-                                    }
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.star, size: 14, color: Colors.amber),
-                                    const SizedBox(width: 4),
-                                    const Text('4.5', style: const TextStyle(fontSize: 12)),
+                                      ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.star, size: 14, color: Colors.amber),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          // ถ้าคะแนนมากกว่า 0 ให้โชว์ทศนิยม 1 ตำแหน่ง ถ้าไม่มีคนรีวิวให้แสดง 'New'
+                                          ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', 
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
                                   ],
-                                ),
-                              ],
+                                );
+                              }
                             ),
                             const SizedBox(height: 4),
-                            // 🟢 โซนที่ 2: ราคาประเมิน (Coins) นำกลับมาใส่ตรงนี้
+                            // 🟢 โซนที่ 2: ราคาประเมิน (Coins)
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
