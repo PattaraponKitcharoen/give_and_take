@@ -101,11 +101,55 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.tune, color: Colors.black87),
             onPressed: _showSortOptions, // 🟢 ผูกปุ่มเข้ากับหน้าต่าง Sort
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black87),
-            onPressed: () {
-              // 🟢 กดแล้วให้วิ่งไปหน้า NotificationScreen
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen()));
+          // 🟢 เปลี่ยนปุ่มกระดิ่งธรรมดา เป็นปุ่มที่มีระบบจุดแดงแจ้งเตือน
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('chat_rooms')
+                .where('participants', arrayContains: currentUserId ?? '')
+                .snapshots(),
+            builder: (context, snapshot) {
+              bool hasUnreadNoti = false;
+
+              // เช็กว่ามีแจ้งเตือนใหม่ที่เรายังไม่ได้อ่านหรือไม่
+              if (snapshot.hasData) {
+                for (var doc in snapshot.data!.docs) {
+                  final room = doc.data() as Map<String, dynamic>;
+                  final List readBy = room['read_by'] ?? [];
+                  final String msgType = room['last_message_type'] ?? 'text';
+                  
+                  // ถ้าไม่ใช่แชทปกติ และเรายังไม่ได้อ่าน = มีแจ้งเตือน
+                  if (msgType != 'text' && !readBy.contains(currentUserId)) {
+                    hasUnreadNoti = true;
+                    break; // เจอแค่อันเดียวก็พอ ให้จุดแดงขึ้นเลย
+                  }
+                }
+              }
+
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none, color: Colors.black87),
+                    onPressed: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen()));
+                    },
+                  ),
+                  if (hasUnreadNoti)
+                    Positioned(
+                      right: 12,
+                      top: 12,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2), // ขอบขาวให้ดูมีมิติ
+                        ),
+                      ),
+                    ),
+                ],
+              );
             },
           ),
         ],
