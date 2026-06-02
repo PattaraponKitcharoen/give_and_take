@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'item_detail_screen.dart'; // ดึงมาใช้เพื่อให้กดดูของจากหน้าโปรไฟล์ได้
 
 class UserProfileScreen extends StatelessWidget {
   final String userId;
@@ -19,7 +20,6 @@ class UserProfileScreen extends StatelessWidget {
         elevation: 0.5,
       ),
       body: FutureBuilder<DocumentSnapshot>(
-        // ดึงข้อมูลผู้ใช้
         future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -31,15 +31,16 @@ class UserProfileScreen extends StatelessWidget {
 
           final userData = snapshot.data!.data() as Map<String, dynamic>;
           final String name = userData['name'] ?? 'ผู้ใช้งาน';
-          final String bio = userData['bio'] ?? 'ยังไม่มีคำอธิบายโปรไฟล์'; // ดักเผื่อไม่มีฟิลด์ bio
+          final String bio = userData['bio'] ?? 'ยังไม่มีคำอธิบายโปรไฟล์'; 
           final double rating = (userData['rating_scores'] ?? 0.0).toDouble();
           final int reviewCount = userData['rating_count'] ?? 0;
+          final String profileImg = userData['profile_img_url'] ?? '';
 
           return SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🟢 โซนหัวโปรไฟล์
+                // 🟢 1. โซนหัวโปรไฟล์ (รูป, ชื่อ, ไบโอ, คะแนนรวม)
                 Container(
                   color: Colors.white,
                   padding: const EdgeInsets.all(20),
@@ -49,7 +50,8 @@ class UserProfileScreen extends StatelessWidget {
                       CircleAvatar(
                         radius: 40,
                         backgroundColor: Colors.grey.shade200,
-                        child: const Icon(Icons.person, size: 40, color: Colors.grey), // Mockup รูปโปรไฟล์
+                        backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null,
+                        child: profileImg.isEmpty ? const Icon(Icons.person, size: 40, color: Colors.grey) : null, 
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -79,93 +81,206 @@ class UserProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
 
-                // 🟢 โซนรายการรีวิว (ดึงจากคอลเลกชัน reviews)
+                // 🟢 2. โซนสิ่งของทั้งหมดของผู้ใช้ (พับเก็บได้)
                 Container(
-                  padding: const EdgeInsets.all(20),
                   color: Colors.white,
-                  width: double.infinity,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('รีวิวจากผู้ใช้งาน', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      const Divider(height: 30),
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('reviews')
-                            .where('target_id', isEqualTo: userId)
-                            .orderBy('created_at', descending: true)
-                            .snapshots(),
-                        builder: (context, reviewSnap) {
-                          if (reviewSnap.connectionState == ConnectionState.waiting) {
-                            return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
-                          }
-                          if (!reviewSnap.hasData || reviewSnap.data!.docs.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.all(20),
-                              child: Center(child: Text('ยังไม่มีรีวิว', style: TextStyle(color: Colors.grey))),
-                            );
-                          }
-
-                          final reviews = reviewSnap.data!.docs;
-
-                          return ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(), // ปิดการสกรอล์ซ้อนกัน
-                            itemCount: reviews.length,
-                            itemBuilder: (context, index) {
-                              final reviewData = reviews[index].data() as Map<String, dynamic>;
-                              final int star = reviewData['rating'] ?? 5;
-                              final String comment = reviewData['comment'] ?? '';
-                              final String reviewerId = reviewData['reviewer_id'] ?? '';
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // FutureBuilder ยิงไปดึงชื่อคนให้คะแนน
-                                    FutureBuilder<DocumentSnapshot>(
-                                      future: FirebaseFirestore.instance.collection('users').doc(reviewerId).get(),
-                                      builder: (context, userSnap) {
-                                        String reviewerName = 'ผู้ใช้งาน';
-                                        if (userSnap.hasData && userSnap.data!.exists) {
-                                          reviewerName = (userSnap.data!.data() as Map<String, dynamic>)['name'] ?? 'ผู้ใช้งาน';
-                                        }
-                                        return Row(
-                                          children: [
-                                            CircleAvatar(radius: 12, backgroundColor: tealColor.withOpacity(0.2), child: Icon(Icons.person, size: 14, color: tealColor)),
-                                            const SizedBox(width: 8),
-                                            Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                          ],
-                                        );
-                                      }
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: List.generate(5, (starIndex) {
-                                        return Icon(
-                                          starIndex < star ? Icons.star : Icons.star_border,
-                                          color: Colors.amber,
-                                          size: 16,
-                                        );
-                                      }),
-                                    ),
-                                    if (comment.isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      Text(comment, style: const TextStyle(color: Colors.black87, fontSize: 14)),
-                                    ],
-                                    const SizedBox(height: 8),
-                                    const Divider(),
-                                  ],
-                                ),
+                  child: Theme(
+                    // เอาเส้นคั่นขอบที่ติดมากับค่าเริ่มต้นของ Flutter ออก
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      initiallyExpanded: true, // กางออกเป็นค่าเริ่มต้น
+                      title: const Text('สิ่งของที่ลงแลกเปลี่ยน', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                      children: [
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('listings')
+                              .where('owner_id', isEqualTo: userId)
+                              .where('status', isEqualTo: 'active')
+                              .snapshots(),
+                          builder: (context, itemSnap) {
+                            if (itemSnap.connectionState == ConnectionState.waiting) {
+                              return const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator());
+                            }
+                            if (!itemSnap.hasData || itemSnap.data!.docs.isEmpty) {
+                              return const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Text('ยังไม่มีสิ่งของที่กำลังแลกเปลี่ยน', style: TextStyle(color: Colors.grey)),
                               );
-                            },
-                          );
-                        },
-                      ),
-                    ],
+                            }
+
+                            final items = itemSnap.data!.docs;
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              child: GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.8, // ปรับสัดส่วนการ์ดเล็กน้อย
+                                ),
+                                itemCount: items.length,
+                                itemBuilder: (context, index) {
+                                  final itemData = items[index].data() as Map<String, dynamic>;
+                                  itemData['listing_id'] = items[index].id;
+                                  
+                                  final String title = itemData['title'] ?? 'ไม่มีชื่อ';
+                                  final int coins = itemData['estimated_coins'] ?? 0;
+                                  final String thumbnail = itemData['thumbnail_url'] ?? '';
+
+                                  return InkWell(
+                                    onTap: () {
+                                      Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: itemData)));
+                                    },
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.grey.shade300),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Container(
+                                              width: double.infinity,
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade200,
+                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+                                              ),
+                                              child: thumbnail.isNotEmpty 
+                                                ? ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(11)), child: Image.network(thumbnail, fit: BoxFit.cover))
+                                                : const Icon(Icons.image, size: 40, color: Colors.black12),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                const SizedBox(height: 4),
+                                                Row(
+                                                  children: [
+                                                    Icon(Icons.monetization_on, size: 12, color: tealColor),
+                                                    const SizedBox(width: 4),
+                                                    Text('$coins Coins', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+                const SizedBox(height: 8),
+
+                // 🟢 3. โซนรายการรีวิวของจริง (พับเก็บได้)
+                Container(
+                  color: Colors.white,
+                  child: Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      initiallyExpanded: true, // กางออกเป็นค่าเริ่มต้น
+                      title: const Text('รีวิวจากผู้ใช้งาน', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                      children: [
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('reviews')
+                              .where('target_id', isEqualTo: userId)
+                              .snapshots(),
+                          builder: (context, reviewSnap) {
+                            if (reviewSnap.hasError) {
+                              return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดรีวิว', style: TextStyle(color: Colors.red)));
+                            }
+                            if (reviewSnap.connectionState == ConnectionState.waiting) {
+                              return const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator());
+                            }
+                            if (!reviewSnap.hasData || reviewSnap.data!.docs.isEmpty) {
+                              return const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Text('ยังไม่มีรีวิว', style: TextStyle(color: Colors.grey)),
+                              );
+                            }
+
+                            final reviews = reviewSnap.data!.docs;
+                            reviews.sort((a, b) {
+                              Timestamp timeA = (a.data() as Map<String, dynamic>)['created_at'] ?? Timestamp.now();
+                              Timestamp timeB = (b.data() as Map<String, dynamic>)['created_at'] ?? Timestamp.now();
+                              return timeB.compareTo(timeA);
+                            });
+
+                            return ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 16), // ขยับขอบให้สวยขึ้น
+                              itemCount: reviews.length,
+                              itemBuilder: (context, index) {
+                                final reviewData = reviews[index].data() as Map<String, dynamic>;
+                                final int star = reviewData['rating'] ?? 5;
+                                final String comment = reviewData['comment'] ?? '';
+                                final String reviewerId = reviewData['reviewer_id'] ?? '';
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      FutureBuilder<DocumentSnapshot>(
+                                        future: FirebaseFirestore.instance.collection('users').doc(reviewerId).get(),
+                                        builder: (context, userSnap) {
+                                          String reviewerName = 'ผู้ใช้งาน';
+                                          if (userSnap.hasData && userSnap.data!.exists) {
+                                            reviewerName = (userSnap.data!.data() as Map<String, dynamic>)['name'] ?? 'ผู้ใช้งาน';
+                                          }
+                                          return Row(
+                                            children: [
+                                              CircleAvatar(radius: 14, backgroundColor: tealColor.withOpacity(0.1), child: Icon(Icons.person, size: 16, color: tealColor)),
+                                              const SizedBox(width: 8),
+                                              Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                            ],
+                                          );
+                                        }
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: List.generate(5, (starIndex) {
+                                          return Icon(
+                                            starIndex < star ? Icons.star : Icons.star_border,
+                                            color: Colors.amber,
+                                            size: 16,
+                                          );
+                                        }),
+                                      ),
+                                      if (comment.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Text(comment, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                                      ],
+                                      const SizedBox(height: 12),
+                                      const Divider(height: 1),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40), // เผื่อระยะขอบล่างนิดหน่อย
               ],
             ),
           );
