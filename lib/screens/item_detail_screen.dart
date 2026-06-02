@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
+import 'user_profile_screen.dart'; // อย่าลืมสร้างและนำเข้าไฟล์นี้
 
 class ItemDetailScreen extends StatelessWidget {
   final Map<String, dynamic> itemData; // รับข้อมูลไอเทมมาจากหน้า Home
@@ -21,6 +22,7 @@ class ItemDetailScreen extends StatelessWidget {
     // ดึงข้อมูลจาก MapMetadata
     final Map<String, dynamic> metadata = itemData['metadata'] ?? {};
     final String condition = metadata['condition'] ?? 'ไม่ระบุสภาพ';
+    final String ownerId = itemData['owner_id'] ?? ''; // ไอดีเจ้าของไอเทม
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -83,9 +85,14 @@ class ItemDetailScreen extends StatelessWidget {
                       const Text('ราคาประเมินกลาง', style: TextStyle(color: Colors.grey, fontSize: 12)),
                     ],
                   ),
+                  const SizedBox(height: 24),
+
+                  // 🟢 5. การ์ดโปรไฟล์เจ้าของสินค้า (เพิ่มเข้ามาใหม่)
+                  _buildOwnerProfileCard(context, ownerId),
+
                   const Divider(height: 40),
 
-                  // 5. รายละเอียดสินค้า
+                  // 6. รายละเอียดสินค้า
                   const Text('รายละเอียด', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   Text(
@@ -100,7 +107,7 @@ class ItemDetailScreen extends StatelessWidget {
         ),
       ),
       
-      // 6. ปุ่มแลกเปลี่ยนด้านล่าง (Action Button)
+      // 7. ปุ่มแลกเปลี่ยนด้านล่าง (Action Button)
       bottomSheet: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -113,11 +120,9 @@ class ItemDetailScreen extends StatelessWidget {
             if (currentUser == null) return;
 
             final currentUserId = currentUser.uid;
-            final ownerId = itemData['owner_id'] ?? '';
 
             // ดักเอาไว้ กันไม่ให้ยูสเซอร์เด๋อกดทักแชทไปขอแลกของกับตัวเอง
             if (currentUserId == ownerId) {
-              // 🟢 เปลี่ยนมาใช้ showDialog แทน ScaffoldMessenger เพื่อล็อค UI ให้อยู่กับที่
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
@@ -141,7 +146,6 @@ class ItemDetailScreen extends StatelessWidget {
               return;
             }
 
-            // 🟢 เรียกใช้ Bottom Sheet เพื่อจัดแจงข้อเสนอแทน
             _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
           },
           style: ElevatedButton.styleFrom(
@@ -164,7 +168,83 @@ class ItemDetailScreen extends StatelessWidget {
     );
   }
 
-  // 🟢 ฟังก์ชันเพิ่มใหม่สำหรับแสดงป๊อปอัป
+  // 🟢 Widget ช่วยสร้างการ์ดโปรไฟล์เจ้าของ
+  Widget _buildOwnerProfileCard(BuildContext context, String ownerId) {
+    if (ownerId.isEmpty) return const SizedBox(); // ถ้าไม่มีไอดีให้ซ่อนไปเลย
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(ownerId).get(),
+      builder: (context, snapshot) {
+        String ownerName = 'กำลังโหลด...';
+        double ratingScore = 0.0;
+        int reviewCount = 0;
+
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final userData = snapshot.data!.data() as Map<String, dynamic>;
+          ownerName = userData['name'] ?? 'ผู้ใช้งาน';
+          if (ownerName.trim().isEmpty) ownerName = 'ผู้ใช้งาน';
+          ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
+          reviewCount = userData['rating_count'] ?? 0;
+        }
+
+        return InkWell(
+          onTap: () {
+            // เมื่อกดที่การ์ด ให้เด้งไปหน้า UserProfileScreen
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => UserProfileScreen(userId: ownerId)),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.grey.shade200,
+                  child: const Icon(Icons.person, color: Colors.grey, size: 28),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('เจ้าของไอเทม', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                      Text(ownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.star, color: Colors.amber, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                          if (reviewCount > 0)
+                            Text(
+                              ' ($reviewCount)',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+              ],
+            ),
+          ),
+        );
+      }
+    );
+  }
+
+  // ฟังก์ชันสำหรับแสดงป๊อปอัปยื่นข้อเสนอ
   void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, String ownerId) {
     showModalBottomSheet(
       context: context,
@@ -174,9 +254,8 @@ class ItemDetailScreen extends StatelessWidget {
       ),
       builder: (context) {
         
-        // 🟢 1. ตัวแปรเก็บข้อมูล
         String? selectedMyItemId;
-        Map<String, dynamic>? selectedMyItemData; // เพิ่มตัวแปรเก็บข้อมูลไอเทมแบบเต็มๆ
+        Map<String, dynamic>? selectedMyItemData; 
         int coinOffset = 0;
         bool requestCoins = false;
 
@@ -214,7 +293,6 @@ class ItemDetailScreen extends StatelessWidget {
                         onChanged: (val) {
                           setModalState(() {
                             selectedMyItemId = val;
-                            // 🟢 ดึงข้อมูลของชิ้นที่เราเลือกมาเก็บไว้ส่งเข้าแชท
                             var selectedDoc = items.firstWhere((doc) => doc.id == val);
                             selectedMyItemData = selectedDoc.data() as Map<String, dynamic>;
                             selectedMyItemData!['listing_id'] = selectedDoc.id;
@@ -258,13 +336,11 @@ class ItemDetailScreen extends StatelessWidget {
                          return;
                       }
 
-                      // 🟢 2. เช็คเรื่องเหรียญ ถ้าเป็น 0 ไม่ต้องต่อท้ายประโยค
                       String coinText = "";
                       if (coinOffset > 0) {
                         coinText = " และยินดี${requestCoins ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
                       }
                       
-                      // 1. สร้าง Offer 
                       final offerRef = await FirebaseFirestore.instance.collection('offers').add({
                         'sender_id': currentUserId,
                         'target_user_id': ownerId,
@@ -275,7 +351,6 @@ class ItemDetailScreen extends StatelessWidget {
                         'created_at': FieldValue.serverTimestamp(),
                       });
 
-                      // 2. สร้างห้องแชท
                       final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
                         'participants': [currentUserId, ownerId],
                         'active_offer_id': offerRef.id,
@@ -285,20 +360,19 @@ class ItemDetailScreen extends StatelessWidget {
                         'created_at': FieldValue.serverTimestamp(),
                       });
 
-                      // 🟢 3. ส่งข้อความเข้าแชท พร้อมยัด Data รูปภาพเข้าไปด้วย
                       await FirebaseFirestore.instance.collection('chat_rooms').doc(roomRef.id).collection('messages').add({
                         'sender_id': currentUserId,
                         'content': 'สวัสดีครับ! ผมขอเสนอแลกสิ่งของ$coinText ครับ',
                         'timestamp': FieldValue.serverTimestamp(),
                         'type': 'system_offer',
                         'offer_data': {
-                           'target_item': itemData, // ของที่อยากได้
-                           'offered_item': selectedMyItemData, // ของที่เราเอาไปแลก
+                           'target_item': itemData, 
+                           'offered_item': selectedMyItemData, 
                         }
                       });
 
                       if (context.mounted) {
-                        Navigator.pop(context); // ปิดป๊อปอัป
+                        Navigator.pop(context); 
                         Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(roomId: roomRef.id)));
                       }
                     },
