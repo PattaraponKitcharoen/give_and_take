@@ -18,6 +18,18 @@ class _ChatScreenState extends State<ChatScreen> {
   // 🟢 1. สร้าง Key สำหรับควบคุม SnackBar เฉพาะในหน้านี้
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
+  @override
+  void initState() {
+    super.initState();
+    _markAsRead(); // มาร์คว่าเราอ่านแล้วตอนเปิดแชท
+  }
+
+  Future<void> _markAsRead() async {
+    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
+      'read_by': FieldValue.arrayUnion([currentUserId])
+    });
+  }
+
   // ฟังก์ชันช่วยแสดง SnackBar แบบลอย (ไม่ดัน UI อื่นๆ)
   void _showFloatingSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -44,12 +56,14 @@ class _ChatScreenState extends State<ChatScreen> {
       'content': text,
       'timestamp': FieldValue.serverTimestamp(),
       'type': 'text',
+      'read_by': [currentUserId],
     });
 
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_text': text,
       'last_sender_id': currentUserId,
       'updated_at': FieldValue.serverTimestamp(),
+      'read_by': [currentUserId],
     });
   }
 
