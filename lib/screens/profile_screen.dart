@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart'; 
 import 'edit_profile_screen.dart'; // 🟢 อย่าลืม Import ไฟล์แก้ไข
+import 'wallet_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -91,26 +92,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(email, style: const TextStyle(color: Colors.black54)),
                 const SizedBox(height: 24),
 
-                // กล่องโชว์ยอดเหรียญ Coins
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [tealColor, tealColor.withOpacity(0.8)]),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: tealColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.account_balance_wallet, color: Colors.white, size: 40),
-                      const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('กระเป๋าเหรียญ (Coins)', style: TextStyle(color: Colors.white70)),
-                          Text('$coins', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                        ],
-                      )
-                    ],
+                // กล่องโชว์ยอดเหรียญ Coins (อัปเดตให้กดได้)
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const WalletHistoryScreen()),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [tealColor, tealColor.withOpacity(0.8)]),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(color: tealColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.account_balance_wallet, color: Colors.white, size: 40),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('กระเป๋าเหรียญ (Coins)', style: TextStyle(color: Colors.white70)),
+                            Text('$coins', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 16), // เพิ่มไอคอนลูกศรให้รู้ว่ากดได้
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),

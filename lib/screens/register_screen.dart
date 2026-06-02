@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // อย่าลืม Import Firestore
 import 'main_layout.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -55,15 +56,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      // 3. ส่งคำสั่งสร้างบัญชีไปที่ Firebase
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      // 3. ส่งคำสั่งสร้างบัญชีไปที่ Firebase Auth
+      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
+      // 4. สร้างข้อมูลโปรไฟล์เริ่มต้นใน Firestore Database (ตาราง users)
+      if (userCredential.user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
+          'user_id': userCredential.user!.uid,
+          'email': email,
+          'name': '', // ปล่อยว่างไว้ให้ผู้ใช้ไปตั้งค่าในหน้า Edit Profile
+          'bio': '',
+          'tel': '',
+          'profile_img_url': '',
+          'coins_balance': 1000, // แจกเหรียญเริ่มต้นสำหรับผู้ใช้ใหม่
+          'created_at': FieldValue.serverTimestamp(),
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+      }
+
       if (mounted) {
         // เมื่อสมัครสำเร็จ ให้พาเข้าสู่หน้าหลักของแอปทันที
-        // ใช้ pushAndRemoveUntil เพื่อลบประวัติการย้อนกลับ ไม่ให้กด Back กลับมาหน้า Register ได้อีก
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const MainLayout()),
@@ -123,7 +138,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: const TextStyle(color: Colors.black38),
-          prefixIcon: Icon(icon, color: tealColor, size: 22),
+          prefixIcon: Icon(icon, color: const Color(0xFF008080), size: 22),
           suffixIcon: isPassword
               ? IconButton(
                   icon: Icon(
@@ -153,7 +168,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87),
-          onPressed: () => Navigator.pop(context), // ปุ่มกดย้อนกลับไปหน้า Login
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SafeArea(
@@ -163,15 +178,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(Icons.person_add_alt_1_rounded, size: 72, color: tealColor),
+                const Icon(Icons.person_add_alt_1_rounded, size: 72, color: Color(0xFF008080)),
                 const SizedBox(height: 16),
-                Text(
+                const Text(
                   'สร้างบัญชีใหม่',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w800,
-                    color: tealColor,
+                    color: Color(0xFF008080),
                     letterSpacing: -0.5,
                   ),
                 ),
