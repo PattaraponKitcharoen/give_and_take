@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
-import 'user_profile_screen.dart'; // อย่าลืมสร้างและนำเข้าไฟล์นี้
+import 'user_profile_screen.dart'; 
 
 class ItemDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> itemData; // รับข้อมูลไอเทมมาจากหน้า Home
+  final Map<String, dynamic> itemData; // รับข้อมูลไอเทมมาจากหน้า Home หรือ Chat
 
   const ItemDetailScreen({super.key, required this.itemData});
 
@@ -14,6 +14,7 @@ class ItemDetailScreen extends StatelessWidget {
     final Color tealColor = const Color(0xFF008080);
     
     // ดึงข้อมูลจาก Map ออกมาเตรียมแสดงผล
+    final String listingId = itemData['listing_id'] ?? '';
     final String title = itemData['title'] ?? 'ไม่มีชื่อสินค้า';
     final String description = itemData['description'] ?? 'ไม่มีรายละเอียด';
     final String category = itemData['category'] ?? 'ทั่วไป';
@@ -87,7 +88,7 @@ class ItemDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
 
-                  // 🟢 5. การ์ดโปรไฟล์เจ้าของสินค้า (เพิ่มเข้ามาใหม่)
+                  // 5. การ์ดโปรไฟล์เจ้าของสินค้า
                   _buildOwnerProfileCard(context, ownerId),
 
                   const Divider(height: 40),
@@ -107,54 +108,77 @@ class ItemDetailScreen extends StatelessWidget {
         ),
       ),
       
-      // 7. ปุ่มแลกเปลี่ยนด้านล่าง (Action Button)
-      bottomSheet: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
-        ),
-        child: ElevatedButton(
-          onPressed: () {
-            final currentUser = FirebaseAuth.instance.currentUser;
-            if (currentUser == null) return;
+      // 🟢 7. ปุ่มแลกเปลี่ยนด้านล่าง ครอบด้วย StreamBuilder เช็กสถานะล่าสุด
+      bottomSheet: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('listings').doc(listingId).snapshots(),
+        builder: (context, snapshot) {
+          bool isActive = false;
+          
+          if (snapshot.hasData && snapshot.data!.exists) {
+            final latestData = snapshot.data!.data() as Map<String, dynamic>;
+            if (latestData['status'] == 'active') {
+              isActive = true;
+            }
+          }
 
-            final currentUserId = currentUser.uid;
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+            ),
+            child: ElevatedButton(
+              // 🟢 ถ้าไม่ใช่ active ให้ตั้งค่าเป็น null (ปุ่มจะเปลี่ยนเป็นสีเทาและกดไม่ได้อัตโนมัติ)
+              onPressed: isActive ? () {
+                final currentUser = FirebaseAuth.instance.currentUser;
+                if (currentUser == null) return;
 
-            // ดักเอาไว้ กันไม่ให้ยูสเซอร์เด๋อกดทักแชทไปขอแลกของกับตัวเอง
-            if (currentUserId == ownerId) {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  title: const Text(
-                    'แจ้งเตือน', 
-                    style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)
-                  ),
-                  content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        'เข้าใจแล้ว', 
+                final currentUserId = currentUser.uid;
+
+                // ดักเอาไว้ กันไม่ให้ยูสเซอร์เด๋อกดทักแชทไปขอแลกของกับตัวเอง
+                if (currentUserId == ownerId) {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      title: const Text(
+                        'แจ้งเตือน', 
                         style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)
                       ),
+                      content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text(
+                            'เข้าใจแล้ว', 
+                            style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-              return;
-            }
+                  );
+                  return;
+                }
 
-            _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: tealColor,
-            minimumSize: const Size(double.infinity, 56),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-          child: const Text('ยื่นข้อเสนอแลกเปลี่ยน', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-        ),
+                _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
+              } : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: tealColor,
+                disabledBackgroundColor: Colors.grey.shade400, // สีปุ่มตอนที่กดไม่ได้
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(
+                isActive ? 'ยื่นข้อเสนอแลกเปลี่ยน' : 'สิ่งของนี้ถูกแลกเปลี่ยน/ลบไปแล้ว', 
+                style: TextStyle(
+                  fontSize: isActive ? 18 : 16, // ลดขนาดฟอนต์นิดหน่อยถ้ายาว
+                  fontWeight: FontWeight.bold, 
+                  color: isActive ? Colors.white : Colors.white70
+                )
+              ),
+            ),
+          );
+        }
       ),
     );
   }
@@ -168,9 +192,9 @@ class ItemDetailScreen extends StatelessWidget {
     );
   }
 
-  // 🟢 Widget ช่วยสร้างการ์ดโปรไฟล์เจ้าของ
+  // Widget ช่วยสร้างการ์ดโปรไฟล์เจ้าของ
   Widget _buildOwnerProfileCard(BuildContext context, String ownerId) {
-    if (ownerId.isEmpty) return const SizedBox(); // ถ้าไม่มีไอดีให้ซ่อนไปเลย
+    if (ownerId.isEmpty) return const SizedBox(); 
 
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('users').doc(ownerId).get(),
@@ -189,7 +213,6 @@ class ItemDetailScreen extends StatelessWidget {
 
         return InkWell(
           onTap: () {
-            // เมื่อกดที่การ์ด ให้เด้งไปหน้า UserProfileScreen
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => UserProfileScreen(userId: ownerId)),
