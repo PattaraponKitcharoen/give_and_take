@@ -174,11 +174,58 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // 🟢 ฟังก์ชันตัวช่วย: ดึง UID ของทั้ง 2 ฝ่ายกลับมาให้ได้ ไม่ว่าดีลจะโดนลบไปแล้วก็ตาม
+  Future<List<String>> _getRoomParticipants() async {
+    Set<String> users = {currentUserId};
+    try {
+      final roomDoc = await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).get();
+      final roomData = roomDoc.data();
+      if (roomData == null) return users.toList();
+
+      // 1. ลองหาจากข้อเสนอ (ถ้ายังมีอยู่)
+      final String? offerId = roomData['active_offer_id'];
+      if (offerId != null) {
+        final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
+        if (offerDoc.exists) {
+          users.add(offerDoc.data()?['sender_id'] ?? '');
+          users.add(offerDoc.data()?['target_user_id'] ?? '');
+        }
+      }
+
+      // 2. แผนสำรอง: ถ้าข้อเสนอโดนลบไปแล้ว ให้ไปสแกนหาจากประวัติแชทเก่าๆ ในห้องนี้
+      if (users.length <= 1) {
+        final msgSnap = await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').get();
+        for (var doc in msgSnap.docs) {
+          final data = doc.data();
+          final sender = data['sender_id'];
+          if (sender != 'system' && sender != null) users.add(sender); // หาจากคนที่เคยพิมพ์
+          
+          // หาจากข้อมูลกล่องยื่นข้อเสนอแรกสุดที่ระบบสร้างไว้ให้
+          if (data['type'] == 'system_offer' && data['offer_data'] != null) {
+            final tOwner = data['offer_data']['target_item']?['owner_id'];
+            final oOwner = data['offer_data']['offered_item']?['owner_id'];
+            if (tOwner != null) users.add(tOwner);
+            if (oOwner != null) users.add(oOwner);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching participants: $e");
+    }
+    
+    users.removeWhere((id) => id.isEmpty); // เอาค่าว่างออก
+    return users.toList(); // จะได้ UID ของ A และ B เสมอ
+  }
+
+  // 🟢 อัปเดต: ฟังก์ชันส่งแชทปกติ
   Future<void> _sendMessage() async {
     if (_messageController.text.trim().isEmpty) return;
 
     final String text = _messageController.text.trim();
     _messageController.clear();
+
+    // เรียกใช้ฟังก์ชันใหม่เพื่อกวาดหา UID ทั้ง 2 ฝ่าย
+    List<String> roomUsers = await _getRoomParticipants();
 
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
       'sender_id': currentUserId,
@@ -189,15 +236,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_text': text,
-      'last_message_type': 'text', // 🟢 ระบุว่าเป็นแชทปกติ
+      'last_message_type': 'text',
       'last_sender_id': currentUserId,
       'read_by': [currentUserId], 
       'updated_at': FieldValue.serverTimestamp(),
+      'participants': FieldValue.arrayUnion(roomUsers), // 🟢 ดึงทุกคนกลับเข้าห้องแชทอัตโนมัติ!
     });
   }
 
-  // ตัวช่วยยิงข้อความระบบ
+  // 🟢 อัปเดต: ฟังก์ชันส่งข้อความแจ้งเตือนระบบ
   Future<void> _sendSystemMessage(String text) async {
+    
+    // เรียกใช้ฟังก์ชันใหม่เพื่อกวาดหา UID ทั้ง 2 ฝ่าย
+    List<String> roomUsers = await _getRoomParticipants();
+
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
       'sender_id': 'system',
       'content': text,
@@ -207,10 +259,11 @@ class _ChatScreenState extends State<ChatScreen> {
     
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_text': text,
-      'last_message_type': 'system_log', // 🟢 ระบุว่าเป็นแจ้งเตือนระบบ
-      'last_sender_id': currentUserId, // 🟢 ระบุว่าใครเป็นคนกดทำรายการ
-      'read_by': [currentUserId], // 🟢 ให้คนกดอ่านแล้ว อีกฝ่ายจะเด้งแจ้งเตือน
+      'last_message_type': 'system_log',
+      'last_sender_id': currentUserId, 
+      'read_by': [currentUserId], 
       'updated_at': FieldValue.serverTimestamp(),
+      'participants': FieldValue.arrayUnion(roomUsers), // 🟢 ดึงทุกคนกลับเข้าห้องแชทอัตโนมัติ!
     });
   }
 
