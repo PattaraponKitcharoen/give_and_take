@@ -45,7 +45,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
         const SnackBar(
           content: Text('กรุณากรอกข้อมูลให้ครบถ้วน'),
           behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 90, left: 16, right: 16),
+          margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
         ),
       );
       return;
@@ -57,7 +57,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
         const SnackBar(
           content: Text('กรุณากรอกราคาประเมินเป็นตัวเลข'),
           behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 90, left: 16, right: 16),
+          margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
         ),
       );
       return;
@@ -109,7 +109,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
             content: Text('โพสต์สิ่งของสำเร็จ!'),
             backgroundColor: Color(0xFF008080),
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 90, left: 16, right: 16),
+            margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
           ),
         );
       }
@@ -119,7 +119,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
           const SnackBar(
             content: Text('เกิดข้อผิดพลาด ไม่สามารถโพสต์ได้'),
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 90, left: 16, right: 16),
+            margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
           ),
         );
       }

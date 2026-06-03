@@ -115,9 +115,29 @@ class MyListingScreen extends StatelessWidget {
                     await offerDoc.reference.delete();
                   }
                   await FirebaseFirestore.instance.collection('listings').doc(itemId).delete();
-                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ลบสิ่งของและยกเลิกข้อเสนอที่เกี่ยวข้องเรียบร้อย')));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('ลบสิ่งของและยกเลิกข้อเสนอที่เกี่ยวข้องเรียบร้อย'),
+                        behavior: SnackBarBehavior.floating, // 🟢 ทำให้ลอยเหนือ Nav Bar
+                        margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16), // 🟢 ดันให้พ้นปุ่มกลม
+                        backgroundColor: tealColor,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
+                  }
                 } catch (e) {
-                   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e')));
+                   if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('เกิดข้อผิดพลาด: $e'),
+                        behavior: SnackBarBehavior.floating, // 🟢 ทำให้ลอยเหนือ Nav Bar
+                        margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+                        backgroundColor: Colors.red,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
+                  }
                 }
               },
               child: const Text('ลบสิ่งของ', style: TextStyle(color: Colors.white)),
