@@ -5,102 +5,162 @@ import 'chat_screen.dart';
 import 'user_profile_screen.dart'; 
 
 class ItemDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> itemData; // รับข้อมูลไอเทมมาจากหน้า Home หรือ Chat
+  final Map<String, dynamic> itemData;
 
   const ItemDetailScreen({super.key, required this.itemData});
 
   @override
   Widget build(BuildContext context) {
-    final Color tealColor = const Color(0xFF008080);
+    final Color tealColor = const Color(0xFF004D40); 
+    final Color lightTeal = const Color(0xFFE0F2F1);
+    final Color coinGreen = const Color(0xFF00C853);
     
-    // ดึงข้อมูลจาก Map ออกมาเตรียมแสดงผล
     final String listingId = itemData['listing_id'] ?? '';
     final String title = itemData['title'] ?? 'ไม่มีชื่อสินค้า';
     final String description = itemData['description'] ?? 'ไม่มีรายละเอียด';
     final String category = itemData['category'] ?? 'ทั่วไป';
     final int coins = itemData['estimated_coins'] ?? 0;
     
-    // ดึงข้อมูลจาก MapMetadata
     final Map<String, dynamic> metadata = itemData['metadata'] ?? {};
-    final String condition = metadata['condition'] ?? 'ไม่ระบุสภาพ';
-    final String ownerId = itemData['owner_id'] ?? ''; // ไอดีเจ้าของไอเทม
+    final String condition = metadata['condition'] ?? 'Like New';
+    final String ownerId = itemData['owner_id'] ?? ''; 
+    final String thumbnail = itemData['thumbnail_url'] ?? '';
+
+    String listedText = 'Listed recently';
+    if (itemData['created_at'] != null) {
+      final Timestamp createdAt = itemData['created_at'];
+      final int days = DateTime.now().difference(createdAt.toDate()).inDays;
+      if (days == 0) {
+        listedText = 'Listed today';
+      } else {
+        listedText = 'Listed $days days ago';
+      }
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('รายละเอียดสิ่งของ', style: TextStyle(color: Colors.black87, fontSize: 18)),
-        centerTitle: true,
-      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. ส่วนรูปภาพ (Placeholder ไว้ก่อน)
-            Container(
-              height: 350,
-              width: double.infinity,
-              color: Colors.grey.shade200,
-              child: const Center(
-                child: Icon(Icons.image, size: 100, color: Colors.black12),
-              ),
+            // 🟢 1. ลดความสูงรูปลงเหลือ 320
+            Stack(
+              children: [
+                Container(
+                  height: 320, 
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    image: thumbnail.isNotEmpty 
+                        ? DecorationImage(image: NetworkImage(thumbnail), fit: BoxFit.cover) 
+                        : null,
+                  ),
+                  child: thumbnail.isEmpty ? const Icon(Icons.image, size: 80, color: Colors.black12) : null,
+                ),
+                Container(
+                  height: 320,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                      colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.4)],
+                      stops: const [0.0, 0.5, 1.0],
+                    )
+                  ),
+                ),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildFloatingIcon(Icons.arrow_back_ios_new_rounded, () => Navigator.pop(context)),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 16, right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.circular(20)),
+                    child: const Text('1 / 1', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ),
+                Positioned(
+                  bottom: 24, left: 0, right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildDot(true), _buildDot(false), _buildDot(false),
+                    ],
+                  ),
+                )
+              ],
             ),
             
+            // 🟢 2. บีบช่องว่าง Padding และ SizedBox ต่างๆ ให้แคบลง
             Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.all(16.0), // ลดขอบซ้ายขวาลงนิดนึง
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 2. หมวดหมู่และสภาพสินค้า
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      _buildBadge(category, tealColor.withOpacity(0.1), tealColor),
-                      const SizedBox(width: 8),
-                      _buildBadge(condition, Colors.orange.withOpacity(0.1), Colors.orange.shade800),
+                      _buildBadge(Icons.laptop_mac, category, lightTeal, tealColor),
+                      _buildBadge(Icons.star, condition, lightTeal, tealColor),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12), // บีบขึ้น
 
-                  // 3. ชื่อสินค้า
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 4. ราคาเหรียญ (Coins)
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Icon(Icons.monetization_on, color: tealColor, size: 24),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$coins Coins',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: tealColor),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.2)),
+                            const SizedBox(height: 6),
+                            Text(listedText, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
-                      const Text('ราคาประเมินกลาง', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const SizedBox(width: 12),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(color: coinGreen, borderRadius: BorderRadius.circular(20)),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.layers, color: Colors.white, size: 16),
+                                const SizedBox(width: 4),
+                                Text('$coins', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text('Coin Value', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                        ],
+                      )
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16), // บีบขึ้น
 
-                  // 5. การ์ดโปรไฟล์เจ้าของสินค้า
-                  _buildOwnerProfileCard(context, ownerId),
+                  _buildOwnerProfileCard(context, ownerId, tealColor),
 
-                  const Divider(height: 40),
+                  const SizedBox(height: 16), // บีบขึ้น
 
-                  // 6. รายละเอียดสินค้า
-                  const Text('รายละเอียด', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
+                  const Text('About This Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
+                  const SizedBox(height: 8), // บีบขึ้น
                   Text(
                     description,
-                    style: const TextStyle(fontSize: 16, color: Colors.black54, height: 1.5),
+                    style: TextStyle(fontSize: 15, color: Colors.grey.shade800, height: 1.6),
                   ),
-                  const SizedBox(height: 100), // เผื่อที่ให้ปุ่มด้านล่าง
+                  const SizedBox(height: 80), 
                 ],
               ),
             ),
@@ -108,73 +168,104 @@ class ItemDetailScreen extends StatelessWidget {
         ),
       ),
       
-      // 🟢 7. ปุ่มแลกเปลี่ยนด้านล่าง ครอบด้วย StreamBuilder เช็กสถานะล่าสุด
-      bottomSheet: StreamBuilder<DocumentSnapshot>(
+      // 🟢 3. จัดระเบียบ Bottom Navigation Bar ใหม่ ลดความอ้วน
+      bottomNavigationBar: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('listings').doc(listingId).snapshots(),
         builder: (context, snapshot) {
           bool isActive = false;
+          bool isLiked = false; 
           
+          final currentUser = FirebaseAuth.instance.currentUser;
+          final currentUserId = currentUser?.uid ?? '';
+
           if (snapshot.hasData && snapshot.data!.exists) {
             final latestData = snapshot.data!.data() as Map<String, dynamic>;
             if (latestData['status'] == 'active') {
               isActive = true;
             }
+            
+            final List likedBy = latestData['liked_by'] ?? [];
+            isLiked = likedBy.contains(currentUserId);
           }
 
           return Container(
-            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
             ),
-            child: ElevatedButton(
-              // 🟢 ถ้าไม่ใช่ active ให้ตั้งค่าเป็น null (ปุ่มจะเปลี่ยนเป็นสีเทาและกดไม่ได้อัตโนมัติ)
-              onPressed: isActive ? () {
-                final currentUser = FirebaseAuth.instance.currentUser;
-                if (currentUser == null) return;
-
-                final currentUserId = currentUser.uid;
-
-                // ดักเอาไว้ กันไม่ให้ยูสเซอร์เด๋อกดทักแชทไปขอแลกของกับตัวเอง
-                if (currentUserId == ownerId) {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      title: const Text(
-                        'แจ้งเตือน', 
-                        style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)
+            child: SafeArea(
+              top: false, // ป้องกัน SafeArea ด้านบน
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), // บีบช่องว่างด้านบน-ล่างให้บางลง
+                child: Row(
+                  children: [
+                    Container(
+                      height: 52, width: 52, // ลดขนาดปุ่มลงนิดนึง
+                      decoration: BoxDecoration(
+                        color: isLiked ? Colors.red.shade50 : lightTeal,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: isLiked ? Colors.red.shade200 : tealColor.withOpacity(0.3)),
                       ),
-                      content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text(
-                            'เข้าใจแล้ว', 
-                            style: TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)
-                          ),
+                      child: IconButton(
+                        icon: Icon(
+                          isLiked ? Icons.favorite : Icons.favorite_border,
+                          color: isLiked ? Colors.red : tealColor, 
                         ),
-                      ],
+                        onPressed: () async {
+                          if (currentUserId.isEmpty) return;
+                          
+                          final docRef = FirebaseFirestore.instance.collection('listings').doc(listingId);
+                          
+                          if (isLiked) {
+                            await docRef.update({
+                              'liked_by': FieldValue.arrayRemove([currentUserId])
+                            });
+                          } else {
+                            await docRef.update({
+                              'liked_by': FieldValue.arrayUnion([currentUserId])
+                            });
+                          }
+                        },
+                      ),
                     ),
-                  );
-                  return;
-                }
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isActive ? () {
+                          if (currentUserId.isEmpty) return;
 
-                _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
-              } : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: tealColor,
-                disabledBackgroundColor: Colors.grey.shade400, // สีปุ่มตอนที่กดไม่ได้
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              child: Text(
-                isActive ? 'ยื่นข้อเสนอแลกเปลี่ยน' : 'สิ่งของนี้ถูกแลกเปลี่ยน/ลบไปแล้ว', 
-                style: TextStyle(
-                  fontSize: isActive ? 18 : 16, // ลดขนาดฟอนต์นิดหน่อยถ้ายาว
-                  fontWeight: FontWeight.bold, 
-                  color: isActive ? Colors.white : Colors.white70
-                )
+                          if (currentUserId == ownerId) {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                title: const Text('แจ้งเตือน', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
+                                content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
+                                actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('เข้าใจแล้ว', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)))],
+                              ),
+                            );
+                            return;
+                          }
+                          _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
+                        } : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: tealColor,
+                          disabledBackgroundColor: Colors.grey.shade400,
+                          minimumSize: const Size(double.infinity, 52), // ลดความสูงปุ่มลงนิดนึง
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.swap_horiz, color: isActive ? Colors.white : Colors.white70),
+                            const SizedBox(width: 8),
+                            Text(isActive ? 'Make an Offer' : 'Item Unavailable', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? Colors.white : Colors.white70)),
+                          ],
+                        )
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -183,17 +274,41 @@ class ItemDetailScreen extends StatelessWidget {
     );
   }
 
-  // Widget ช่วยสร้าง Badge เล็กๆ
-  Widget _buildBadge(String text, Color bgColor, Color textColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
-      child: Text(text, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 12)),
+  Widget _buildFloatingIcon(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), shape: BoxShape.circle),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
     );
   }
 
-  // Widget ช่วยสร้างการ์ดโปรไฟล์เจ้าของ
-  Widget _buildOwnerProfileCard(BuildContext context, String ownerId) {
+  Widget _buildDot(bool isActive) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      width: isActive ? 16 : 6, height: 6,
+      decoration: BoxDecoration(color: isActive ? Colors.white : Colors.white54, borderRadius: BorderRadius.circular(4)),
+    );
+  }
+
+  Widget _buildBadge(IconData icon, String text, Color bgColor, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20), border: Border.all(color: textColor.withOpacity(0.3))),
+      child: Row(
+        mainAxisSize: MainAxisSize.min, // ให้ป้ายขยายตามตัวอักษร
+        children: [
+          Icon(icon, size: 12, color: textColor),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOwnerProfileCard(BuildContext context, String ownerId, Color tealColor) {
     if (ownerId.isEmpty) return const SizedBox(); 
 
     return FutureBuilder<DocumentSnapshot>(
@@ -201,73 +316,135 @@ class ItemDetailScreen extends StatelessWidget {
       builder: (context, snapshot) {
         String ownerName = 'กำลังโหลด...';
         double ratingScore = 0.0;
-        int reviewCount = 0;
+        String profileImg = '';
+        String memberSinceYear = '2024'; 
 
         if (snapshot.hasData && snapshot.data!.exists) {
           final userData = snapshot.data!.data() as Map<String, dynamic>;
           ownerName = userData['name'] ?? 'ผู้ใช้งาน';
           if (ownerName.trim().isEmpty) ownerName = 'ผู้ใช้งาน';
           ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
-          reviewCount = userData['rating_count'] ?? 0;
+          profileImg = userData['profile_img_url'] ?? '';
+          
+          if (userData['created_at'] != null) {
+            final Timestamp createdAt = userData['created_at'];
+            memberSinceYear = createdAt.toDate().year.toString();
+          }
         }
 
-        return InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => UserProfileScreen(userId: ownerId)),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.grey.shade200,
-                  child: const Icon(Icons.person, color: Colors.grey, size: 28),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('เจ้าของไอเทม', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                      Text(ownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 16),
-                          const SizedBox(width: 4),
-                          Text(
-                            ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                          ),
-                          if (reviewCount > 0)
-                            Text(
-                              ' ($reviewCount)',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                            ),
-                        ],
-                      ),
-                    ],
+        return Container(
+          padding: const EdgeInsets.all(12), // 🟢 1. บีบ Padding ของการ์ดให้แคบลง
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 🟢 2. รูปโปรไฟล์ (เอาไอคอน Verified สีเขียวออกแล้ว)
+                  Container(
+                    width: 46, height: 46, 
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12),
+                      image: profileImg.isNotEmpty ? DecorationImage(image: NetworkImage(profileImg), fit: BoxFit.cover) : null,
+                    ),
+                    child: profileImg.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
                   ),
-                ),
-                const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-              ],
-            ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 🟢 3. ชื่อผู้ใช้ (เอาป้าย Verified ออกแล้ว)
+                        Text(ownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2), // 🟢 4. ลดช่องว่างบรรทัดให้ชิดขึ้น
+                        
+                        FutureBuilder<int>(
+                          future: () async {
+                            try {
+                              final sentSnap = await FirebaseFirestore.instance.collection('offers')
+                                  .where('sender_id', isEqualTo: ownerId)
+                                  .where('status', isEqualTo: 'completed')
+                                  .get();
+                              final receivedSnap = await FirebaseFirestore.instance.collection('offers')
+                                  .where('target_user_id', isEqualTo: ownerId)
+                                  .where('status', isEqualTo: 'completed')
+                                  .get();
+                              return sentSnap.docs.length + receivedSnap.docs.length;
+                            } catch (e) {
+                              return 0;
+                            }
+                          }(),
+                          builder: (context, tradeSnap) {
+                            int tradeCount = tradeSnap.data ?? 0;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // 🟢 5. ลดขนาดฟอนต์เป็น 11 และใส่ height ให้บรรทัดชิดกัน
+                                Text('$tradeCount successful trades', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, height: 1.2)),
+                                Text('Member since $memberSinceYear', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, height: 1.2)),
+                              ],
+                            );
+                          }
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.star, color: Colors.orange, size: 14),
+                        const SizedBox(width: 4),
+                        Text(ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
+                    ),
+                  )
+                ],
+              ),
+              const SizedBox(height: 12), // 🟢 6. ลดช่องว่างระหว่างข้อมูลด้านบนกับปุ่มด้านล่าง
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {}, 
+                      icon: const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.black87),
+                      label: const Text('Message', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: BorderSide(color: Colors.grey.shade300),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: ownerId))),
+                      icon: Icon(Icons.person_outline, size: 16, color: tealColor),
+                      label: Text('View Profile', style: TextStyle(color: tealColor, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: tealColor.withOpacity(0.05),
+                        side: BorderSide(color: tealColor.withOpacity(0.3)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      ),
+                    ),
+                  )
+                ],
+              )
+            ],
           ),
         );
       }
     );
   }
 
-  // ฟังก์ชันสำหรับแสดงป๊อปอัปยื่นข้อเสนอ
   void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, String ownerId) {
     showModalBottomSheet(
       context: context,
@@ -378,9 +555,9 @@ class ItemDetailScreen extends StatelessWidget {
                         'participants': [currentUserId, ownerId],
                         'active_offer_id': offerRef.id,
                         'last_message_text': 'ยื่นข้อเสนอแลกเปลี่ยนสิ่งของใหม่',
-                        'last_message_type': 'system_offer', // 🟢 เพิ่มประเภทข้อความ
+                        'last_message_type': 'system_offer', 
                         'last_sender_id': currentUserId,
-                        'read_by': [currentUserId], // 🟢 ตั้งให้คนส่งอ่านแล้ว (อีกฝ่ายจะขึ้นจุดแดง)
+                        'read_by': [currentUserId], 
                         'updated_at': FieldValue.serverTimestamp(),
                         'created_at': FieldValue.serverTimestamp(),
                       });
