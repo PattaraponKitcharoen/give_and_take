@@ -5,7 +5,6 @@ import 'item_detail_screen.dart';
 import 'item_search_delegate.dart';
 import 'notification_screen.dart';
 
-// 🟢 1. เปลี่ยนเป็น StatefulWidget เพื่อรองรับการเปลี่ยนค่า Filter/Sort
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -17,18 +16,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final Color tealColor = const Color(0xFF008080);
   final Color bgColor = const Color(0xFFF4F6F8); 
 
-  // 🟢 2. ตัวแปรเก็บสถานะการกรองข้อมูล
   String _selectedCategory = 'All';
-  String _sortBy = 'newest'; // newest, coins_asc (น้อยไปมาก), coins_desc (มากไปน้อย)
+  String _sortBy = 'newest'; 
   final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
-  // 🟢 3. ฟังก์ชันเปิดหน้าต่างเลือกการจัดเรียง (Sort)
   void _showSortOptions() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -41,28 +36,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 leading: const Icon(Icons.access_time),
                 title: const Text('โพสต์ล่าสุด'),
                 trailing: _sortBy == 'newest' ? Icon(Icons.check, color: tealColor) : null,
-                onTap: () {
-                  setState(() => _sortBy = 'newest');
-                  Navigator.pop(context);
-                },
+                onTap: () { setState(() => _sortBy = 'newest'); Navigator.pop(context); },
               ),
               ListTile(
                 leading: const Icon(Icons.arrow_upward),
                 title: const Text('ราคาประเมิน: น้อยไปมาก'),
                 trailing: _sortBy == 'coins_asc' ? Icon(Icons.check, color: tealColor) : null,
-                onTap: () {
-                  setState(() => _sortBy = 'coins_asc');
-                  Navigator.pop(context);
-                },
+                onTap: () { setState(() => _sortBy = 'coins_asc'); Navigator.pop(context); },
               ),
               ListTile(
                 leading: const Icon(Icons.arrow_downward),
                 title: const Text('ราคาประเมิน: มากไปน้อย'),
                 trailing: _sortBy == 'coins_desc' ? Icon(Icons.check, color: tealColor) : null,
-                onTap: () {
-                  setState(() => _sortBy = 'coins_desc');
-                  Navigator.pop(context);
-                },
+                onTap: () { setState(() => _sortBy = 'coins_desc'); Navigator.pop(context); },
               ),
             ],
           ),
@@ -76,32 +62,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: bgColor, // ปรับสีให้กลืนกับพื้นหลัง
         elevation: 0,
-        title: Text(
-          'Give & Take',
-          style: TextStyle(
-            color: tealColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 24,
-          ),
+        title: Row(
+          children: [
+            Icon(Icons.autorenew_rounded, color: tealColor, size: 28), // ไอคอนแทนโลโก้ด้านหน้า
+            const SizedBox(width: 8),
+            Text(
+              'Give & Take',
+              style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 22),
+            ),
+          ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search, color: Colors.black87),
-            onPressed: () {
-              // 🟢 เรียกใช้ SearchDelegate 
-              showSearch(
-                context: context, 
-                delegate: ItemSearchDelegate(),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.tune, color: Colors.black87),
-            onPressed: _showSortOptions, // 🟢 ผูกปุ่มเข้ากับหน้าต่าง Sort
-          ),
-          // 🟢 เปลี่ยนปุ่มกระดิ่งธรรมดา เป็นปุ่มที่มีระบบจุดแดงแจ้งเตือน
+          // 1. ปุ่มกระดิ่ง
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('chat_rooms')
@@ -109,46 +83,77 @@ class _HomeScreenState extends State<HomeScreen> {
                 .snapshots(),
             builder: (context, snapshot) {
               bool hasUnreadNoti = false;
-
-              // เช็กว่ามีแจ้งเตือนใหม่ที่เรายังไม่ได้อ่านหรือไม่
               if (snapshot.hasData) {
                 for (var doc in snapshot.data!.docs) {
                   final room = doc.data() as Map<String, dynamic>;
                   final List readBy = room['read_by'] ?? [];
                   final String msgType = room['last_message_type'] ?? 'text';
-                  
-                  // ถ้าไม่ใช่แชทปกติ และเรายังไม่ได้อ่าน = มีแจ้งเตือน
                   if (msgType != 'text' && !readBy.contains(currentUserId)) {
                     hasUnreadNoti = true;
-                    break; // เจอแค่อันเดียวก็พอ ให้จุดแดงขึ้นเลย
+                    break;
                   }
                 }
               }
 
-              return Stack(
-                alignment: Alignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_none, color: Colors.black87),
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen()));
-                    },
-                  ),
-                  if (hasUnreadNoti)
-                    Positioned(
-                      right: 12,
-                      top: 12,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2), // ขอบขาวให้ดูมีมิติ
+              return Container(
+                margin: const EdgeInsets.only(right: 12),
+                width: 40, // 🟢 บังคับความกว้างให้เท่ากับรูปโปรไฟล์ (radius 18 * 2 = 36)
+                height: 40, // 🟢 บังคับความสูง
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none, // ยอมให้จุดแดงล้นขอบได้นิดหน่อย
+                  children: [
+                    IconButton(
+                      padding: EdgeInsets.zero, // 🟢 ล้างระยะขอบอัตโนมัติ
+                      constraints: const BoxConstraints(), // 🟢 ล้างข้อจำกัดขนาดปุ่ม
+                      icon: const Icon(Icons.notifications_none, color: Colors.black87, size: 22),
+                      onPressed: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const NotificationScreen()));
+                      },
+                    ),
+                    if (hasUnreadNoti)
+                      Positioned(
+                        right: 0, // 🟢 ปรับตำแหน่งจุดแดงใหม่ให้เข้ากับขนาดวงกลมที่เล็กลง
+                        top: 0,
+                        child: Container(
+                          width: 10, height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.red, shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
+              );
+            },
+          ),
+          
+          // 2. รูปโปรไฟล์ User
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(currentUserId).snapshots(),
+            builder: (context, snapshot) {
+              String profileImg = '';
+              if (snapshot.hasData && snapshot.data!.exists) {
+                final userData = snapshot.data!.data() as Map<String, dynamic>?;
+                profileImg = userData?['profile_img_url'] ?? '';
+              }
+
+              return Container(
+                margin: const EdgeInsets.only(right: 16),
+                width: 40, // 🟢 บังคับความกว้างให้เท่ากับรูปโปรไฟล์ (radius 18 * 2 = 36)
+                height: 40, // 🟢 บังคับความสูง
+                child: CircleAvatar(
+                  radius: 18, 
+                  backgroundColor: Colors.grey.shade300, 
+                  backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null,
+                  child: profileImg.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 20) : null,
+                ),
               );
             },
           ),
@@ -158,217 +163,251 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildSearchBar(),
             _buildLocationBar(),
             _buildHeroBanner(),
+            _buildSectionHeader('Categories', 'See all'),
             _buildCategoryChips(),
-            _buildSectionTitle('สิ่งของแนะนำ'),
+            _buildSectionHeader('Near You', 'อัปเดตใหม่วันนี้', isTrailingGreen: true),
             _buildProductGrid(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildLocationBar() {
+  // 🟢 1. สร้าง Search Bar แบบภาพ Reference
+  Widget _buildSearchBar() {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.location_on, color: tealColor, size: 20),
-            const SizedBox(width: 8),
-            const Text(
-              'Haad Yai, Hat Yai, Songkhla',
-              style: TextStyle(color: Colors.black87, fontSize: 14),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeroBanner() {
-    return Column(
-      children: [
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          height: 180,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Center(
-            child: Icon(Icons.image, size: 80, color: Colors.black12),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildDot(true),
-            _buildDot(false),
-            _buildDot(false),
-            _buildDot(false),
-          ],
-        )
-      ],
-    );
-  }
-
-  Widget _buildDot(bool isActive) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isActive ? tealColor : Colors.grey.shade300,
-      ),
-    );
-  }
-
-  Widget _buildCategoryChips() {
-    final categories = ['All', 'Skills', 'Home Goods', 'Books', 'Gadgets', 'Fashion'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: categories.map((cat) {
-            bool isActive = _selectedCategory == cat;
-            return GestureDetector(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
               onTap: () {
-                setState(() {
-                  _selectedCategory = cat;
-                });
+                showSearch(context: context, delegate: ItemSearchDelegate());
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: isActive ? Colors.white : Colors.white,
-                  border: isActive ? Border.all(color: tealColor, width: 1.5) : Border.all(color: Colors.transparent),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: isActive ? null : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4)],
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24), // ขอบมนกลม
+                  border: Border.all(color: Colors.grey.shade300),
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      cat == 'All' ? Icons.border_all : _getCategoryIcon(cat), 
-                      size: 18, 
-                      color: isActive ? tealColor : Colors.grey
-                    ),
-                    const SizedBox(width: 4),
-                    Text(cat, style: TextStyle(color: isActive ? tealColor : Colors.black87, fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+                    Icon(Icons.search, color: Colors.grey.shade500, size: 20),
+                    const SizedBox(width: 8),
+                    Text('ค้นหาสิ่งของ...', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
                   ],
                 ),
               ),
-            );
-          }).toList(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // ปุ่มจัดเรียง (Sort)
+          GestureDetector(
+            onTap: _showSortOptions,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: const Icon(Icons.tune, color: Colors.black87, size: 20),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // 🟢 2. โซนบอกสถานที่ (Location)
+  Widget _buildLocationBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.location_on, color: tealColor, size: 18),
+              const SizedBox(width: 4),
+              const Text('หาดใหญ่, สงขลา', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 14)),
+              const Icon(Icons.keyboard_arrow_down, color: Colors.grey, size: 18),
+            ],
+          ),
+          Text('ใกล้ฉัน', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  // 🟢 3. แบนเนอร์ด้านบน
+  Widget _buildHeroBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(24),
+      height: 160,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [tealColor, Color(0xFF20B2AA)], // ไล่สีตามภาพ
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.check_circle, color: Colors.white, size: 12),
+                SizedBox(width: 4),
+                Text('Verified Traders Only', style: TextStyle(color: Colors.white, fontSize: 10)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Trade what you have.\nGet what you need.',
+            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, height: 1.2),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ตัวช่วยสร้างหัวข้อ Section
+  Widget _buildSectionHeader(String title, String trailing, {bool isTrailingGreen = false}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+          Row(
+            children: [
+              if (isTrailingGreen) Icon(Icons.add_circle, color: tealColor, size: 14),
+              if (isTrailingGreen) const SizedBox(width: 4),
+              Text(trailing, style: TextStyle(color: isTrailingGreen ? tealColor : Colors.grey.shade600, fontSize: 13, fontWeight: isTrailingGreen ? FontWeight.bold : FontWeight.normal)),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  // 🟢 4. หมวดหมู่ (Categories) ปรับทรงตามภาพ
+  Widget _buildCategoryChips() {
+    final categories = ['All', 'Wishlists', 'Electronics', 'Furniture', 'Books', 'Fashion'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: categories.map((cat) {
+          bool isActive = _selectedCategory == cat;
+          return GestureDetector(
+            onTap: () { setState(() { _selectedCategory = cat; }); },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: isActive ? tealColor : Colors.white,
+                border: Border.all(color: isActive ? tealColor : Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    cat == 'All' ? Icons.grid_view_rounded : _getCategoryIcon(cat), 
+                    size: 16, 
+                    color: isActive ? Colors.white : tealColor
+                  ),
+                  const SizedBox(width: 8),
+                  Text(cat, style: TextStyle(color: isActive ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
 
   IconData _getCategoryIcon(String category) {
     switch (category) {
-      case 'Skills': return Icons.school_outlined;
-      case 'Home Goods': return Icons.chair_outlined;
+      case 'Wishlists': return Icons.favorite;
+      case 'Electronics': return Icons.laptop_mac_outlined;
+      case 'Furniture': return Icons.chair_outlined;
       case 'Books': return Icons.menu_book_outlined;
-      case 'Gadgets': return Icons.laptop_mac_outlined;
       case 'Fashion': return Icons.checkroom_outlined;
       default: return Icons.category_outlined;
     }
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: tealColor,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
+  // 🟢 5. จัด Layout การ์ดสินค้าใหม่ทั้งหมด
   Widget _buildProductGrid() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('listings')
-            .where('type', isEqualTo: 'item')
-            .where('status', isEqualTo: 'active')
-            .snapshots(),
+        stream: FirebaseFirestore.instance.collection('listings').where('type', isEqualTo: 'item').where('status', isEqualTo: 'active').snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator(color: Color(0xFF008080))),
-            );
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
           if (snapshot.hasError) return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Padding(padding: EdgeInsets.all(20.0), child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้', style: TextStyle(color: Colors.grey))));
-          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้', style: TextStyle(color: Colors.grey))));
 
-          // 🟢 4. การจัดการลอจิก Filter และ Sort ด้วยภาษา Dart (ไม่ต้องง้อ Index Firebase)
           final rawDocs = snapshot.data!.docs;
-          
           var filteredDocs = rawDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final ownerId = data['owner_id'] ?? '';
             final category = data['category'] ?? '';
+            final List likedBy = data['liked_by'] ?? []; // 🟢 ดึงข้อมูลคนกดหัวใจ
 
             // กฎข้อ 1: ห้ามเห็นของตัวเองเด็ดขาด
             if (ownerId == currentUserId) return false; 
-            
-            // กฎข้อ 2: ถ้าไม่ได้เลือกหมวดหมู่ 'All' ให้กรองเอาเฉพาะหมวดที่ตรง
-            if (_selectedCategory != 'All' && category != _selectedCategory) return false; 
+
+            // กฎข้อ 2: ถ้าเลือกแท็บ Wishlists ให้เช็กว่ามี UID เราใน liked_by ไหม
+            if (_selectedCategory == 'Wishlists') {
+              if (!likedBy.contains(currentUserId)) return false;
+            } 
+            // กฎข้อ 3: ถ้าไม่ใช่ All และไม่ใช่ Wishlists ให้กรองตามหมวดหมู่ปกติ
+            else if (_selectedCategory != 'All' && category != _selectedCategory) {
+              return false; 
+            }
 
             return true;
           }).toList();
 
-          // ทำการเรียงลำดับข้อมูล
           filteredDocs.sort((a, b) {
             final dataA = a.data() as Map<String, dynamic>;
             final dataB = b.data() as Map<String, dynamic>;
-            
-            if (_sortBy == 'coins_asc') {
-              return (dataA['estimated_coins'] ?? 0).compareTo(dataB['estimated_coins'] ?? 0);
-            } else if (_sortBy == 'coins_desc') {
-              return (dataB['estimated_coins'] ?? 0).compareTo(dataA['estimated_coins'] ?? 0);
-            } else {
-              // กรณี newest (ล่าสุดขึ้นก่อน)
+            if (_sortBy == 'coins_asc') return (dataA['estimated_coins'] ?? 0).compareTo(dataB['estimated_coins'] ?? 0);
+            else if (_sortBy == 'coins_desc') return (dataB['estimated_coins'] ?? 0).compareTo(dataA['estimated_coins'] ?? 0);
+            else {
               Timestamp timeA = dataA['created_at'] ?? Timestamp.now();
               Timestamp timeB = dataB['created_at'] ?? Timestamp.now();
               return timeB.compareTo(timeA);
             }
           });
 
-          // เช็คอีกรอบหลังกรองเสร็จ เผื่อว่ากรองแล้วไม่เหลือของเลย
-          if (filteredDocs.isEmpty) {
-            return const Center(child: Padding(padding: EdgeInsets.all(40.0), child: Text('ไม่พบสิ่งของในหมวดหมู่นี้', style: TextStyle(color: Colors.grey))));
-          }
+          if (filteredDocs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(40.0), child: Text('ไม่พบสิ่งของในหมวดหมู่นี้', style: TextStyle(color: Colors.grey))));
 
           return GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.75,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              childAspectRatio: 0.52, // 🟢 ยืดความยาวการ์ดเพื่อรองรับปุ่ม Swap ด้านล่าง
             ),
             itemCount: filteredDocs.length,
             itemBuilder: (context, index) {
@@ -386,48 +425,108 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 🟢 โซนรูปภาพ + ป้าย Coins + ไอคอนหัวใจ (ใช้ Stack)
                       Expanded(
-                        child: Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: thumbnail.isNotEmpty 
-                            ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(thumbnail, fit: BoxFit.cover))
-                            : const Center(child: Icon(Icons.image, size: 40, color: Colors.black12)),
+                        child: Stack(
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                              ),
+                              child: thumbnail.isNotEmpty 
+                                ? ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(16)), child: Image.network(thumbnail, fit: BoxFit.cover))
+                                : const Center(child: Icon(Icons.image, size: 40, color: Colors.black12)),
+                            ),
+                            // ป้าย Coins มุมซ้ายบน
+                            Positioned(
+                              top: 8, left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(color: tealColor, borderRadius: BorderRadius.circular(12)),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.monetization_on, color: Colors.white, size: 12),
+                                    const SizedBox(width: 4),
+                                    Text('$coins', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            // ไอคอนหัวใจมุมขวาบน
+                            // 🟢 ไอคอนหัวใจมุมขวาบน (เพิ่มระบบกด Like)
+                            Positioned(
+                              top: 8, right: 8,
+                              child: GestureDetector(
+                                onTap: () async {
+                                  // เช็กก่อนว่ามี UID เราในระบบหรือยัง
+                                  final List currentLikedBy = data['liked_by'] ?? [];
+                                  final bool isAlreadyLiked = currentLikedBy.contains(currentUserId);
+                                  
+                                  final docRef = FirebaseFirestore.instance.collection('listings').doc(data['listing_id']);
+                                  
+                                  if (isAlreadyLiked) {
+                                    // ถ้าเคยไลค์แล้ว ให้เอาออก
+                                    await docRef.update({
+                                      'liked_by': FieldValue.arrayRemove([currentUserId])
+                                    });
+                                  } else {
+                                    // ถ้ายังไม่ไลค์ ให้เพิ่มเข้าไป
+                                    await docRef.update({
+                                      'liked_by': FieldValue.arrayUnion([currentUserId])
+                                    });
+                                  }
+                                },
+                                child: CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: Colors.white,
+                                  child: Icon(
+                                    // เช็กเพื่อเปลี่ยนสีและรูปแบบไอคอน
+                                    (data['liked_by'] ?? []).contains(currentUserId) 
+                                        ? Icons.favorite 
+                                        : Icons.favorite_border, 
+                                    size: 16, 
+                                    color: (data['liked_by'] ?? []).contains(currentUserId) 
+                                        ? Colors.red 
+                                        : Colors.grey.shade400,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                      // 🟢 โซนรายละเอียดด้านล่าง
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 8),
-                            // 🟢 โซนที่ 1: ชื่อเจ้าของโพสต์ และ คะแนนรีวิว (แก้ไขปัญหาซ้อนกันแล้ว)
+                            
+                            // ข้อมูลเจ้าของ + ดาว
                             FutureBuilder<DocumentSnapshot>(
                               future: FirebaseFirestore.instance.collection('users').doc(data['owner_id']).get(),
                               builder: (context, userSnap) {
-                                String ownerName = 'กำลังโหลด...';
-                                double ratingScore = 0.0; // เก็บค่าคะแนนดาว
+                                String ownerName = 'ผู้ใช้งาน';
+                                double ratingScore = 0.0; 
+                                String profileImg = '';
 
                                 if (userSnap.hasData && userSnap.data!.exists) {
                                   final userData = userSnap.data!.data() as Map<String, dynamic>;
                                   ownerName = userData['name'] ?? 'ผู้ใช้งาน';
-                                  if (ownerName.trim().isEmpty) {
-                                    ownerName = 'ผู้ใช้งาน';
-                                  }
-                                  
-                                  // ดึงคะแนนรีวิวออกมา
+                                  if (ownerName.trim().isEmpty) ownerName = 'ผู้ใช้งาน';
                                   ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
+                                  profileImg = userData['profile_img_url'] ?? '';
                                 }
 
                                 return Row(
@@ -436,46 +535,43 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Expanded(
                                       child: Row(
                                         children: [
-                                          const Icon(Icons.person_outline, size: 16, color: Colors.grey),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              ownerName,
-                                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                          CircleAvatar(
+                                            radius: 8, 
+                                            backgroundColor: Colors.grey.shade300,
+                                            backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null,
+                                            child: profileImg.isEmpty ? const Icon(Icons.person, size: 10, color: Colors.white) : null,
                                           ),
+                                          const SizedBox(width: 6),
+                                          Expanded(child: Text(ownerName, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), overflow: TextOverflow.ellipsis)),
                                         ],
                                       ),
                                     ),
                                     Row(
                                       children: [
-                                        const Icon(Icons.star, size: 14, color: Colors.amber),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          // ถ้าคะแนนมากกว่า 0 ให้โชว์ทศนิยม 1 ตำแหน่ง ถ้าไม่มีคนรีวิวให้แสดง 'New'
-                                          ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', 
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                        ),
+                                        const Icon(Icons.star, size: 12, color: Colors.amber),
+                                        const SizedBox(width: 2),
+                                        Text(ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade800)),
                                       ],
                                     ),
                                   ],
                                 );
                               }
                             ),
-                            const SizedBox(height: 4),
-                            // 🟢 โซนที่ 2: ราคาประเมิน (Coins)
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Icon(Icons.monetization_on, size: 14, color: tealColor),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$coins Coins',
-                                  style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 12),
-                                ),
-                              ],
-                            ),
+                            const SizedBox(height: 12),
+                            // 🟢 ปุ่ม Swap แลกเปลี่ยนด้านล่างสุด
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(color: tealColor, borderRadius: BorderRadius.circular(8)),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(Icons.swap_horiz, color: Colors.white, size: 16),
+                                  SizedBox(width: 4),
+                                  Text('Swap', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                ],
+                              ),
+                            )
                           ],
                         ),
                       ),
