@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart'; 
-import 'edit_profile_screen.dart'; // 🟢 อย่าลืม Import ไฟล์แก้ไข
+import 'edit_profile_screen.dart'; 
 import 'wallet_history_screen.dart';
+import 'item_detail_screen.dart'; // สำหรับกดดูสินค้า
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,6 +17,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color tealColor = const Color(0xFF008080);
   final Color bgColor = const Color(0xFFF8FAFC);
   final User? currentUser = FirebaseAuth.instance.currentUser;
+
+  String _selectedTab = 'Active Items'; // สำหรับสลับแท็บ
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
@@ -33,10 +36,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text('โปรไฟล์ของฉัน', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+        title: const Text('โปรไฟล์ของฉัน', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
-          // 🟢 ปุ่มแก้ไขมุมขวาบน
+          // 🟢 รวบปุ่ม Edit และ Logout ไว้ในเมนูไข่ปลา
           StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
             builder: (context, snapshot) {
@@ -44,126 +47,461 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (snapshot.hasData && snapshot.data!.exists) {
                 userData = snapshot.data!.data() as Map<String, dynamic>;
               }
-              return IconButton(
-                icon: const Icon(Icons.edit, color: Colors.black87),
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => EditProfileScreen(currentData: userData)));
+              return PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.black87),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => EditProfileScreen(currentData: userData)));
+                  } else if (value == 'logout') {
+                    _logout();
+                  }
                 },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue, size: 20), SizedBox(width: 8), Text('แก้ไขโปรไฟล์')])),
+                  const PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout, color: Colors.red, size: 20), SizedBox(width: 8), Text('ออกจากระบบ', style: TextStyle(color: Colors.red))])),
+                ],
               );
             },
           ),
         ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        // 🟢 วิ่งไปดึงข้อมูลจาก Schema users
         stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: tealColor));
 
-          // ถ้ายังไม่มีเอกสาร (เพิ่งสมัครใหม่) ให้ใช้ค่าว่างไปก่อน
           Map<String, dynamic> userData = {};
           if (snapshot.hasData && snapshot.data!.exists) {
             userData = snapshot.data!.data() as Map<String, dynamic>;
           }
 
-          final String name = userData['name'] ?? 'ผู้ใช้ใหม่ (ยังไม่ตั้งชื่อ)';
-          final String email = currentUser!.email ?? '';
+          final String name = userData['name'] ?? 'ผู้ใช้ใหม่';
           final String bio = userData['bio'] ?? 'ยังไม่มีคำอธิบายตัวเอง';
-          final String tel = userData['tel'] ?? 'ยังไม่ระบุเบอร์โทร';
           final int coins = userData['coins_balance'] ?? 0;
+          final double rating = (userData['rating_scores'] ?? 0.0).toDouble();
           final String profileImg = userData['profile_img_url'] ?? '';
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                // รูปโปรไฟล์
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: tealColor.withOpacity(0.1),
-                  backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null,
-                  child: profileImg.isEmpty ? Icon(Icons.person, size: 50, color: tealColor) : null,
-                ),
-                const SizedBox(height: 16),
-                
-                // ชื่อ และ อีเมล
-                Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
-                const SizedBox(height: 4),
-                Text(email, style: const TextStyle(color: Colors.black54)),
-                const SizedBox(height: 24),
-
-                // กล่องโชว์ยอดเหรียญ Coins (อัปเดตให้กดได้)
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const WalletHistoryScreen()),
-                    );
-                  },
+          return NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                SliverToBoxAdapter(
                   child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [tealColor, tealColor.withOpacity(0.8)]),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [BoxShadow(color: tealColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-                    ),
-                    child: Row(
+                    color: Colors.white,
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
                       children: [
-                        const Icon(Icons.account_balance_wallet, color: Colors.white, size: 40),
-                        const SizedBox(width: 16),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 16),
+                        // 🟢 รูปโปรไฟล์แบบ Rounded Square 
+                        Stack(
+                          alignment: Alignment.bottomRight,
                           children: [
-                            const Text('กระเป๋าเหรียญ (Coins)', style: TextStyle(color: Colors.white70)),
-                            Text('$coins', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                            Container(
+                              width: 100, height: 100,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(24),
+                                color: Colors.grey.shade200,
+                                image: profileImg.isNotEmpty ? DecorationImage(image: NetworkImage(profileImg), fit: BoxFit.cover) : null,
+                                boxShadow: [BoxShadow(color: tealColor.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10))],
+                              ),
+                              child: profileImg.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.white) : null,
+                            ),
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                              child: Icon(Icons.verified, color: Colors.green.shade400, size: 16),
+                            )
                           ],
                         ),
-                        const Spacer(),
-                        const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 16), // เพิ่มไอคอนลูกศรให้รู้ว่ากดได้
+                        const SizedBox(height: 16),
+                        
+                        // 🟢 ชื่อและ Bio
+                        Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(bio, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.4)),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // 🟢 แถบสถิติ 3 ช่อง (Items, Trades, Coins)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // 1. Items
+                            StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance.collection('listings').where('owner_id', isEqualTo: currentUser!.uid).where('status', isEqualTo: 'active').snapshots(),
+                              builder: (context, itemSnap) {
+                                int itemCount = itemSnap.hasData ? itemSnap.data!.docs.length : 0;
+                                return _buildStatPill(Icons.inventory_2_outlined, '$itemCount Items');
+                              }
+                            ),
+                            const SizedBox(width: 8),
+                            // 2. Trades (ดึงข้อมูลจริงจากตาราง offers)
+                            FutureBuilder<int>(
+                              future: () async {
+                                try {
+                                  // นับฝั่งที่เราเป็นคนส่งเสนอ แล้วดีลสำเร็จ
+                                  final sentSnap = await FirebaseFirestore.instance.collection('offers')
+                                      .where('sender_id', isEqualTo: currentUser!.uid)
+                                      .where('status', isEqualTo: 'completed')
+                                      .get();
+                                  
+                                  // นับฝั่งที่เราเป็นเจ้าของของ แล้วมีคนมาขอแลกสำเร็จ
+                                  final receivedSnap = await FirebaseFirestore.instance.collection('offers')
+                                      .where('target_user_id', isEqualTo: currentUser!.uid)
+                                      .where('status', isEqualTo: 'completed')
+                                      .get();
+                                      
+                                  return sentSnap.docs.length + receivedSnap.docs.length;
+                                } catch (e) {
+                                  return 0;
+                                }
+                              }(),
+                              builder: (context, tradeSnap) {
+                                int tradeCount = tradeSnap.data ?? 0;
+                                return _buildStatPill(Icons.swap_horiz, '$tradeCount Trades');
+                              }
+                            ),
+                            const SizedBox(width: 8),
+                            // 3. Coins (กดเพื่อไปหน้า Wallet)
+                            GestureDetector(
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletHistoryScreen())),
+                              child: _buildStatPill(Icons.monetization_on_outlined, '$coins Coins', isHighlight: true),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // 🟢 กล่องคะแนนรีวิว
+                        _buildRatingCard(rating),
+                        const SizedBox(height: 20),
+
+                        // 🟢 แท็บเมนูสลับหน้า
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            children: [
+                              Expanded(child: _buildTabButton('Active Items')),
+                              const SizedBox(width: 12),
+                              Expanded(child: _buildTabButton('Peer Reviews')),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
+                )
+              ];
+            },
+            // 🟢 เนื้อหาด้านล่างเปลี่ยนตามแท็บที่เลือก
+            body: _selectedTab == 'Active Items' 
+                ? _buildActiveItemsGrid() 
+                : _buildReviewsList(), 
+          );
+        }
+      ),
+    );
+  }
 
-                // ข้อมูลส่วนตัวอื่นๆ (Bio, Tel)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('เกี่ยวกับฉัน', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text(bio, style: const TextStyle(color: Colors.black87, height: 1.5)),
-                      const Divider(height: 32),
-                      
-                      const Text('เบอร์โทรศัพท์', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text(tel, style: const TextStyle(color: Colors.black87)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 40),
+  // สร้างปุ่มแคปซูลสถิติ
+  Widget _buildStatPill(IconData icon, String text, {bool isHighlight = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isHighlight ? Colors.teal.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: tealColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: tealColor),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 12)),
+        ],
+      ),
+    );
+  }
 
-                // ปุ่มล็อกเอาต์
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _logout,
-                    icon: const Icon(Icons.logout, color: Colors.red),
-                    label: const Text('ออกจากระบบ', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+  // สร้างกล่องรีวิวคะแนน
+  Widget _buildRatingCard(double rating) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.star, color: Colors.orange, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(rating > 0 ? rating.toStringAsFixed(1) : 'New', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
+                    const SizedBox(width: 8),
+                    Row(
+                      children: List.generate(5, (index) => Icon(
+                        index < rating.floor() ? Icons.star : Icons.star_border, 
+                        color: Colors.orange, size: 14
+                      )),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text('Based on user reviews', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: Colors.green.shade100.withOpacity(0.5), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.green.shade200)),
+            child: Row(
+              children: [
+                Icon(Icons.help_outline, size: 12, color: Colors.green.shade700),
+                const SizedBox(width: 4),
+                Text('Verified', style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 11)),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // สร้างปุ่มแท็บ
+  Widget _buildTabButton(String title) {
+    bool isSelected = _selectedTab == title;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedTab = title),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? tealColor : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isSelected ? tealColor : Colors.grey.shade300),
+          boxShadow: isSelected ? [BoxShadow(color: tealColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(title == 'Active Items' ? Icons.inventory_2 : Icons.chat_bubble_outline, size: 16, color: isSelected ? Colors.white : Colors.grey.shade600),
+            const SizedBox(width: 8),
+            Text(title, style: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.bold, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 🟢 กริดโชว์ของ (ดึงจาก listings ของเรา)
+  Widget _buildActiveItemsGrid() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('listings').where('owner_id', isEqualTo: currentUser!.uid).where('status', isEqualTo: 'active').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return Center(child: Text('คุณยังไม่มีสิ่งของ', style: TextStyle(color: Colors.grey.shade500)));
+
+        final docs = snapshot.data!.docs;
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 0.75
+          ),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final data = docs[index].data() as Map<String, dynamic>;
+            data['listing_id'] = docs[index].id;
+            
+            return InkWell(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: data))),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white, borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100, borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                          image: (data['thumbnail_url'] != null && data['thumbnail_url'] != '') 
+                              ? DecorationImage(image: NetworkImage(data['thumbnail_url']), fit: BoxFit.cover) : null,
+                        ),
+                        child: (data['thumbnail_url'] == null || data['thumbnail_url'] == '') ? const Center(child: Icon(Icons.image, color: Colors.grey)) : null,
+                      ),
                     ),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(data['title'] ?? 'No Title', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.monetization_on, color: Colors.green.shade700, size: 10),
+                                const SizedBox(width: 4),
+                                Text('${data['estimated_coins'] ?? 0}', style: TextStyle(color: Colors.green.shade700, fontSize: 10, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            );
+          },
+        );
+      }
+    );
+  }
+
+  // 🟢 อัปเดต: ลิสต์รีวิว ผูกกับฐานข้อมูลจริง
+  Widget _buildReviewsList() {
+    return StreamBuilder<QuerySnapshot>(
+      // 🟢 1. เปลี่ยนชื่อฟิลด์เป็น target_id
+      stream: FirebaseFirestore.instance
+          .collection('reviews')
+          .where('target_id', isEqualTo: currentUser!.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator(color: tealColor));
+        }
+        
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.chat_bubble_outline, size: 40, color: Colors.grey.shade300),
+                const SizedBox(height: 12),
+                Text('ยังไม่มีรีวิว', style: TextStyle(color: Colors.grey.shade500)),
               ],
             ),
           );
         }
-      ),
+
+        final docs = snapshot.data!.docs;
+        docs.sort((a, b) {
+          final dataA = a.data() as Map<String, dynamic>;
+          final dataB = b.data() as Map<String, dynamic>;
+          // 🟢 2. เปลี่ยนชื่อฟิลด์เวลาเป็น created_at
+          Timestamp timeA = dataA['created_at'] ?? Timestamp.now();
+          Timestamp timeB = dataB['created_at'] ?? Timestamp.now();
+          return timeB.compareTo(timeA);
+        });
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final data = docs[index].data() as Map<String, dynamic>;
+            final String reviewerId = data['reviewer_id'] ?? '';
+            final double rating = (data['rating'] ?? 0).toDouble();
+            final String comment = data['comment'] ?? '';
+            // 🟢 3. เปลี่ยนชื่อฟิลด์เวลาเป็น created_at
+            final Timestamp? time = data['created_at'];
+            
+            String timeText = '';
+            if (time != null) {
+              final date = time.toDate();
+              timeText = '${date.day}/${date.month}/${date.year}';
+            }
+
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance.collection('users').doc(reviewerId).get(),
+              builder: (context, userSnap) {
+                String reviewerName = 'ผู้ใช้งาน';
+                String reviewerImg = '';
+
+                if (userSnap.hasData && userSnap.data!.exists) {
+                  final userData = userSnap.data!.data() as Map<String, dynamic>;
+                  reviewerName = userData['name'] ?? 'ผู้ใช้งาน';
+                  reviewerImg = userData['profile_img_url'] ?? '';
+                }
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.teal.shade50,
+                            backgroundImage: reviewerImg.isNotEmpty ? NetworkImage(reviewerImg) : null,
+                            child: reviewerImg.isEmpty ? Icon(Icons.person, color: tealColor) : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(child: Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                    Text(timeText, style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: List.generate(5, (starIndex) => Icon(
+                                    starIndex < rating.floor() ? Icons.star : Icons.star_border,
+                                    color: Colors.orange, size: 14,
+                                  )),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (comment.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          comment, 
+                          style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.4)
+                        ),
+                      ]
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }
