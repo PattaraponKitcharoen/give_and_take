@@ -3,217 +3,373 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
 
-class ChatListScreen extends StatelessWidget {
+class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
 
-  Future<String> _getChatRoomName(String? offerId) async {
-    if (offerId == null || offerId.isEmpty) return 'ห้องแชทส่วนตัว';
+  @override
+  State<ChatListScreen> createState() => _ChatListScreenState();
+}
+
+class _ChatListScreenState extends State<ChatListScreen> {
+  final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
+  final Color tealColor = const Color(0xFF008080);
+  
+  String _selectedFilter = 'All'; // ตัวกรองสถานะแชท
+
+  // 🟢 เพิ่มฟังก์ชันกรองข้อมูลแชทตามแท็บที่เลือก
+  Future<List<DocumentSnapshot>> _filterDocs(List<DocumentSnapshot> rawDocs) async {
+    if (_selectedFilter == 'All') return rawDocs;
+
+    // กรองแท็บ Unread
+    if (_selectedFilter == 'Unread') {
+      return rawDocs.where((doc) {
+        final room = doc.data() as Map<String, dynamic>;
+        final List readBy = room['read_by'] ?? [];
+        return !readBy.contains(currentUserId) && room['last_message_text'] != null;
+      }).toList();
+    }
+
+    // กรองแท็บ Active Trades และ Completed
+    List<DocumentSnapshot> filtered = [];
+    for (var doc in rawDocs) {
+      final room = doc.data() as Map<String, dynamic>;
+      final String? offerId = room['active_offer_id'];
+      
+      String status = '';
+      if (offerId != null && offerId.isNotEmpty) {
+        try {
+          final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
+          if (offerDoc.exists) status = offerDoc.data()?['status'] ?? '';
+        } catch (e) {
+          debugPrint('Error fetching offer status: $e');
+        }
+      }
+
+      if (_selectedFilter == 'Completed') {
+        if (status == 'completed') filtered.add(doc);
+      } else if (_selectedFilter == 'Active Trades') {
+        // Active คือสถานะที่ยังไม่จบ (ไม่ใช่ completed, rejected, cancelled)
+        if (status != 'completed' && status != 'rejected' && status != 'cancelled') {
+          filtered.add(doc);
+        }
+      }
+    }
+    return filtered;
+  }
+
+  Future<Map<String, dynamic>> _getRoomDetails(String? offerId) async {
+    Map<String, dynamic> result = {
+      'title': 'ห้องแชทส่วนตัว',
+      'status': '',
+      'thumbnail': ''
+    };
+
+    if (offerId == null || offerId.isEmpty) return result;
+
     try {
       final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
-      if (!offerDoc.exists) return 'ห้องแชท (ไม่พบข้อเสนอ)';
+      if (!offerDoc.exists) {
+        result['title'] = 'ห้องแชท (ไม่พบข้อเสนอ)';
+        return result;
+      }
 
+      result['status'] = offerDoc.data()?['status'] ?? '';
+      
       final targetItemId = offerDoc.data()?['target_listing_id'];
-      if (targetItemId == null) return 'ห้องแชทส่วนตัว';
-
-      final itemDoc = await FirebaseFirestore.instance.collection('listings').doc(targetItemId).get();
-      if (!itemDoc.exists) return 'สิ่งของถูกลบไปแล้ว';
-
-      return itemDoc.data()?['title'] ?? 'ไม่มีชื่อสิ่งของ';
+      if (targetItemId != null) {
+        final itemDoc = await FirebaseFirestore.instance.collection('listings').doc(targetItemId).get();
+        if (itemDoc.exists) {
+          result['title'] = itemDoc.data()?['title'] ?? 'ไม่มีชื่อสิ่งของ';
+          result['thumbnail'] = itemDoc.data()?['thumbnail_url'] ?? '';
+        } else {
+          result['title'] = 'สิ่งของถูกลบไปแล้ว';
+        }
+      }
     } catch (e) {
-      return 'ห้องแชท';
+      result['title'] = 'ห้องแชท';
+    }
+    return result;
+  }
+
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return '';
+    final date = timestamp.toDate();
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    
+    if (diff.inDays == 0 && date.day == now.day) {
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (diff.inDays == 1 || (diff.inDays == 0 && date.day != now.day)) {
+      return 'Yesterday';
+    } else {
+      return '${date.day}/${date.month}';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
-    final Color tealColor = const Color(0xFF008080);
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F8), 
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('ข้อความ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+        title: const Text('Messages', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
         centerTitle: true,
         backgroundColor: Colors.white,
-        elevation: 0.5,
+        elevation: 0,
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('chat_rooms')
-            .where('participants', arrayContains: currentUserId)
-            .orderBy('updated_at', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('เกิดข้อผิดพลาด:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)));
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSearchBar(),
+          _buildFilterTabs(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text('ACTIVE NEGOTIATIONS', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1.2)),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('chat_rooms')
+                  .where('participants', arrayContains: currentUserId)
+                  .orderBy('updated_at', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) return Center(child: Text('เกิดข้อผิดพลาด:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)));
+                if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: tealColor));
 
-          final docs = snapshot.data!.docs;
-          if (docs.isEmpty) return const Center(child: Text('ยังไม่มีรายการสนทนา', style: TextStyle(color: Colors.grey)));
+                final rawDocs = snapshot.data!.docs;
+                if (rawDocs.isEmpty) return const Center(child: Text('ยังไม่มีรายการสนทนา', style: TextStyle(color: Colors.grey)));
 
-          return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final room = docs[index].data() as Map<String, dynamic>;
-              final String roomId = docs[index].id;
-              final String? offerId = room['active_offer_id'];
-              
-              final String lastMessage = room['last_message_text'] ?? 'เริ่มการสนทนาได้เลย';
-              final List readBy = room['read_by'] ?? [];
-              final bool isUnread = !readBy.contains(currentUserId) && room['last_message_text'] != null;
+                // 🟢 ใช้ FutureBuilder มารอผลการกรองข้อมูลก่อนวาด ListView
+                return FutureBuilder<List<DocumentSnapshot>>(
+                  future: _filterDocs(rawDocs),
+                  builder: (context, filterSnap) {
+                    if (filterSnap.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-              return Dismissible(
-                key: Key(roomId),
-                direction: DismissDirection.endToStart, 
-                background: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  child: const Icon(Icons.delete, color: Colors.white),
-                ),
-                confirmDismiss: (direction) async {
-                  if (offerId != null && offerId.isNotEmpty) {
-                    try {
-                      final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
-                      
-                      // 🟢 1. ถ้าข้อเสนอหายไปแล้ว (สินค้าโดนลบ/โดนแลกไปแล้ว) อนุญาตให้ลบแชทได้เลย
-                      if (!offerDoc.exists) return true; 
+                    final filteredDocs = filterSnap.data ?? [];
+                    if (filteredDocs.isEmpty) return const Center(child: Text('ไม่พบแชทในหมวดหมู่นี้', style: TextStyle(color: Colors.grey)));
 
-                      final status = offerDoc.data()?['status'] ?? '';
-                      
-                      // 🟢 2. ถ้าดีลเสร็จสมบูรณ์แล้ว ต้องบังคับเช็กว่า "รีวิวหรือยัง?"
-                      if (status == 'completed') {
-                        bool hasReviewed = false;
+                    return ListView.builder(
+                      itemCount: filteredDocs.length,
+                      itemBuilder: (context, index) {
+                        final room = filteredDocs[index].data() as Map<String, dynamic>;
+                        final String roomId = filteredDocs[index].id;
+                        final String? offerId = room['active_offer_id'];
                         
-                        // ลองหาจาก transactions ก่อน (ถ้าโครงสร้างคุณเก็บผ่าน transaction_id)
-                        final txSnap = await FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
-                        if (txSnap.docs.isNotEmpty) {
-                          final txId = txSnap.docs.first.id;
-                          final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
-                              .where('transaction_id', isEqualTo: txId)
-                              .where('reviewer_id', isEqualTo: currentUserId)
-                              .get();
-                          if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
-                        } else {
-                          // เผื่อโครงสร้างคุณบันทึก offer_id ลงใน reviews โดยตรง
-                          final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
-                              .where('offer_id', isEqualTo: offerId)
-                              .where('reviewer_id', isEqualTo: currentUserId)
-                              .get();
-                          if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
-                        }
+                        final String lastMessage = room['last_message_text'] ?? 'เริ่มการสนทนาได้เลย';
+                        final List readBy = room['read_by'] ?? [];
+                        final bool isUnread = !readBy.contains(currentUserId) && room['last_message_text'] != null;
+                        final String timeString = _formatTimestamp(room['updated_at'] as Timestamp?);
 
-                        // ถ้ายืนยันว่ายังไม่ได้รีวิว
-                        if (!hasReviewed) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text('คุณยังไม่ได้รีวิวการแลกเปลี่ยนนี้ กรุณารีวิวก่อนลบห้องแชทครับ'),
-                                behavior: SnackBarBehavior.floating,
-                                margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
-                                backgroundColor: Colors.orange.shade800,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                            );
-                          }
-                          return false; // ห้ามลบ
-                        }
-                      } 
-                      // 🟢 3. ถ้าดีลยังไม่จบ และไม่ใช่สถานะยกเลิก/ปฏิเสธ
-                      else if (status != 'rejected' && status != 'cancelled') {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('การแลกเปลี่ยนยังไม่สมบูรณ์'),
-                              behavior: SnackBarBehavior.floating,
-                              margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
-                              backgroundColor: Colors.red,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          );
-                        }
-                        return false; // ห้ามลบ
-                      }
-                    } catch (e) {
-                      return false; 
-                    }
-                  }
-                  return true; // อนุญาตให้ลบได้ทุกกรณีที่ผ่านด่านมา
-                },
-                onDismissed: (direction) async {
-                  await FirebaseFirestore.instance.collection('chat_rooms').doc(roomId).update({
-                    'participants': FieldValue.arrayRemove([currentUserId])
-                  });
-                },
-                child: FutureBuilder<String>(
-                  future: _getChatRoomName(offerId),
-                  builder: (context, nameSnapshot) {
-                    String roomName = 'กำลังโหลด...';
-                    if (nameSnapshot.hasData) {
-                      roomName = nameSnapshot.data!;
-                    }
-
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5)],
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        leading: Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 25,
-                              backgroundColor: tealColor.withOpacity(0.1), 
-                              child: Icon(Icons.inventory_2_outlined, color: tealColor)
-                            ),
-                          ],
-                        ),
-                        title: Text(
-                          roomName, 
-                          style: TextStyle(fontWeight: isUnread ? FontWeight.bold : FontWeight.w600, fontSize: 16),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            lastMessage, 
-                            style: TextStyle(color: isUnread ? Colors.black87 : Colors.grey, fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal),
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                        return Dismissible(
+                          key: Key(roomId),
+                          direction: DismissDirection.endToStart, 
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            color: Colors.red.shade400,
+                            child: const Icon(Icons.delete, color: Colors.white),
                           ),
-                        ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (isUnread)
-                              Container(
-                                width: 10, height: 10,
-                                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                              )
-                            else
-                              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-                          ],
-                        ),
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(
-                            builder: (context) => ChatScreen(roomId: roomId),
-                          ));
-                        },
-                      ),
+                          confirmDismiss: (direction) async {
+                            if (offerId != null && offerId.isNotEmpty) {
+                              try {
+                                final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
+                                if (!offerDoc.exists) return true; 
+
+                                final status = offerDoc.data()?['status'] ?? '';
+                                if (status == 'completed') {
+                                  bool hasReviewed = false;
+                                  final txSnap = await FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
+                                  if (txSnap.docs.isNotEmpty) {
+                                    final txId = txSnap.docs.first.id;
+                                    final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
+                                        .where('transaction_id', isEqualTo: txId)
+                                        .where('reviewer_id', isEqualTo: currentUserId)
+                                        .get();
+                                    if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
+                                  } else {
+                                    final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
+                                        .where('offer_id', isEqualTo: offerId)
+                                        .where('reviewer_id', isEqualTo: currentUserId)
+                                        .get();
+                                    if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
+                                  }
+
+                                  if (!hasReviewed) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: const Text('คุณยังไม่ได้รีวิวการแลกเปลี่ยนนี้'), behavior: SnackBarBehavior.floating, margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16), backgroundColor: Colors.orange.shade800)
+                                      );
+                                    }
+                                    return false; 
+                                  }
+                                } else if (status != 'rejected' && status != 'cancelled') {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: const Text('การแลกเปลี่ยนยังไม่สมบูรณ์'), behavior: SnackBarBehavior.floating, margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16), backgroundColor: Colors.red)
+                                    );
+                                  }
+                                  return false; 
+                                }
+                              } catch (e) { return false; }
+                            }
+                            return true; 
+                          },
+                          onDismissed: (direction) async {
+                            await FirebaseFirestore.instance.collection('chat_rooms').doc(roomId).update({
+                              'participants': FieldValue.arrayRemove([currentUserId])
+                            });
+                          },
+                          child: FutureBuilder<Map<String, dynamic>>(
+                            future: _getRoomDetails(offerId),
+                            builder: (context, detailsSnap) {
+                              String title = 'กำลังโหลด...';
+                              String status = '';
+                              String thumbnail = '';
+
+                              if (detailsSnap.hasData) {
+                                title = detailsSnap.data!['title'];
+                                status = detailsSnap.data!['status'];
+                                thumbnail = detailsSnap.data!['thumbnail'];
+                              }
+
+                              return InkWell(
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(roomId: roomId))),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 50, height: 50,
+                                        decoration: BoxDecoration(
+                                          color: tealColor,
+                                          shape: BoxShape.circle,
+                                          image: thumbnail.isNotEmpty ? DecorationImage(image: NetworkImage(thumbnail), fit: BoxFit.cover) : null,
+                                        ),
+                                        child: thumbnail.isEmpty ? const Icon(Icons.inventory, color: Colors.white) : null,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(title, style: TextStyle(fontWeight: isUnread ? FontWeight.bold : FontWeight.w600, fontSize: 16, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                            const SizedBox(height: 4),
+                                            Text(lastMessage, style: TextStyle(color: isUnread ? Colors.black87 : Colors.grey.shade600, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                            const SizedBox(height: 8),
+                                            if (status.isNotEmpty) _buildStatusBadge(status),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text(timeString, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                                          const SizedBox(height: 8),
+                                          if (isUnread)
+                                            Container(width: 10, height: 10, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle))
+                                          else
+                                            Icon(Icons.chevron_right, size: 20, color: Colors.grey.shade400),
+                                        ],
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
+                          ),
+                        );
+                      },
                     );
                   }
-                ),
-              );
-            },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(24)),
+        child: TextField(
+          decoration: InputDecoration(
+            icon: Icon(Icons.search, color: Colors.grey.shade500),
+            hintText: 'Search conversations...',
+            hintStyle: TextStyle(color: Colors.grey.shade500),
+            border: InputBorder.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterTabs() {
+    final filters = ['All', 'Unread', 'Active Trades', 'Completed'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: filters.map((filter) {
+          bool isSelected = _selectedFilter == filter;
+          return GestureDetector(
+            onTap: () => setState(() => _selectedFilter = filter),
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected ? tealColor : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: isSelected ? tealColor : Colors.grey.shade300),
+              ),
+              child: Text(
+                filter, 
+                style: TextStyle(color: isSelected ? Colors.white : Colors.blueGrey, fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 13)
+              ),
+            ),
           );
-        },
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    Color bgColor;
+    Color textColor;
+    IconData icon;
+    String text;
+
+    if (status == 'completed') {
+      bgColor = Colors.green.shade50; textColor = Colors.green.shade700; icon = Icons.check_circle; text = 'Trade Accepted';
+    } else if (status == 'in_negotiation') {
+      bgColor = Colors.blueGrey.shade50; textColor = Colors.blueGrey.shade700; icon = Icons.access_time; text = 'Negotiating';
+    } else {
+      bgColor = Colors.teal.shade50; textColor = tealColor; icon = Icons.swap_horiz; text = 'Offer Pending';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: textColor),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }
