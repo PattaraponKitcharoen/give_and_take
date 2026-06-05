@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // 🟢 1. Import หลังบ้าน Firebase Auth
-import 'main_layout.dart'; // Import หน้าหลักไว้สำหรับเปลี่ยนหน้าหลังจากล็อกอินสำเร็จ
+import 'package:firebase_auth/firebase_auth.dart';
+import 'main_layout.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,31 +11,27 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final Color tealColor = const Color(0xFF008080);
-  final Color bgColor = const Color(0xFFF8FAFC);
+  // 🟢 ปรับเฉดสีให้ตรงกับธีมแอปและเรฟเฟอเรนซ์
+  final Color primaryTeal = const Color(0xFF008080);
+  final Color lightTeal = const Color(0xFF20C997);
   
   bool _obscureText = true;
-  bool _isLoading = false; // ตัวแปรสำหรับเช็คสถานะการโหลด
+  bool _isLoading = false;
 
-  // 🟢 2. สร้าง Controller สำหรับดึงข้อความจากช่องกรอกข้อมูล
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
   @override
   void dispose() {
-    // ล้างหน่วยความจำเมื่อไม่ได้ใช้หน้าจอนี้แล้ว
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  // 🟢 3. ฟังก์ชันสำหรับส่งข้อมูลไปเช็คกับฐานข้อมูล Firebase
   Future<void> _login() async {
-    // ดึงค่าข้อความและตัดช่องว่างหัวท้ายออก
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    // เช็คกรณีปล่อยว่าง
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน')),
@@ -43,19 +39,15 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true; // เปิดเอฟเฟกต์กำลังโหลดบนปุ่ม
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // ส่งคำสั่งเข้าสู่ระบบไปที่ Firebase
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
       if (mounted) {
-        // ล็อกอินสำเร็จ เปลี่ยนหน้าไปยัง MainLayout ทันที
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const MainLayout()),
@@ -63,8 +55,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } on FirebaseAuthException catch (e) {
       String message = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
-      
-      // คัดกรองโค้ด Error ยอดฮิตเพื่อแจ้งเตือนผู้ใช้ให้ตรงจุด
       if (e.code == 'user-not-found') {
         message = 'ไม่พบบัญชีผู้ใช้นี้ในระบบ';
       } else if (e.code == 'wrong-password') {
@@ -80,203 +70,267 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false; // ปิดเอฟเฟกต์กำลังโหลด
-        });
+        setState(() => _isLoading = false);
       }
     }
+  }
+
+  // 🟢 Widget ตัวช่วยสร้างป้ายความน่าเชื่อถือด้านล่าง
+  Widget _buildTrustBadge(IconData icon, String text, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade400, fontWeight: FontWeight.w500)),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgColor,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Icon(Icons.handshake_rounded, size: 72, color: tealColor),
-                const SizedBox(height: 16),
-                Text(
-                  'Give & Take',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    color: tealColor,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'เข้าสู่ระบบเพื่อเริ่มแลกเปลี่ยนสิ่งของ',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15, color: Colors.black54),
-                ),
-                const SizedBox(height: 50),
-
-                // ช่องกรอก Email (ผูก Controller เข้าไป)
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _emailController, // ผูกกับตัวแปรคอนโทรลเลอร์
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      hintText: 'อีเมล',
-                      hintStyle: const TextStyle(color: Colors.black38),
-                      prefixIcon: Icon(Icons.email_outlined, color: tealColor, size: 22),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 18),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // ช่องกรอก Password (ผูก Controller เข้าไป)
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _passwordController, // ผูกกับตัวแปรคอนโทรลเลอร์
-                    obscureText: _obscureText,
-                    decoration: InputDecoration(
-                      hintText: 'รหัสผ่าน',
-                      hintStyle: const TextStyle(color: Colors.black38),
-                      prefixIcon: Icon(Icons.lock_outline, color: tealColor, size: 22),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureText ? Icons.visibility_off : Icons.visibility,
-                          color: Colors.black38,
-                          size: 20,
+      body: Container(
+        // 🟢 เพิ่มพื้นหลังไล่สี (Gradient) ตามเรฟเฟอเรนซ์
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.center,
+            colors: [
+              primaryTeal.withOpacity(0.15), // สีเขียวอ่อนๆ ด้านบน
+              Colors.white,                  // กลืนลงมาเป็นสีขาว
+            ],
+            stops: const [0.0, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: CustomScrollView(
+            slivers: [
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 40),
+                      
+                      // 🟢 โลโก้แอปพร้อมเอฟเฟกต์กล่องเรืองแสง
+                      Align(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 85,
+                          height: 85,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [primaryTeal, lightTeal],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: primaryTeal.withOpacity(0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          // 🟢 ใส่รูปโลโก้ของคุณตรงนี้
+                          child: Image.asset(
+                            'assets/logo.png', 
+                            color: Colors.white, // หากต้องการให้โลโก้เป็นสีขาว (ลบออกได้ถ้าโลโก้มีสีอยู่แล้ว)
+                            fit: BoxFit.contain,
+                          ),
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _obscureText = !_obscureText;
-                          });
-                        },
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide.none,
+                      const SizedBox(height: 24),
+                      
+                      Text(
+                        'Give & Take',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: primaryTeal,
+                          letterSpacing: -0.5,
+                        ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 18),
-                    ),
-                  ),
-                ),
-                
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {},
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text('ลืมรหัสผ่าน?', style: TextStyle(color: tealColor, fontSize: 13, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-                const SizedBox(height: 24),
+                      const SizedBox(height: 8),
+                      Text(
+                        'แลกเปลี่ยนสิ่งที่คุณมี กับสิ่งที่คุณต้องการ',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 15, color: Colors.blueGrey.shade600, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 40),
 
-                // ปุ่มเข้าสู่ระบบ (ผูกฟังก์ชัน _login และแสดงผลปุ่มโหลดตามสถานะ)
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _login, // ถ้ากำลังโหลดอยู่จะกดปุ่มซ้ำไม่ได้
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: tealColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    elevation: 3,
-                    shadowColor: tealColor.withOpacity(0.5),
-                  ),
-                  child: _isLoading 
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Text('เข้าสู่ระบบ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                ),
-                
-                const SizedBox(height: 32),
-                Row(
-                  children: [
-                    Expanded(child: Divider(thickness: 1, color: Colors.grey.shade300)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('หรือ', style: TextStyle(color: Colors.black45, fontSize: 13)),
-                    ),
-                    Expanded(child: Divider(thickness: 1, color: Colors.grey.shade300)),
-                  ],
-                ),
-                const SizedBox(height: 32),
+                      // 🟢 ช่องกรอก Email (ดีไซน์ขอบมน มินิมอล)
+                      TextField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          hintText: 'Email address',
+                          hintStyle: TextStyle(color: Colors.blueGrey.shade300, fontWeight: FontWeight.w500),
+                          prefixIcon: Icon(Icons.email_outlined, color: Colors.blueGrey.shade400, size: 22),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: primaryTeal, width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 20),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
 
-                OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.g_mobiledata_rounded, size: 28, color: Colors.black87),
-                  label: const Text(
-                    'ดำเนินการต่อด้วย Google',
-                    style: TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.w600),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: BorderSide(color: Colors.grey.shade300),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
+                      // 🟢 ช่องกรอก Password
+                      TextField(
+                        controller: _passwordController,
+                        obscureText: _obscureText,
+                        decoration: InputDecoration(
+                          hintText: 'Password',
+                          hintStyle: TextStyle(color: Colors.blueGrey.shade300, fontWeight: FontWeight.w500),
+                          prefixIcon: Icon(Icons.lock_outline, color: Colors.blueGrey.shade400, size: 22),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: Colors.blueGrey.shade400,
+                              size: 20,
+                            ),
+                            onPressed: () => setState(() => _obscureText = !_obscureText),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: primaryTeal, width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 20),
+                        ),
+                      ),
+                      
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {},
+                          child: Text('Forgot password?', style: TextStyle(color: primaryTeal, fontSize: 13, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 🟢 ปุ่มเข้าสู่ระบบแบบมีเงาเรืองแสง (Glow Effect)
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: lightTeal.withOpacity(0.4),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _login,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: lightTeal, // สีเขียวสว่างตามเรฟเฟอเรนซ์
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0, 
+                          ),
+                          child: _isLoading 
+                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 32),
+                      Row(
+                        children: [
+                          Expanded(child: Divider(thickness: 1, color: Colors.grey.shade200)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text('or continue with', style: TextStyle(color: Colors.blueGrey.shade400, fontSize: 13)),
+                          ),
+                          Expanded(child: Divider(thickness: 1, color: Colors.grey.shade200)),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+
+                      // 🟢 ปุ่ม Google (ใช้ไอคอนที่มีสีสันเพื่อให้ดูเป็นทางการ)
+                      OutlinedButton(
+                        onPressed: () {},
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: BorderSide(color: Colors.grey.shade200),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // คุณสามารถเปลี่ยนเป็น Image.asset('assets/google_logo.png') ได้ถ้ามีไฟล์
+                            const Icon(Icons.g_mobiledata_rounded, size: 32, color: Colors.redAccent),
+                            const SizedBox(width: 8),
+                            Text('Continue with Google', style: TextStyle(fontSize: 15, color: Colors.blueGrey.shade800, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 32),
+                      
+                      // 🟢 แถบ Trust Badges (เพิ่มความน่าเชื่อถือ)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildTrustBadge(Icons.check_circle_outline, 'Secure', Colors.blueGrey.shade300),
+                          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('|', style: TextStyle(color: Colors.grey.shade300))),
+                          _buildTrustBadge(Icons.lock_outline, 'Encrypted', primaryTeal),
+                          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('|', style: TextStyle(color: Colors.grey.shade300))),
+                          _buildTrustBadge(Icons.verified_outlined, 'Verified', lightTeal),
+                        ],
+                      ),
+
+                      const Spacer(),
+                      const SizedBox(height: 24),
+                      
+                      // 🟢 ส่วนสมัครสมาชิกด้านล่างสุด
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text("Don't have an account? ", style: TextStyle(color: Colors.blueGrey.shade500, fontSize: 14)),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen()));
+                            },
+                            child: Text('Sign up', style: TextStyle(color: primaryTeal, fontWeight: FontWeight.bold, fontSize: 15)),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                
-                const SizedBox(height: 40),
-                
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('ยังไม่มีบัญชี?', style: TextStyle(color: Colors.black54, fontSize: 14)),
-                    const SizedBox(width: 4),
-                    GestureDetector(
-                      onTap: () {
-                      // นำทางไปยังหน้าสมัครสมาชิก
-                        Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                        );
-                      },
-                      child: Text('สมัครสมาชิก', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 14)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
