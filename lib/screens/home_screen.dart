@@ -67,8 +67,14 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         title: Row(
           children: [
-            Icon(Icons.autorenew_rounded, color: tealColor, size: 28), // ไอคอนแทนโลโก้ด้านหน้า
-            const SizedBox(width: 8),
+            // 🟢 นำรูปภาพมาใส่แทนไอคอน
+            Image.asset(
+              'assets/logo.png', // ชื่อไฟล์ต้องตรงกับที่คุณนำไปใส่ในโฟลเดอร์
+              width: 40, // ปรับขนาดความกว้างตามความเหมาะสมของโลโก้
+              height: 40, // ปรับขนาดความสูง
+              fit: BoxFit.contain, 
+            ),
+            const SizedBox(width: 4),
             Text(
               'Give & Take',
               style: TextStyle(color: tealColor, fontWeight: FontWeight.bold, fontSize: 22),
