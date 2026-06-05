@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart'; 
 import 'edit_profile_screen.dart'; 
 import 'wallet_history_screen.dart';
-import 'item_detail_screen.dart'; // สำหรับกดดูสินค้า
+import 'item_detail_screen.dart'; 
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,13 +18,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color bgColor = const Color(0xFFF8FAFC);
   final User? currentUser = FirebaseAuth.instance.currentUser;
 
-  String _selectedTab = 'Active Items'; // สำหรับสลับแท็บ
+  String _selectedTab = 'Active Items'; 
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
     if (mounted) {
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
     }
+  }
+
+  // 🟢 ฟังก์ชันดึงข้อมูลคนรีวิว + ข้อมูลของสิ่งของทั้ง 2 ฝั่ง
+  Future<Map<String, dynamic>> _fetchReviewDetails(String reviewerId, String transactionId) async {
+    String name = 'ผู้ใช้งาน';
+    String img = '';
+    Map<String, dynamic>? myItemData;
+    Map<String, dynamic>? theirItemData;
+
+    try {
+      final userFuture = FirebaseFirestore.instance.collection('users').doc(reviewerId).get();
+      
+      Future<void> fetchItems() async {
+        if (transactionId.isEmpty) return;
+        final txDoc = await FirebaseFirestore.instance.collection('transactions').doc(transactionId).get();
+        if (!txDoc.exists) return;
+        
+        final offerId = txDoc.data()?['offer_id'];
+        if (offerId == null || offerId.isEmpty) return;
+        
+        final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
+        if (!offerDoc.exists) return;
+        
+        final offerData = offerDoc.data() as Map<String, dynamic>;
+        String myItemId = '';
+        String theirItemId = '';
+
+        // เช็กว่าเราเป็นคนส่งข้อเสนอ หรือคนรับข้อเสนอ เพื่อหาว่าของชิ้นไหนเป็นของเรา
+        if (offerData['target_user_id'] == currentUser!.uid) {
+          myItemId = offerData['target_listing_id'] ?? '';
+          theirItemId = offerData['offered_listing_id'] ?? '';
+        } else {
+          myItemId = offerData['offered_listing_id'] ?? '';
+          theirItemId = offerData['target_listing_id'] ?? '';
+        }
+
+        // ดึงข้อมูลไอเทมของเรา
+        if (myItemId.isNotEmpty) {
+          final myDoc = await FirebaseFirestore.instance.collection('listings').doc(myItemId).get();
+          if (myDoc.exists) {
+            myItemData = myDoc.data() as Map<String, dynamic>;
+            myItemData!['listing_id'] = myDoc.id; // แนบ ID ไปด้วยเพื่อส่งให้ ItemDetailScreen
+          }
+        }
+
+        // ดึงข้อมูลไอเทมของคนรีวิว
+        if (theirItemId.isNotEmpty) {
+          final theirDoc = await FirebaseFirestore.instance.collection('listings').doc(theirItemId).get();
+          if (theirDoc.exists) {
+            theirItemData = theirDoc.data() as Map<String, dynamic>;
+            theirItemData!['listing_id'] = theirDoc.id;
+          }
+        }
+      }
+
+      // รันคำสั่งดึงข้อมูลพร้อมกันเพื่อความรวดเร็ว
+      await Future.wait([
+        userFuture.then((snap) {
+          if (snap.exists) {
+            final data = snap.data() as Map<String, dynamic>;
+            name = data['name'] ?? 'ผู้ใช้งาน';
+            img = data['profile_img_url'] ?? '';
+          }
+        }),
+        fetchItems()
+      ]);
+
+    } catch (e) {
+      debugPrint('Error fetching review details: $e');
+    }
+
+    return {
+      'name': name, 
+      'img': img, 
+      'myItem': myItemData, 
+      'theirItem': theirItemData
+    };
   }
 
   @override
@@ -39,7 +116,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('โปรไฟล์ของฉัน', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
         centerTitle: true,
         actions: [
-          // 🟢 รวบปุ่ม Edit และ Logout ไว้ในเมนูไข่ปลา
           StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
             builder: (context, snapshot) {
@@ -92,7 +168,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       children: [
                         const SizedBox(height: 16),
-                        // 🟢 รูปโปรไฟล์แบบ Rounded Square 
                         Stack(
                           alignment: Alignment.bottomRight,
                           children: [
@@ -115,7 +190,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 16),
                         
-                        // 🟢 ชื่อและ Bio
                         Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
                         const SizedBox(height: 4),
                         Padding(
@@ -124,11 +198,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 20),
 
-                        // 🟢 แถบสถิติ 3 ช่อง (Items, Trades, Coins)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // 1. Items
                             StreamBuilder<QuerySnapshot>(
                               stream: FirebaseFirestore.instance.collection('listings').where('owner_id', isEqualTo: currentUser!.uid).where('status', isEqualTo: 'active').snapshots(),
                               builder: (context, itemSnap) {
@@ -137,17 +209,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               }
                             ),
                             const SizedBox(width: 8),
-                            // 2. Trades (ดึงข้อมูลจริงจากตาราง offers)
                             FutureBuilder<int>(
                               future: () async {
                                 try {
-                                  // นับฝั่งที่เราเป็นคนส่งเสนอ แล้วดีลสำเร็จ
                                   final sentSnap = await FirebaseFirestore.instance.collection('offers')
                                       .where('sender_id', isEqualTo: currentUser!.uid)
                                       .where('status', isEqualTo: 'completed')
                                       .get();
                                   
-                                  // นับฝั่งที่เราเป็นเจ้าของของ แล้วมีคนมาขอแลกสำเร็จ
                                   final receivedSnap = await FirebaseFirestore.instance.collection('offers')
                                       .where('target_user_id', isEqualTo: currentUser!.uid)
                                       .where('status', isEqualTo: 'completed')
@@ -164,7 +233,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               }
                             ),
                             const SizedBox(width: 8),
-                            // 3. Coins (กดเพื่อไปหน้า Wallet)
                             GestureDetector(
                               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletHistoryScreen())),
                               child: _buildStatPill(Icons.monetization_on_outlined, '$coins Coins', isHighlight: true),
@@ -173,11 +241,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 20),
 
-                        // 🟢 กล่องคะแนนรีวิว
                         _buildRatingCard(rating),
                         const SizedBox(height: 20),
 
-                        // 🟢 แท็บเมนูสลับหน้า
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           child: Row(
@@ -194,7 +260,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 )
               ];
             },
-            // 🟢 เนื้อหาด้านล่างเปลี่ยนตามแท็บที่เลือก
             body: _selectedTab == 'Active Items' 
                 ? _buildActiveItemsGrid() 
                 : _buildReviewsList(), 
@@ -204,7 +269,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // สร้างปุ่มแคปซูลสถิติ
   Widget _buildStatPill(IconData icon, String text, {bool isHighlight = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -223,7 +287,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // สร้างกล่องรีวิวคะแนน
   Widget _buildRatingCard(double rating) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -278,7 +341,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // สร้างปุ่มแท็บ
   Widget _buildTabButton(String title) {
     bool isSelected = _selectedTab == title;
     return GestureDetector(
@@ -303,7 +365,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 🟢 กริดโชว์ของ (ดึงจาก listings ของเรา)
   Widget _buildActiveItemsGrid() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('listings').where('owner_id', isEqualTo: currentUser!.uid).where('status', isEqualTo: 'active').snapshots(),
@@ -375,10 +436,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 🟢 อัปเดต: ลิสต์รีวิว ผูกกับฐานข้อมูลจริง
+  // 🟢 Widget สำหรับวาดการ์ดไอเทมเล็กๆ ให้กดได้
+  Widget _buildItemSide(BuildContext context, Map<String, dynamic>? item, String label, {bool isRight = false}) {
+    final title = item?['title'] ?? 'ถูกลบไปแล้ว';
+    final img = item?['thumbnail_url'] ?? '';
+
+    Widget imageWidget = Container(
+      width: 36, height: 36,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.grey.shade200,
+        image: img.isNotEmpty ? DecorationImage(image: NetworkImage(img), fit: BoxFit.cover) : null,
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: img.isEmpty ? const Icon(Icons.image, size: 16, color: Colors.grey) : null,
+    );
+
+    Widget textWidget = Expanded(
+      child: Column(
+        crossAxisAlignment: isRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label, style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
+          Text(
+            title, 
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: item == null ? Colors.red : Colors.black87), 
+            maxLines: 1, 
+            overflow: TextOverflow.ellipsis
+          ),
+        ],
+      ),
+    );
+
+    return GestureDetector(
+      onTap: () {
+        if (item != null) {
+          // กดแล้วพาไปหน้า ItemDetailScreen ทันที
+          Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: item)));
+        }
+      },
+      child: Container(
+        color: Colors.transparent, // ให้พื้นที่โปร่งใสก็กดติด
+        child: Row(
+          mainAxisAlignment: isRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: isRight ? [textWidget, const SizedBox(width: 8), imageWidget] : [imageWidget, const SizedBox(width: 8), textWidget],
+        ),
+      ),
+    );
+  }
+
+  // 🟢 Widget วาดกล่องแลกเปลี่ยนไอเทม 2 ฝั่ง
+  Widget _buildTradedItemBox(BuildContext context, Map<String, dynamic>? myItem, Map<String, dynamic>? theirItem) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _buildItemSide(context, theirItem, 'ของคู่เทรด')),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade200)),
+            child: Icon(Icons.swap_horiz, size: 16, color: tealColor),
+          ),
+          Expanded(child: _buildItemSide(context, myItem, 'ของฉัน', isRight: true)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildReviewsList() {
     return StreamBuilder<QuerySnapshot>(
-      // 🟢 1. เปลี่ยนชื่อฟิลด์เป็น target_id
       stream: FirebaseFirestore.instance
           .collection('reviews')
           .where('target_id', isEqualTo: currentUser!.uid)
@@ -405,7 +537,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         docs.sort((a, b) {
           final dataA = a.data() as Map<String, dynamic>;
           final dataB = b.data() as Map<String, dynamic>;
-          // 🟢 2. เปลี่ยนชื่อฟิลด์เวลาเป็น created_at
           Timestamp timeA = dataA['created_at'] ?? Timestamp.now();
           Timestamp timeB = dataB['created_at'] ?? Timestamp.now();
           return timeB.compareTo(timeA);
@@ -417,9 +548,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
             final String reviewerId = data['reviewer_id'] ?? '';
+            final String transactionId = data['transaction_id'] ?? '';
             final double rating = (data['rating'] ?? 0).toDouble();
             final String comment = data['comment'] ?? '';
-            // 🟢 3. เปลี่ยนชื่อฟิลด์เวลาเป็น created_at
             final Timestamp? time = data['created_at'];
             
             String timeText = '';
@@ -428,16 +559,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               timeText = '${date.day}/${date.month}/${date.year}';
             }
 
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance.collection('users').doc(reviewerId).get(),
-              builder: (context, userSnap) {
-                String reviewerName = 'ผู้ใช้งาน';
+            return FutureBuilder<Map<String, dynamic>>(
+              future: _fetchReviewDetails(reviewerId, transactionId),
+              builder: (context, detailsSnap) {
+                String reviewerName = 'กำลังโหลด...';
                 String reviewerImg = '';
+                Map<String, dynamic>? myItem;
+                Map<String, dynamic>? theirItem;
 
-                if (userSnap.hasData && userSnap.data!.exists) {
-                  final userData = userSnap.data!.data() as Map<String, dynamic>;
-                  reviewerName = userData['name'] ?? 'ผู้ใช้งาน';
-                  reviewerImg = userData['profile_img_url'] ?? '';
+                if (detailsSnap.hasData) {
+                  reviewerName = detailsSnap.data!['name'] ?? 'ผู้ใช้งาน';
+                  reviewerImg = detailsSnap.data!['img'] ?? '';
+                  myItem = detailsSnap.data!['myItem']; // ของฝั่งเรา
+                  theirItem = detailsSnap.data!['theirItem']; // ของฝั่งคนรีวิว
                 }
 
                 return Container(
@@ -493,7 +627,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           comment, 
                           style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.4)
                         ),
-                      ]
+                      ],
+                      // 🟢 แสดงแถบรูปของที่แลกเปลี่ยน (เช็กว่าโหลดเสร็จแล้ว และมีข้อมูลอย่างน้อย 1 ฝั่ง)
+                      if (detailsSnap.connectionState == ConnectionState.waiting)
+                         const Padding(padding: EdgeInsets.only(top: 12), child: Center(child: CircularProgressIndicator())),
+                      if (detailsSnap.hasData && (myItem != null || theirItem != null))
+                         _buildTradedItemBox(context, myItem, theirItem),
                     ],
                   ),
                 );
