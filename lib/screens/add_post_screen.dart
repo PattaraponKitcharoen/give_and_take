@@ -10,20 +10,19 @@ class AddPostScreen extends StatefulWidget {
 }
 
 class _AddPostScreenState extends State<AddPostScreen> {
-  final Color tealColor = const Color(0xFF008080);
-  final Color bgColor = const Color(0xFFF8FAFC);
+  final Color primaryTeal = const Color(0xFF008080);
+  final Color bgColor = const Color(0xFFF8FAFC); 
 
-  // Controllers สำหรับรับข้อความ
   final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController(); // 🟢 เพิ่มช่องรายละเอียด
+  final _descriptionController = TextEditingController();
   final _coinsController = TextEditingController();
   
   String _selectedCategory = 'Home Goods';
   final List<String> _categories = ['Skills', 'Home Goods', 'Books', 'Gadgets', 'Fashion'];
 
-  // 🟢 เพิ่มตัวเลือกสภาพสินค้า (นำไปใส่ใน metadata)
-  String _selectedCondition = 'มือสอง สภาพดี';
-  final List<String> _conditions = ['ของใหม่', 'มือสอง สภาพเหมือนใหม่', 'มือสอง สภาพดี', 'มือสอง มีตำหนิ'];
+  // 🟢 เปลี่ยนตัวเลือกเป็นภาษาอังกฤษ
+  String _selectedCondition = 'Good';
+  final List<String> _conditions = ['Brand New', 'Like New', 'Good', 'Fair'];
 
   bool _isLoading = false;
 
@@ -42,10 +41,10 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
     if (title.isEmpty || description.isEmpty || coinsText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('กรุณากรอกข้อมูลให้ครบถ้วน'),
+        SnackBar(
+          content: const Text('กรุณากรอกข้อมูลให้ครบถ้วน'),
+          backgroundColor: Colors.red.shade600,
           behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
         ),
       );
       return;
@@ -54,10 +53,10 @@ class _AddPostScreenState extends State<AddPostScreen> {
     final int? coins = int.tryParse(coinsText);
     if (coins == null || coins <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('กรุณากรอกราคาประเมินเป็นตัวเลข'),
+        SnackBar(
+          content: const Text('กรุณากรอกราคาประเมินเป็นตัวเลข'),
+          backgroundColor: Colors.red.shade600,
           behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
         ),
       );
       return;
@@ -66,33 +65,30 @@ class _AddPostScreenState extends State<AddPostScreen> {
     final User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // 🟢 จัดโครงสร้างข้อมูลให้เป๊ะตาม Database Schema ที่ออกแบบไว้
       await FirebaseFirestore.instance.collection('listings').add({
         'owner_id': user.uid,
         'type': 'item',
         'title': title,
-        'description': description, // เพิ่ม description
+        'description': description,
         'category': _selectedCategory,
         'estimated_coins': coins,
-        'thumbnail_url': '', // เผื่อไว้ก่อนสำหรับระบบอัปโหลดรูป
-        'images': [], // เผื่อไว้สำหรับแกลลอรี่รูปภาพ
+        'thumbnail_url': '', 
+        'images': [], 
         'location': {
-          'province': 'สงขลา', // ค่าเริ่มต้นสำหรับ MVP
-          'lat': 7.0086, // พิกัดจำลอง หาดใหญ่
+          'province': 'สงขลา', 
+          'lat': 7.0086, 
           'lng': 100.4746,
         },
         'metadata': {
-          'condition': _selectedCondition, // เก็บสภาพของลงใน map metadata
+          'condition': _selectedCondition, 
         },
         'status': 'active',
         'created_at': FieldValue.serverTimestamp(),
-        'updated_at': FieldValue.serverTimestamp(), // เผื่อไว้สำหรับตอนแก้ไขโพสต์
-        'is_deleted': false, // ฟิลด์สำหรับทำ Soft Delete
+        'updated_at': FieldValue.serverTimestamp(), 
+        'is_deleted': false, 
       });
 
       if (mounted) {
@@ -101,63 +97,72 @@ class _AddPostScreenState extends State<AddPostScreen> {
         _coinsController.clear();
         setState(() {
           _selectedCategory = 'Home Goods';
-          _selectedCondition = 'มือสอง สภาพดี';
+          _selectedCondition = 'Good';
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('โพสต์สิ่งของสำเร็จ!'),
-            backgroundColor: Color(0xFF008080),
+          SnackBar(
+            content: const Text('โพสต์สิ่งของสำเร็จ!'),
+            backgroundColor: primaryTeal,
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
           ),
         );
+        
+        // กลับไปหน้าก่อนหน้าหลังจากโพสต์เสร็จ
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('เกิดข้อผิดพลาด ไม่สามารถโพสต์ได้'),
+          SnackBar(
+            content: const Text('เกิดข้อผิดพลาด ไม่สามารถโพสต์ได้'),
+            backgroundColor: Colors.red.shade600,
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 20, left: 16, right: 16),
           ),
         );
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
 
-  // ฟังก์ชันช่วยสร้างกล่อง Dropdown ให้โค้ดคลีนขึ้น
-  Widget _buildDropdown({required String title, required String value, required List<String> items, required Function(String?) onChanged}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              isExpanded: true,
-              icon: Icon(Icons.keyboard_arrow_down, color: tealColor),
-              items: items.map((String item) {
-                return DropdownMenuItem(value: item, child: Text(item));
-              }).toList(),
-              onChanged: onChanged,
-            ),
-          ),
+  InputDecoration _buildInputDecoration(String hintText, IconData icon) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+      prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: primaryTeal, width: 1.5),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 24),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 13,
+          color: Colors.blueGrey.shade800,
+          letterSpacing: 0.5,
         ),
-      ],
+      ),
     );
   }
 
@@ -166,108 +171,224 @@ class _AddPostScreenState extends State<AddPostScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: bgColor,
         elevation: 0,
-        title: Text('เพิ่มสิ่งของใหม่', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
         centerTitle: true,
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: CircleAvatar(
+            backgroundColor: Colors.white,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.black87),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+        ),
+        title: const Text('Add Item', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 18)),
+        // 🟢 เอาปุ่ม Draft ตรงนี้ออกไปแล้ว
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _buildSectionTitle('Photos'),
             Container(
-              height: 180,
+              padding: const EdgeInsets.symmetric(vertical: 24),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: primaryTeal.withOpacity(0.03),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
+                border: Border.all(color: primaryTeal.withOpacity(0.2), width: 1.5),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_a_photo_outlined, size: 48, color: Colors.grey.shade400),
-                  const SizedBox(height: 8),
-                  Text('เพิ่มรูปภาพ (ระบบอยู่ในช่วงพัฒนา)', style: TextStyle(color: Colors.grey.shade600)),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: primaryTeal.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(Icons.camera_alt, color: primaryTeal, size: 28),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Cover Photo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                  const SizedBox(height: 4),
+                  // 🟢 เปลี่ยนคำอธิบายเป็นภาษาไทย
+                  Text('แตะเพื่ออัปโหลดหรือถ่ายรูป', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () {},
+                        icon: Icon(Icons.photo_library_outlined, size: 16, color: Colors.grey.shade700),
+                        label: Text('Gallery', style: TextStyle(color: Colors.grey.shade700)),
+                      ),
+                      const SizedBox(width: 16),
+                      TextButton.icon(
+                        onPressed: () {},
+                        icon: Icon(Icons.camera_alt_outlined, size: 16, color: Colors.grey.shade700),
+                        label: Text('Camera', style: TextStyle(color: Colors.grey.shade700)),
+                      ),
+                    ],
+                  )
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.only(top: 8, left: 4),
+              child: Text('อัปโหลดได้สูงสุด 6 รูป · รูปแรกจะเป็นรูปหน้าปก', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            ),
 
-            const Text('ชื่อสิ่งของ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
+            _buildSectionTitle('Item Details'),
             TextField(
               controller: _titleController,
-              decoration: InputDecoration(
-                hintText: 'เช่น คีย์บอร์ดแมคคานิคอล',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              ),
+              decoration: _buildInputDecoration('ชื่อสิ่งของ', Icons.edit_outlined),
             ),
-            const SizedBox(height: 20),
-
-            // 🟢 เพิ่มช่องกรอกรายละเอียด
-            const Text('รายละเอียดเพิ่มเติม', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             TextField(
               controller: _descriptionController,
-              maxLines: 4, // ให้กล่องสูงขึ้น พิมพ์ได้หลายบรรทัด
-              decoration: InputDecoration(
-                hintText: 'บอกรายละเอียด, ตำหนิ, หรือเหตุผลที่อยากแลก...',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              maxLines: 4,
+              decoration: _buildInputDecoration('อธิบายสิ่งของของคุณ เช่น แบรนด์, อายุการใช้งาน, ตำหนิ...', Icons.description_outlined),
+            ),
+            const SizedBox(height: 12),
+            
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedCategory,
+                  isExpanded: true,
+                  icon: Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade500),
+                  items: _categories.map((String item) {
+                    return DropdownMenuItem(value: item, child: Row(
+                      children: [
+                        Icon(Icons.category_outlined, color: Colors.grey.shade400, size: 20),
+                        const SizedBox(width: 12),
+                        Text(item, style: const TextStyle(fontSize: 14)),
+                      ],
+                    ));
+                  }).toList(),
+                  onChanged: (newValue) => setState(() => _selectedCategory = newValue!),
+                ),
               ),
             ),
-            const SizedBox(height: 20),
 
-            // หมวดหมู่
-            _buildDropdown(
-              title: 'หมวดหมู่',
-              value: _selectedCategory,
-              items: _categories,
-              onChanged: (newValue) => setState(() => _selectedCategory = newValue!),
+            _buildSectionTitle('Condition'),
+            Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: _conditions.map((condition) {
+                bool isSelected = _selectedCondition == condition;
+                return ChoiceChip(
+                  label: Text(condition),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) setState(() => _selectedCondition = condition);
+                  },
+                  selectedColor: primaryTeal,
+                  backgroundColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey.shade700,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 13,
+                  ),
+                  showCheckmark: false,
+                  avatar: isSelected ? const Icon(Icons.check_circle, color: Colors.white, size: 16) : null,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(color: isSelected ? primaryTeal : Colors.grey.shade300),
+                  ),
+                );
+              }).toList(),
             ),
-            const SizedBox(height: 20),
-
-            // 🟢 สภาพสิ่งของ (เก็บเข้า metadata)
-            _buildDropdown(
-              title: 'สภาพสิ่งของ',
-              value: _selectedCondition,
-              items: _conditions,
-              onChanged: (newValue) => setState(() => _selectedCondition = newValue!),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: primaryTeal.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: primaryTeal),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'การระบุสภาพตามจริงจะช่วยให้การแลกเปลี่ยนเป็นไปอย่างราบรื่น',
+                      style: TextStyle(color: primaryTeal, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
 
-            const Text('ราคาประเมิน (Coins)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
+            _buildSectionTitle('Estimated Value'),
             TextField(
               controller: _coinsController,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                hintText: 'เช่น 500',
+                hintText: 'ราคาประเมิน (Coins)',
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                prefixIcon: Icon(Icons.monetization_on_outlined, color: Colors.grey.shade400, size: 20),
                 filled: true,
                 fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                prefixIcon: Icon(Icons.monetization_on_outlined, color: tealColor),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: primaryTeal, width: 1.5),
+                ),
               ),
             ),
-            const SizedBox(height: 40),
+            const Padding(
+              padding: EdgeInsets.only(top: 8, left: 4),
+              child: Text('ช่วยให้ผู้อื่นคำนวณการใช้เหรียญเพื่อชดเชยส่วนต่างได้', style: TextStyle(fontSize: 11, color: Colors.grey)),
+            ),
 
-            ElevatedButton(
-              onPressed: _isLoading ? null : _submitPost,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: tealColor,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: _isLoading
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('โพสต์สิ่งของ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-            ),
-            const SizedBox(height: 80), // ดันให้พ้น Bottom Navigation
+            const SizedBox(height: 40), // เผื่อพื้นที่ว่างด้านล่างให้กดง่ายๆ
           ],
+        ),
+      ),
+      // 🟢 ย้ายปุ่ม Post Item มายึดติดไว้ด้านล่างของจอแบบ Bottom Bar
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 16, top: 8),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: primaryTeal.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _submitPost,
+              icon: _isLoading ? const SizedBox.shrink() : const Icon(Icons.send, color: Colors.white, size: 18),
+              label: _isLoading
+                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Post Item', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryTeal,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+            ),
+          ),
         ),
       ),
     );
