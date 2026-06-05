@@ -87,33 +87,36 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        // 🟢 เพิ่มพื้นหลังไล่สี (Gradient) ตามเรฟเฟอเรนซ์
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.center,
-            colors: [
-              primaryTeal.withOpacity(0.15), // สีเขียวอ่อนๆ ด้านบน
-              Colors.white,                  // กลืนลงมาเป็นสีขาว
-            ],
+            colors: [primaryTeal.withOpacity(0.15), Colors.white],
             stops: const [0.0, 1.0],
           ),
         ),
         child: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
+          // 🟢 ใช้ LayoutBuilder เพื่อให้เช็คความสูงหน้าจอได้
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                // 🟢 ล็อคไม่ให้เลื่อน โดยใช้ NeverScrollableScrollPhysics
+                physics: const NeverScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
+                  ),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center, // จัดให้อยู่กลางหน้าจอ
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                       const SizedBox(height: 40),
                       
                       // 🟢 โลโก้แอปพร้อมเอฟเฟกต์กล่องเรืองแสง
@@ -295,23 +298,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                       ),
-                      
-                      const SizedBox(height: 32),
-                      
-                      // 🟢 แถบ Trust Badges (เพิ่มความน่าเชื่อถือ)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildTrustBadge(Icons.check_circle_outline, 'Secure', Colors.blueGrey.shade300),
-                          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('|', style: TextStyle(color: Colors.grey.shade300))),
-                          _buildTrustBadge(Icons.lock_outline, 'Encrypted', primaryTeal),
-                          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('|', style: TextStyle(color: Colors.grey.shade300))),
-                          _buildTrustBadge(Icons.verified_outlined, 'Verified', lightTeal),
-                        ],
-                      ),
 
-                      const Spacer(),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 32),
                       
                       // 🟢 ส่วนสมัครสมาชิกด้านล่างสุด
                       Row(
@@ -327,10 +315,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                     ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
