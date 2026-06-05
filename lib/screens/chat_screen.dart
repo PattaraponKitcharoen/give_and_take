@@ -65,14 +65,28 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _cancelOffer(String offerId) async {
     await FirebaseFirestore.instance.collection('offers').doc(offerId).delete();
     String userName = await _getCurrentUserName();
-    _sendSystemMessage('$userName ได้ยกเลิกข้อเสนอนี้แล้ว');
+    
+    // 🟢 เพิ่ม: อัปเดตห้องแชทให้ Noti รู้ว่านี่คือการ Cancel
+    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
+      'last_message_type': 'system_cancel',
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+
+    _sendSystemMessage('$userName ได้ยกเลิกข้อเสนอนี้แล้ว', type: 'system_cancel');
   }
 
   // ฟังก์ชัน: ปฏิเสธข้อเสนอ (ฝั่งคนรับ)
   Future<void> _rejectOffer(String offerId) async {
     await FirebaseFirestore.instance.collection('offers').doc(offerId).update({'status': 'rejected'});
     String userName = await _getCurrentUserName();
-    _sendSystemMessage('$userName ได้ปฏิเสธข้อเสนอนี้แล้ว');
+
+    // 🟢 เพิ่ม: อัปเดตห้องแชทให้ Noti รู้ว่านี่คือการ Reject
+    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
+      'last_message_type': 'system_reject',
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+
+    _sendSystemMessage('$userName ได้ปฏิเสธข้อเสนอนี้แล้ว', type: 'system_reject');
   }
 
   // ฟังก์ชัน: ยอมรับข้อเสนอ พร้อมระบบหักเงินเข้ากองกลาง (Escrow)
@@ -165,7 +179,13 @@ class _ChatScreenState extends State<ChatScreen> {
       });
 
       String userName = await _getCurrentUserName();
-      _sendSystemMessage('$userName ตกลงแลกเปลี่ยนแล้ว และระบบได้ทำการล็อกเหรียญไว้ในกองกลาง');
+
+      await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
+        'last_message_type': 'system_accept',
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      _sendSystemMessage('$userName ตกลงแลกเปลี่ยนแล้ว และระบบได้ทำการล็อกเหรียญไว้ในกองกลาง', type: 'system_accept');
 
       _showFloatingSnackBar('เริ่มการแลกเปลี่ยนเรียบร้อยแล้ว');
 
@@ -244,26 +264,27 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // 🟢 อัปเดต: ฟังก์ชันส่งข้อความแจ้งเตือนระบบ
-  Future<void> _sendSystemMessage(String text) async {
+  // 🟢 อัปเดต: ฟังก์ชันส่งข้อความแจ้งเตือนระบบ (เพิ่มการรับค่า type)
+  Future<void> _sendSystemMessage(String text, {String type = 'system_log'}) async {
     
-    // เรียกใช้ฟังก์ชันใหม่เพื่อกวาดหา UID ทั้ง 2 ฝ่าย
     List<String> roomUsers = await _getRoomParticipants();
 
+    // 1. บันทึกลง Subcollection (ข้อความในห้องแชท)
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
       'sender_id': 'system',
       'content': text,
       'timestamp': FieldValue.serverTimestamp(),
-      'type': 'system_log',
+      'type': type, // 🟢 ใช้ตัวแปร type ที่ส่งเข้ามา
     });
     
+    // 2. อัปเดตข้อมูลหน้าห้อง (เพื่อให้หน้า Noti ดึงไปใช้)
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_text': text,
-      'last_message_type': 'system_log',
+      'last_message_type': type, // 🟢 ใช้ตัวแปร type ที่ส่งเข้ามาอัปเดตเลย
       'last_sender_id': currentUserId, 
       'read_by': [currentUserId], 
       'updated_at': FieldValue.serverTimestamp(),
-      'participants': FieldValue.arrayUnion(roomUsers), // 🟢 ดึงทุกคนกลับเข้าห้องแชทอัตโนมัติ!
+      'participants': FieldValue.arrayUnion(roomUsers), 
     });
   }
 
@@ -369,7 +390,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
 
       String userName = await _getCurrentUserName();
-      _sendSystemMessage('$userName ได้ยกเลิกการแลกเปลี่ยน ระบบได้ทำการคืนสิ่งของและเหรียญเรียบร้อยแล้ว');
+      _sendSystemMessage('$userName ได้ยกเลิกการแลกเปลี่ยน ระบบได้ทำการคืนสิ่งของและเหรียญเรียบร้อยแล้ว', type: 'system_cancel'); 
 
       _showFloatingSnackBar('ยกเลิกการแลกเปลี่ยนสำเร็จ');
 
@@ -751,7 +772,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           bool isMe = msg['sender_id'] == currentUserId;
                           String type = msg['type'] ?? 'text';
 
-                          if (type == 'system_log') {
+                          if (msg['sender_id'] == 'system' && type != 'system_offer') {
                             return Center(
                               child: Container(
                                 margin: const EdgeInsets.symmetric(vertical: 12),

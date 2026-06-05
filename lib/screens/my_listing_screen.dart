@@ -322,10 +322,11 @@ class _MyListingScreenState extends State<MyListingScreen> {
                         'sender_id': 'system',
                         'content': 'สิ่งของในข้อเสนอนี้ถูกลบออกจากระบบแล้ว',
                         'timestamp': FieldValue.serverTimestamp(),
-                        'type': 'system_log',
+                        'type': 'system_cancel',
                       });
                       await roomDoc.reference.update({
                         'last_message_text': 'สิ่งของในข้อเสนอนี้ถูกลบออกจากระบบแล้ว',
+                        'last_message_type': 'system_cancel',
                         'updated_at': FieldValue.serverTimestamp(),
                       });
                     }

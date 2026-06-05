@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'item_detail_screen.dart';
 import 'item_search_delegate.dart';
 import 'notification_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -144,15 +145,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 profileImg = userData?['profile_img_url'] ?? '';
               }
 
-              return Container(
-                margin: const EdgeInsets.only(right: 16),
-                width: 40, // 🟢 บังคับความกว้างให้เท่ากับรูปโปรไฟล์ (radius 18 * 2 = 36)
-                height: 40, // 🟢 บังคับความสูง
-                child: CircleAvatar(
-                  radius: 18, 
-                  backgroundColor: Colors.grey.shade300, 
-                  backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null,
-                  child: profileImg.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 20) : null,
+              return GestureDetector(
+                onTap: () {
+                  // 🟢 ใส่คำสั่งนำทางไปหน้า ProfileScreen
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (context) => const ProfileScreen())
+                  );
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(right: 16),
+                  width: 40, // 🟢 บังคับความกว้างให้เท่ากับรูปโปรไฟล์ (radius 18 * 2 = 36)
+                  height: 40, // 🟢 บังคับความสูง
+                  child: CircleAvatar(
+                    radius: 18, 
+                    backgroundColor: Colors.grey.shade300, 
+                    backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null,
+                    child: profileImg.isEmpty ? const Icon(Icons.person, color: Colors.white, size: 20) : null,
+                  ),
                 ),
               );
             },
