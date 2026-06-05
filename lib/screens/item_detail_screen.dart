@@ -408,35 +408,20 @@ class ItemDetailScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12), // 🟢 6. ลดช่องว่างระหว่างข้อมูลด้านบนกับปุ่มด้านล่าง
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {}, 
-                      icon: const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.black87),
-                      label: const Text('Message', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                      ),
-                    ),
+              // 🟢 ปุ่ม View Profile แบบเต็มความกว้าง (ลบปุ่ม Message ออกเพื่อป้องกันการสแปมแชท)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: ownerId))),
+                  icon: Icon(Icons.person_outline, size: 16, color: tealColor),
+                  label: Text('View Profile', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: tealColor.withOpacity(0.05),
+                    side: BorderSide(color: tealColor.withOpacity(0.3)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: ownerId))),
-                      icon: Icon(Icons.person_outline, size: 16, color: tealColor),
-                      label: Text('View Profile', style: TextStyle(color: tealColor, fontWeight: FontWeight.w600)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: tealColor.withOpacity(0.05),
-                        side: BorderSide(color: tealColor.withOpacity(0.3)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                      ),
-                    ),
-                  )
-                ],
+                ),
               )
             ],
           ),

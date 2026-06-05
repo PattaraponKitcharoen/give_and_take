@@ -99,6 +99,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent, // 🟢 1. ปิดสีเคลือบสะท้อนของ Material 3
+        scrolledUnderElevation: 0, // 🟢 2. ปิดเงาและการยกระดับตอนเลื่อนจอ
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
         // 🟢 ไม่มี actions menu (ไม่สามารถแก้ไข หรือ logout ได้)
@@ -124,7 +126,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     padding: const EdgeInsets.only(bottom: 16),
                     child: Column(
                       children: [
-                        const SizedBox(height: 0),
+                        const SizedBox(height: 16),
                         Stack(
                           alignment: Alignment.bottomRight,
                           children: [
