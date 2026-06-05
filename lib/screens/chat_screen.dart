@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'item_detail_screen.dart';
-import 'user_profile_screen.dart';
+import 'user_profile_screen.dart'; // 🟢 ดึงหน้าโปรไฟล์มาใช้
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -15,7 +15,6 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
   final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
-
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
   @override
@@ -24,15 +23,18 @@ class _ChatScreenState extends State<ChatScreen> {
     _markAsRead(); 
   }
 
+  // 🟢 อัปเดต: เก็บเวลาที่อ่านล่าสุดไว้ด้วย (read_timestamps)
   Future<void> _markAsRead() async {
-    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
-      'read_by': FieldValue.arrayUnion([currentUserId])
-    });
+    await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).set({
+      'read_by': FieldValue.arrayUnion([currentUserId]),
+      'read_timestamps': {
+        currentUserId: FieldValue.serverTimestamp(),
+      }
+    }, SetOptions(merge: true));
   }
 
   void _showFloatingSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
-    
     _scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(message),
@@ -49,9 +51,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final doc = await FirebaseFirestore.instance.collection('users').doc(currentUserId).get();
       if (doc.exists && doc.data() != null) {
         final name = doc.data()!['name'];
-        if (name != null && name.toString().trim().isNotEmpty) {
-          return name.toString();
-        }
+        if (name != null && name.toString().trim().isNotEmpty) return name.toString();
       }
     } catch (e) {
       debugPrint('Error fetching user name: $e');
@@ -59,7 +59,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return 'ผู้ใช้งาน';
   }
 
-  // 🟢 ฟังก์ชันจัดรูปแบบเวลาสำหรับแชท
   String _formatTime(Timestamp? timestamp) {
     if (timestamp == null) return '';
     final date = timestamp.toDate();
@@ -71,7 +70,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$hour:$min $ampm';
   }
 
-  // 🟢 ฟังก์ชันดึงข้อมูลสินค้ามาโชว์บน AppBar
   Future<Map<String, dynamic>> _getTargetItemInfo(String? offerId) async {
     if (offerId == null || offerId.isEmpty) return {};
     try {
@@ -80,8 +78,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final data = offerDoc.data()!;
       String targetId = data['target_listing_id'] ?? '';
       String offeredId = data['offered_listing_id'] ?? '';
-      
-      // หาว่าของชิ้นไหนเป็นของอีกฝ่าย เพื่อเอามาโชว์เป็นชื่อห้องแชท
       String itemToShowId = data['target_owner_id'] == currentUserId ? offeredId : targetId;
       if (itemToShowId.isEmpty) itemToShowId = targetId; 
       
@@ -96,45 +92,37 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _cancelOffer(String offerId) async {
     await FirebaseFirestore.instance.collection('offers').doc(offerId).delete();
     String userName = await _getCurrentUserName();
-    
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_type': 'system_cancel',
       'updated_at': FieldValue.serverTimestamp(),
     });
-
     _sendSystemMessage('$userName ได้ยกเลิกข้อเสนอนี้แล้ว', type: 'system_cancel');
   }
 
   Future<void> _rejectOffer(String offerId) async {
     await FirebaseFirestore.instance.collection('offers').doc(offerId).update({'status': 'rejected'});
     String userName = await _getCurrentUserName();
-
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_type': 'system_reject',
       'updated_at': FieldValue.serverTimestamp(),
     });
-
     _sendSystemMessage('$userName ได้ปฏิเสธข้อเสนอนี้แล้ว', type: 'system_reject');
   }
 
   Future<void> _acceptOffer(String offerId) async {
     final FirebaseFirestore db = FirebaseFirestore.instance;
-
     try {
       await db.runTransaction((transaction) async {
         DocumentReference offerRef = db.collection('offers').doc(offerId);
         DocumentSnapshot offerSnap = await transaction.get(offerRef);
-        
         if (!offerSnap.exists) throw Exception("ไม่พบข้อมูลข้อเสนอ");
         Map<String, dynamic> offerData = offerSnap.data() as Map<String, dynamic>;
         
         int coinOffset = offerData['coin_offset'] ?? 0;
         String senderId = offerData['sender_id'];
         String targetUserId = offerData['target_user_id'];
-        
         String targetItemId = offerData['target_listing_id'];
         String offeredItemId = offerData['offered_listing_id'];
-        
         String? payerId;
         int amountToPay = 0;
         
@@ -149,14 +137,10 @@ class _ChatScreenState extends State<ChatScreen> {
         if (payerId != null && amountToPay > 0) {
           DocumentReference payerRef = db.collection('users').doc(payerId);
           DocumentSnapshot payerSnap = await transaction.get(payerRef);
-          
           if (!payerSnap.exists) throw Exception("ไม่พบข้อมูลผู้ใช้งาน");
           
           int currentBalance = (payerSnap.data() as Map<String, dynamic>)['coins_balance'] ?? 0;
-          
-          if (currentBalance < amountToPay) {
-            throw Exception("ยอดเงินของฝั่งที่ต้องจ่ายไม่เพียงพอ");
-          }
+          if (currentBalance < amountToPay) throw Exception("ยอดเงินของฝั่งที่ต้องจ่ายไม่เพียงพอ");
           
           int newBalance = currentBalance - amountToPay;
           transaction.update(payerRef, {'coins_balance': newBalance});
@@ -178,7 +162,6 @@ class _ChatScreenState extends State<ChatScreen> {
         String code1 = (100000 + (DateTime.now().millisecondsSinceEpoch % 400000)).toString();
         String code2 = (500000 + (DateTime.now().millisecondsSinceEpoch % 400000)).toString();
         DocumentReference mainTxRef = db.collection('transactions').doc();
-        
         transaction.set(mainTxRef, {
           'transaction_id': mainTxRef.id,
           'offer_id': offerId,
@@ -187,10 +170,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'escrow_coins': amountToPay,
           'status': 'in_progress',
           'cancel_reason': '',
-          'verification_codes': {
-            senderId: code1,
-            targetUserId: code2,
-          },
+          'verification_codes': {senderId: code1, targetUserId: code2},
           'confirmed_by_user_ids': [],
           'created_at': FieldValue.serverTimestamp(),
           'updated_at': FieldValue.serverTimestamp(),
@@ -202,14 +182,11 @@ class _ChatScreenState extends State<ChatScreen> {
       });
 
       String userName = await _getCurrentUserName();
-
       await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
         'last_message_type': 'system_accept',
         'updated_at': FieldValue.serverTimestamp(),
       });
-
       _sendSystemMessage('$userName ตกลงแลกเปลี่ยนแล้ว และระบบได้ทำการล็อกเหรียญไว้ในกองกลาง', type: 'system_accept');
-
       _showFloatingSnackBar('เริ่มการแลกเปลี่ยนเรียบร้อยแล้ว');
     } catch (e) {
       _showFloatingSnackBar('ไม่สามารถทำรายการได้: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
@@ -238,7 +215,6 @@ class _ChatScreenState extends State<ChatScreen> {
           final data = doc.data();
           final sender = data['sender_id'];
           if (sender != 'system' && sender != null) users.add(sender); 
-          
           if (data['type'] == 'system_offer' && data['offer_data'] != null) {
             final tOwner = data['offer_data']['target_item']?['owner_id'];
             final oOwner = data['offer_data']['offered_item']?['owner_id'];
@@ -250,7 +226,6 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       debugPrint("Error fetching participants: $e");
     }
-    
     users.removeWhere((id) => id.isEmpty); 
     return users.toList(); 
   }
@@ -269,6 +244,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'type': 'text',
     });
 
+    // 🟢 อัปเดตเวลาที่เราอ่านล่าสุดเข้าไปด้วย
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_text': text,
       'last_message_type': 'text',
@@ -276,6 +252,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'read_by': [currentUserId], 
       'updated_at': FieldValue.serverTimestamp(),
       'participants': FieldValue.arrayUnion(roomUsers), 
+      'read_timestamps.$currentUserId': FieldValue.serverTimestamp(),
     });
   }
 
@@ -296,14 +273,13 @@ class _ChatScreenState extends State<ChatScreen> {
       'read_by': [currentUserId], 
       'updated_at': FieldValue.serverTimestamp(),
       'participants': FieldValue.arrayUnion(roomUsers), 
+      'read_timestamps.$currentUserId': FieldValue.serverTimestamp(),
     });
   }
 
   Widget _buildItemThumbnail(BuildContext context, Map<String, dynamic> item) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: item)));
-      },
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: item))),
       child: Column(
         children: [
           Container(
@@ -329,7 +305,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _cancelAcceptedDeal(String offerId, String reason) async {
     final FirebaseFirestore db = FirebaseFirestore.instance;
-
     try {
       final txQuery = await db.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
       if (txQuery.docs.isEmpty) throw Exception("ไม่พบข้อมูลสัญญากองกลาง");
@@ -339,10 +314,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await db.runTransaction((transaction) async {
         DocumentSnapshot txSnap = await transaction.get(mainTxRef);
         Map<String, dynamic> txData = txSnap.data() as Map<String, dynamic>;
-
-        if (txData['status'] != 'in_progress') {
-          throw Exception("ไม่สามารถยกเลิกได้ เนื่องจากสถานะไม่ใช่กำลังดำเนินการ");
-        }
+        if (txData['status'] != 'in_progress') throw Exception("ไม่สามารถยกเลิกได้ เนื่องจากสถานะไม่ใช่กำลังดำเนินการ");
 
         DocumentReference offerRef = db.collection('offers').doc(offerId);
         DocumentSnapshot offerSnap = await transaction.get(offerRef);
@@ -360,7 +332,6 @@ class _ChatScreenState extends State<ChatScreen> {
           int coinOffset = offerData['coin_offset'] ?? 0;
           String senderId = offerData['sender_id'];
           String targetUserId = offerData['target_user_id'] ?? offerData['target_owner_id'];
-          
           payerId = coinOffset > 0 ? senderId : targetUserId;
           payerRef = db.collection('users').doc(payerId);
           payerSnap = await transaction.get(payerRef); 
@@ -430,10 +401,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   TextField(
                     controller: amountController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      hintText: 'จำนวนเหรียญ (Coins)',
-                      suffixText: 'Coins',
-                    ),
+                    decoration: const InputDecoration(hintText: 'จำนวนเหรียญ (Coins)', suffixText: 'Coins'),
                   ),
                 ],
               ),
@@ -461,7 +429,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _submitCounterOffer(String offerId, Map<String, dynamic> offerData, int amount, bool iWillPay) async {
     String senderId = offerData['sender_id'];
     int newCoinOffset = 0;
-    
     if (currentUserId == senderId) {
       newCoinOffset = iWillPay ? amount : -amount;
     } else {
@@ -508,7 +475,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _verifyHandoverCode(String offerId, String inputCode) async {
     final FirebaseFirestore db = FirebaseFirestore.instance;
-
     try {
       final txQuery = await db.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
       if (txQuery.docs.isEmpty) throw Exception("ไม่พบข้อมูลสัญญากองกลาง");
@@ -518,7 +484,6 @@ class _ChatScreenState extends State<ChatScreen> {
       await db.runTransaction((transaction) async {
         DocumentSnapshot txSnap = await transaction.get(mainTxRef);
         Map<String, dynamic> txData = txSnap.data() as Map<String, dynamic>;
-
         if (txData['status'] != 'in_progress') throw Exception("สถานะดีลไม่ถูกต้อง");
 
         Map<String, dynamic> codes = txData['verification_codes'] ?? {};
@@ -543,11 +508,9 @@ class _ChatScreenState extends State<ChatScreen> {
           int coinOffset = offerData['coin_offset'] ?? 0;
           String senderId = offerData['sender_id'];
           String targetUserId = offerData['target_user_id'] ?? offerData['target_owner_id'];
-          
           receiverId = coinOffset > 0 ? targetUserId : senderId;
           receiverRef = db.collection('users').doc(receiverId);
           DocumentSnapshot receiverSnap = await transaction.get(receiverRef);
-          
           int currentBalance = (receiverSnap.data() as Map<String, dynamic>)['coins_balance'] ?? 0;
           newBalance = currentBalance + escrowCoins;
         }
@@ -583,19 +546,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted) {
         _showFloatingSnackBar('ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์');
-        
         final txQuery = await db.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
         if (txQuery.docs.isNotEmpty) {
            var txData = txQuery.docs.first.data() as Map<String, dynamic>;
            String partnerId = (txData['members'] as List).firstWhere((id) => id != currentUserId);
            String transactionId = txQuery.docs.first.id;
-           
-           Future.delayed(const Duration(milliseconds: 500), () {
-             _showRatingDialog(context, partnerId, transactionId);
-           });
+           Future.delayed(const Duration(milliseconds: 500), () => _showRatingDialog(context, partnerId, transactionId));
         }
       }
-
     } catch (e) {
       _showFloatingSnackBar('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
     }
@@ -623,16 +581,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(5, (index) {
                         return IconButton(
-                          icon: Icon(
-                            index < selectedRating ? Icons.star : Icons.star_border,
-                            color: Colors.amber,
-                            size: 36,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              selectedRating = index + 1;
-                            });
-                          },
+                          icon: Icon(index < selectedRating ? Icons.star : Icons.star_border, color: Colors.amber, size: 36),
+                          onPressed: () => setState(() => selectedRating = index + 1),
                         );
                       }),
                     ),
@@ -652,10 +602,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context), 
-                  child: const Text('ข้าม', style: TextStyle(color: Colors.grey))
-                ),
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('ข้าม', style: TextStyle(color: Colors.grey))),
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
@@ -674,13 +621,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _submitReview(String targetUserId, String transactionId, int rating, String comment) async {
     final FirebaseFirestore db = FirebaseFirestore.instance;
-
     try {
-      final existingReview = await db.collection('reviews')
-          .where('transaction_id', isEqualTo: transactionId)
-          .where('reviewer_id', isEqualTo: currentUserId)
-          .get();
-
+      final existingReview = await db.collection('reviews').where('transaction_id', isEqualTo: transactionId).where('reviewer_id', isEqualTo: currentUserId).get();
       if (existingReview.docs.isNotEmpty) {
         _showFloatingSnackBar('คุณได้ให้คะแนนดีลนี้ไปแล้ว', isError: true);
         return;
@@ -689,14 +631,11 @@ class _ChatScreenState extends State<ChatScreen> {
       await db.runTransaction((transaction) async {
         DocumentReference userRef = db.collection('users').doc(targetUserId);
         DocumentSnapshot userSnap = await transaction.get(userRef);
-
         if (!userSnap.exists) throw Exception('ไม่พบข้อมูลผู้ใช้ของคู่กรณี');
 
         Map<String, dynamic> userData = userSnap.data() as Map<String, dynamic>;
-        
         num currentSum = userData['total_rating_sum'] ?? 0;
         num currentCount = userData['rating_count'] ?? 0;
-
         num newSum = currentSum + rating;
         num newCount = currentCount + 1;
         double newScore = newSum / newCount;
@@ -718,7 +657,6 @@ class _ChatScreenState extends State<ChatScreen> {
           'created_at': FieldValue.serverTimestamp(),
         });
       });
-
       _showFloatingSnackBar('ส่งคะแนนรีวิวเรียบร้อย ขอบคุณครับ!');
     } catch (e) {
       _showFloatingSnackBar('เกิดข้อผิดพลาด: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
@@ -729,7 +667,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return ScaffoldMessenger(
       key: _scaffoldMessengerKey,
-      // 🟢 1. ย้าย StreamBuilder ขยับขึ้นมาครอบ Scaffold ไว้ เพื่อให้ AppBar ใช้ข้อมูลได้
       child: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).snapshots(),
         builder: (context, roomSnap) {
@@ -738,20 +675,30 @@ class _ChatScreenState extends State<ChatScreen> {
           final roomData = roomSnap.data!.data() as Map<String, dynamic>? ?? {};
           final String? activeOfferId = roomData['active_offer_id'];
 
+          // 🟢 คำนวณหาเวลาที่อีกฝ่ายเปิดอ่านล่าสุด
+          Map<String, dynamic> readTimestamps = roomData['read_timestamps'] ?? {};
+          Timestamp? otherUserReadTime;
+          readTimestamps.forEach((key, value) {
+            if (key != currentUserId && value is Timestamp) {
+              otherUserReadTime = value;
+            }
+          });
+          
+          final List readBy = roomData['read_by'] ?? [];
+          final bool isReadByOther = readBy.any((id) => id != currentUserId);
+
           return Scaffold(
             backgroundColor: Colors.white,
             appBar: AppBar(
               backgroundColor: Colors.white,
               elevation: 0.5,
               iconTheme: const IconThemeData(color: Colors.black87),
-              // 🟢 2. ดึงรูปและชื่อสินค้าเป้าหมายมาแสดงที่ App Bar
               title: FutureBuilder<Map<String, dynamic>>(
                 future: _getTargetItemInfo(activeOfferId),
                 builder: (context, itemSnap) {
                   if (!itemSnap.hasData || itemSnap.data!.isEmpty) {
                     return const Text('เจรจาแลกเปลี่ยน', style: TextStyle(color: Colors.black87, fontSize: 16));
                   }
-                  
                   final itemData = itemSnap.data!;
                   final title = itemData['title'] ?? 'สิ่งของแลกเปลี่ยน';
                   final img = itemData['thumbnail_url'] ?? '';
@@ -795,7 +742,33 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                       
                       final messages = snapshot.data!.docs;
+
+                      // 🟢 คำนวณหา index ของข้อความล่าสุดที่เราส่งและอีกฝ่ายอ่านแล้ว
+                      int latestReadIndex = -1;
+                      if (otherUserReadTime != null) {
+                        for (int i = 0; i < messages.length; i++) {
+                          var msgData = messages[i].data() as Map<String, dynamic>;
+                          if (msgData['sender_id'] == currentUserId) {
+                            Timestamp? msgTime = msgData['timestamp'] as Timestamp?;
+                            if (msgTime != null && msgTime.compareTo(otherUserReadTime!) <= 0) {
+                              latestReadIndex = i;
+                              break;
+                            }
+                          }
+                        }
+                      } else if (isReadByOther) {
+                        for (int i = 0; i < messages.length; i++) {
+                          var msgData = messages[i].data() as Map<String, dynamic>;
+                          if (msgData['sender_id'] == currentUserId) {
+                            latestReadIndex = i;
+                            break;
+                          }
+                        }
+                      }
+
                       return ListView.builder(
+                        // 🟢 ปรับลดระยะห่างระหว่างบับเบิลกับช่องพิมพ์ให้แคบลง
+                        padding: const EdgeInsets.only(top: 16, bottom: 8), 
                         reverse: true, 
                         itemCount: messages.length,
                         itemBuilder: (context, index) {
@@ -804,22 +777,17 @@ class _ChatScreenState extends State<ChatScreen> {
                           String type = msg['type'] ?? 'text';
                           String timeStr = _formatTime(msg['timestamp']);
 
-                          // ข้อความระบบ
                           if (msg['sender_id'] == 'system' && type != 'system_offer') {
                             return Center(
                               child: Container(
                                 margin: const EdgeInsets.symmetric(vertical: 12),
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
+                                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
                                 child: Text(msg['content'], style: const TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.bold)),
                               ),
                             );
                           }
 
-                          // กล่อง Offer ขนาดใหญ่ตรงกลาง
                           if (type == 'system_offer') {
                             final offerDataFromMsg = msg['offer_data'] ?? {};
                             final targetItem = offerDataFromMsg['target_item'] ?? {};
@@ -842,7 +810,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
                                 String lastOfferBy = offerData['last_offer_by'] ?? offerData['sender_id'] ?? '';
                                 bool isMyTurn = (lastOfferBy != currentUserId); 
-
                                 int currentOffset = offerData['coin_offset'] ?? 0;
                                 String offsetText = 'แลกของต่อของ (ไม่มีการเพิ่มเหรียญ)';
                                 Color offsetColor = Colors.black54;
@@ -879,7 +846,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                         ],
                                       ),
                                       const Divider(height: 16),
-                                      
                                       Container(
                                         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                                         decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
@@ -893,7 +859,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                         ),
                                       ),
                                       const Divider(height: 16),
-                                      
                                       if (offerStatus == 'pending') ...[
                                         if (!isMyTurn)
                                           Column(
@@ -915,40 +880,20 @@ class _ChatScreenState extends State<ChatScreen> {
                                             children: [
                                               Row(
                                                 children: [
-                                                  Expanded(
-                                                    child: OutlinedButton(
-                                                      onPressed: () => _rejectOffer(activeOfferId!),
-                                                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                                                      child: const Text('ปฏิเสธ'),
-                                                    ),
-                                                  ),
+                                                  Expanded(child: OutlinedButton(onPressed: () => _rejectOffer(activeOfferId!), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)), child: const Text('ปฏิเสธ'))),
                                                   const SizedBox(width: 10),
-                                                  Expanded(
-                                                    child: ElevatedButton(
-                                                      onPressed: () => _showCounterOfferDialog(context, activeOfferId!, offerData),
-                                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                                                      child: const Text('ต่อรอง', style: TextStyle(color: Colors.white)),
-                                                    ),
-                                                  ),
+                                                  Expanded(child: ElevatedButton(onPressed: () => _showCounterOfferDialog(context, activeOfferId!, offerData), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange), child: const Text('ต่อรอง', style: TextStyle(color: Colors.white)))),
                                                 ],
                                               ),
                                               const SizedBox(height: 8),
                                               SizedBox(
                                                 width: double.infinity,
-                                                child: ElevatedButton(
-                                                  onPressed: () => _acceptOffer(activeOfferId!),
-                                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
-                                                  child: const Text('ยอมรับข้อเสนอ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                                ),
+                                                child: ElevatedButton(onPressed: () => _acceptOffer(activeOfferId!), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)), child: const Text('ยอมรับข้อเสนอ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
                                               ),
                                             ],
                                           )
                                       ] else if (offerStatus == 'accepted' || offerStatus == 'in_progress') ...[
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                          decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
-                                          child: const Text('ตกลงแลกเปลี่ยนแล้ว', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                                        ),
+                                        Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)), child: const Text('ตกลงแลกเปลี่ยนแล้ว', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
                                         StreamBuilder<QuerySnapshot>(
                                           stream: FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: activeOfferId).limit(1).snapshots(),
                                           builder: (context, txSnap) {
@@ -956,56 +901,20 @@ class _ChatScreenState extends State<ChatScreen> {
                                             var txData = txSnap.data!.docs.first.data() as Map<String, dynamic>;
                                             var codes = txData['verification_codes'] ?? {};
                                             String myCode = codes[currentUserId] ?? '------';
-                                            
                                             return Column(
                                               children: [
                                                 const SizedBox(height: 16),
-                                                Container(
-                                                  width: double.infinity,
-                                                  padding: const EdgeInsets.all(12),
-                                                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                                                  child: Column(
-                                                    children: [
-                                                      const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)),
-                                                      Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: Color(0xFF008080))),
-                                                    ],
-                                                  ),
-                                                ),
+                                                Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)), child: Column(children: [const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)), Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: Color(0xFF008080)))])),
                                                 const SizedBox(height: 12),
-                                                SizedBox(
-                                                  width: double.infinity,
-                                                  child: ElevatedButton(
-                                                    onPressed: () => _showOtpDialog(context, activeOfferId!),
-                                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
-                                                    child: const Text('กรอกรหัสของอีกฝ่าย', style: TextStyle(color: Colors.white)),
-                                                  ),
-                                                ),
+                                                SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => _showOtpDialog(context, activeOfferId!), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)), child: const Text('กรอกรหัสของอีกฝ่าย', style: TextStyle(color: Colors.white)))),
                                                 const SizedBox(height: 8),
-                                                SizedBox(
-                                                  width: double.infinity,
-                                                  child: OutlinedButton(
-                                                    onPressed: () => _cancelAcceptedDeal(activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว'),
-                                                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                                                    child: const Text('ยกเลิกดีลนี้'),
-                                                  ),
-                                                ),
+                                                SizedBox(width: double.infinity, child: OutlinedButton(onPressed: () => _cancelAcceptedDeal(activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)), child: const Text('ยกเลิกดีลนี้'))),
                                               ],
                                             );
                                           }
                                         )
                                       ] else ...[
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: offerStatus == 'completed' ? Colors.green.shade50 : (offerStatus == 'rejected' ? Colors.orange.shade50 : Colors.red.shade50),
-                                          borderRadius: BorderRadius.circular(8)
-                                        ),
-                                        child: Text(
-                                          offerStatus == 'completed' ? 'แลกเปลี่ยนสำเร็จสมบูรณ์' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ถูกยกเลิกแล้ว'),
-                                          style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'completed' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)),
-                                        ),
-                                      ),
-                                      
+                                      Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: offerStatus == 'completed' ? Colors.green.shade50 : (offerStatus == 'rejected' ? Colors.orange.shade50 : Colors.red.shade50), borderRadius: BorderRadius.circular(8)), child: Text(offerStatus == 'completed' ? 'แลกเปลี่ยนสำเร็จสมบูรณ์' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ถูกยกเลิกแล้ว'), style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'completed' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)))),
                                       if (offerStatus == 'completed') ...[
                                         FutureBuilder<QuerySnapshot>(
                                           future: FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: activeOfferId).limit(1).get(),
@@ -1014,45 +923,14 @@ class _ChatScreenState extends State<ChatScreen> {
                                             String transactionId = txSnap.data!.docs.first.id;
                                             var txData = txSnap.data!.docs.first.data() as Map<String, dynamic>;
                                             String partnerId = (txData['members'] as List).firstWhere((id) => id != currentUserId);
-
                                             return StreamBuilder<QuerySnapshot>(
-                                              stream: FirebaseFirestore.instance.collection('reviews')
-                                                .where('transaction_id', isEqualTo: transactionId)
-                                                .where('reviewer_id', isEqualTo: currentUserId)
-                                                .snapshots(),
+                                              stream: FirebaseFirestore.instance.collection('reviews').where('transaction_id', isEqualTo: transactionId).where('reviewer_id', isEqualTo: currentUserId).snapshots(),
                                               builder: (context, reviewSnap) {
-                                                bool hasReviewed = false;
-                                                if (reviewSnap.hasData && reviewSnap.data!.docs.isNotEmpty) {
-                                                  hasReviewed = true; 
-                                                }
-
+                                                bool hasReviewed = reviewSnap.hasData && reviewSnap.data!.docs.isNotEmpty;
                                                 return Column(
                                                   children: [
                                                     const SizedBox(height: 12),
-                                                    SizedBox(
-                                                      width: double.infinity,
-                                                      child: ElevatedButton.icon(
-                                                        onPressed: hasReviewed ? null : () {
-                                                          _showRatingDialog(context, partnerId, transactionId);
-                                                        },
-                                                        icon: Icon(
-                                                          hasReviewed ? Icons.check_circle : Icons.star, 
-                                                          color: hasReviewed ? Colors.white70 : Colors.white, 
-                                                          size: 20
-                                                        ),
-                                                        label: Text(
-                                                          hasReviewed ? 'คุณให้คะแนนเรียบร้อยแล้ว' : 'ให้คะแนนคู่กรณี', 
-                                                          style: TextStyle(
-                                                            color: hasReviewed ? Colors.white70 : Colors.white, 
-                                                            fontWeight: FontWeight.bold
-                                                          )
-                                                        ),
-                                                        style: ElevatedButton.styleFrom(
-                                                          backgroundColor: Colors.amber.shade700,
-                                                          disabledBackgroundColor: Colors.grey.shade400, 
-                                                        ),
-                                                      ),
-                                                    ),
+                                                    SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: hasReviewed ? null : () => _showRatingDialog(context, partnerId, transactionId), icon: Icon(hasReviewed ? Icons.check_circle : Icons.star, color: hasReviewed ? Colors.white70 : Colors.white, size: 20), label: Text(hasReviewed ? 'คุณให้คะแนนเรียบร้อยแล้ว' : 'ให้คะแนนคู่กรณี', style: TextStyle(color: hasReviewed ? Colors.white70 : Colors.white, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade700, disabledBackgroundColor: Colors.grey.shade400))),
                                                   ],
                                                 );
                                               },
@@ -1068,44 +946,45 @@ class _ChatScreenState extends State<ChatScreen> {
                           );
                         }
 
-                        // 🟢 3. บับเบิลข้อความปกติ (คำนวณการจัดกลุ่มและเรียกใช้ Widget ใหม่)
-                          bool showTimeByDefault = true;
-                          bool showAvatar = true;
+                        // 🟢 ลอจิกซ่อนเวลาถ้ารัวแชท
+                        bool showTimeByDefault = true;
+                        bool showAvatar = true;
 
-                          // เทียบเวลากับข้อความที่ใหม่กว่า (index - 1)
-                          if (index > 0) { 
-                            final newerMsg = messages[index - 1].data() as Map<String, dynamic>;
-                            final newerTime = newerMsg['timestamp'] as Timestamp?;
-                            final currentTime = msg['timestamp'] as Timestamp?;
-                            
-                            // ถ้าคนส่งเดียวกัน และเวลาห่างกันไม่เกิน 3 นาที
-                            if (newerMsg['sender_id'] == msg['sender_id'] && newerTime != null && currentTime != null) {
-                              final diff = newerTime.toDate().difference(currentTime.toDate()).inMinutes.abs();
-                              if (diff < 3) {
-                                showTimeByDefault = false; 
-                                showAvatar = false; // ซ่อนรูปและเวลาให้ไปรวมกับข้อความใหม่สุด
-                              }
+                        if (index > 0) { 
+                          final newerMsg = messages[index - 1].data() as Map<String, dynamic>;
+                          final newerTime = newerMsg['timestamp'] as Timestamp?;
+                          final currentTime = msg['timestamp'] as Timestamp?;
+                          if (newerMsg['sender_id'] == msg['sender_id'] && newerTime != null && currentTime != null) {
+                            if (newerTime.toDate().difference(currentTime.toDate()).inMinutes.abs() < 3) {
+                              showTimeByDefault = false; 
+                              showAvatar = false; 
                             }
                           }
+                        }
 
-                          return ChatBubbleWidget(
-                            msg: msg,
-                            isMe: isMe,
-                            timeStr: timeStr,
-                            showTimeByDefault: showTimeByDefault,
-                            showAvatar: showAvatar,
-                          );
+                        // 🟢 ส่งค่าไปให้ Widget วาด "อ่านแล้ว"
+                        final bool isLatestRead = (index == latestReadIndex);
+
+                        return ChatBubbleWidget(
+                          msg: msg,
+                          isMe: isMe,
+                          timeStr: timeStr,
+                          showTimeByDefault: showTimeByDefault,
+                          showAvatar: showAvatar,
+                          isLatestRead: isLatestRead,
+                        );
                       },
                     );
                   },
                 ),
                 ),
                 
-                // ช่องพิมพ์ข้อความ (สไตล์คลีนๆ ไม่มีไอคอนแนบไฟล์)
+                // 🟢 ลดช่องว่างด้านล่าง
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), // ปรับลงเหลือ 8
                   decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
                   child: SafeArea(
+                    bottom: true, top: false,
                     child: Row(
                       children: [
                         Expanded(
@@ -1134,16 +1013,18 @@ class _ChatScreenState extends State<ChatScreen> {
           );
           }
         ),
-    );
+      );
   }
 }
 
+// 🟢 Widget แยกสำหรับวาดบับเบิลแชทโดยเฉพาะ (อยู่ล่างสุดของไฟล์)
 class ChatBubbleWidget extends StatefulWidget {
   final Map<String, dynamic> msg;
   final bool isMe;
   final String timeStr;
   final bool showTimeByDefault;
   final bool showAvatar;
+  final bool isLatestRead;
 
   const ChatBubbleWidget({
     super.key,
@@ -1152,6 +1033,7 @@ class ChatBubbleWidget extends StatefulWidget {
     required this.timeStr,
     required this.showTimeByDefault,
     required this.showAvatar,
+    required this.isLatestRead,
   });
 
   @override
@@ -1159,7 +1041,7 @@ class ChatBubbleWidget extends StatefulWidget {
 }
 
 class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
-  bool _isTapped = false; // สถานะสำหรับกดดูเวลา
+  bool _isTapped = false; 
 
   @override
   Widget build(BuildContext context) {
@@ -1167,7 +1049,7 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
     
     if (widget.isMe) {
       return Padding(
-        padding: EdgeInsets.only(right: 16, left: 60, top: 2, bottom: widget.showTimeByDefault ? 12 : 2),
+        padding: EdgeInsets.only(right: 16, left: 60, top: 2, bottom: widget.showTimeByDefault ? 8 : 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -1181,7 +1063,6 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
                     topLeft: const Radius.circular(16),
                     topRight: const Radius.circular(16),
                     bottomLeft: const Radius.circular(16),
-                    // 🟢 หางบับเบิลจะแหลมแค่ข้อความสุดท้ายของกลุ่ม
                     bottomRight: Radius.circular(widget.showTimeByDefault ? 4 : 16),
                   ),
                 ),
@@ -1189,34 +1070,45 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
               ),
             ),
             AnimatedSize(
-              duration: const Duration(milliseconds: 200), // 🟢 แอนิเมชันเวลาเด้งขึ้นมา
-              child: showTime 
-                ? Padding(padding: const EdgeInsets.only(top: 4), child: Text(widget.timeStr, style: TextStyle(color: Colors.grey.shade500, fontSize: 10)))
-                : const SizedBox.shrink(),
+              duration: const Duration(milliseconds: 200),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (showTime) 
+                    Padding(padding: const EdgeInsets.only(top: 4), child: Text(widget.timeStr, style: TextStyle(color: Colors.grey.shade500, fontSize: 10))),
+                  
+                  if (widget.isLatestRead)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2), 
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.done_all, size: 14, color: Colors.grey.shade500),
+                          const SizedBox(width: 2),
+                          Text('อ่านแล้ว', style: TextStyle(color: Colors.grey.shade500, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      )
+                    ),
+                ],
+              ),
             )
           ]
         )
       );
     } else {
       return Padding(
-        padding: EdgeInsets.only(left: 16, right: 60, top: 2, bottom: widget.showTimeByDefault ? 12 : 2),
+        padding: EdgeInsets.only(left: 16, right: 60, top: 2, bottom: widget.showTimeByDefault ? 8 : 2),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // 🟢 โชว์รูปโปรไฟล์เฉพาะข้อความสุดท้ายของกลุ่ม
             if (widget.showAvatar) ...[
               GestureDetector(
-                onTap: () {
-                  // 🟢 กดแล้วพาไปหน้า User Profile
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: widget.msg['sender_id'])));
-                },
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: widget.msg['sender_id']))),
                 child: FutureBuilder<DocumentSnapshot>(
                   future: FirebaseFirestore.instance.collection('users').doc(widget.msg['sender_id']).get(),
                   builder: (context, userSnap) {
                     String profileImg = '';
-                    if (userSnap.hasData && userSnap.data!.exists) {
-                      profileImg = (userSnap.data!.data() as Map<String, dynamic>)['profile_img_url'] ?? '';
-                    }
+                    if (userSnap.hasData && userSnap.data!.exists) profileImg = (userSnap.data!.data() as Map<String, dynamic>)['profile_img_url'] ?? '';
                     return CircleAvatar(
                       radius: 14,
                       backgroundColor: Colors.grey.shade300,
@@ -1227,7 +1119,7 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
                 ),
               ),
             ] else ...[
-              const SizedBox(width: 28), // 🟢 เว้นพื้นที่ว่างไว้ให้ข้อความตรงกัน (ขนาด 14*2)
+              const SizedBox(width: 28), 
             ],
             const SizedBox(width: 8),
             Flexible(
