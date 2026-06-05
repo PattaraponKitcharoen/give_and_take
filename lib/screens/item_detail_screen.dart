@@ -11,7 +11,8 @@ class ItemDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color tealColor = const Color(0xFF004D40); 
+    // 🟢 แก้รหัสสีให้ตรงกับหน้า Add Item (0xFF008080)
+    final Color tealColor = const Color(0xFF008080); 
     final Color lightTeal = const Color(0xFFE0F2F1);
     final Color coinGreen = const Color(0xFF00C853);
     
@@ -43,7 +44,6 @@ class ItemDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🟢 1. ลดความสูงรูปลงเหลือ 320
             Stack(
               children: [
                 Container(
@@ -98,9 +98,8 @@ class ItemDetailScreen extends StatelessWidget {
               ],
             ),
             
-            // 🟢 2. บีบช่องว่าง Padding และ SizedBox ต่างๆ ให้แคบลง
             Padding(
-              padding: const EdgeInsets.all(16.0), // ลดขอบซ้ายขวาลงนิดนึง
+              padding: const EdgeInsets.all(16.0), 
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -112,7 +111,7 @@ class ItemDetailScreen extends StatelessWidget {
                       _buildBadge(Icons.star, condition, lightTeal, tealColor),
                     ],
                   ),
-                  const SizedBox(height: 12), // บีบขึ้น
+                  const SizedBox(height: 12), 
 
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -148,14 +147,14 @@ class ItemDetailScreen extends StatelessWidget {
                       )
                     ],
                   ),
-                  const SizedBox(height: 16), // บีบขึ้น
+                  const SizedBox(height: 16), 
 
                   _buildOwnerProfileCard(context, ownerId, tealColor),
 
-                  const SizedBox(height: 16), // บีบขึ้น
+                  const SizedBox(height: 16), 
 
-                  const Text('About This Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
-                  const SizedBox(height: 8), // บีบขึ้น
+                  Text('About This Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: tealColor)),
+                  const SizedBox(height: 8), 
                   Text(
                     description,
                     style: TextStyle(fontSize: 15, color: Colors.grey.shade800, height: 1.6),
@@ -168,7 +167,6 @@ class ItemDetailScreen extends StatelessWidget {
         ),
       ),
       
-      // 🟢 3. จัดระเบียบ Bottom Navigation Bar ใหม่ ลดความอ้วน
       bottomNavigationBar: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('listings').doc(listingId).snapshots(),
         builder: (context, snapshot) {
@@ -194,13 +192,13 @@ class ItemDetailScreen extends StatelessWidget {
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
             ),
             child: SafeArea(
-              top: false, // ป้องกัน SafeArea ด้านบน
+              top: false, 
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), // บีบช่องว่างด้านบน-ล่างให้บางลง
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), 
                 child: Row(
                   children: [
                     Container(
-                      height: 52, width: 52, // ลดขนาดปุ่มลงนิดนึง
+                      height: 52, width: 52, 
                       decoration: BoxDecoration(
                         color: isLiked ? Colors.red.shade50 : lightTeal,
                         borderRadius: BorderRadius.circular(16),
@@ -230,38 +228,52 @@ class ItemDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: ElevatedButton(
-                        onPressed: isActive ? () {
-                          if (currentUserId.isEmpty) return;
-
-                          if (currentUserId == ownerId) {
-                            showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                title: const Text('แจ้งเตือน', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
-                                content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
-                                actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('เข้าใจแล้ว', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)))],
-                              ),
-                            );
-                            return;
-                          }
-                          _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
-                        } : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: tealColor,
-                          disabledBackgroundColor: Colors.grey.shade400,
-                          minimumSize: const Size(double.infinity, 52), // ลดความสูงปุ่มลงนิดนึง
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      // 🟢 เพิ่ม Container ห่อปุ่มไว้เพื่อทำเอฟเฟกต์เงาแบบเดียวกับหน้า Add Item
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: isActive ? [
+                            BoxShadow(
+                              color: tealColor.withOpacity(0.3),
+                              blurRadius: 15,
+                              offset: const Offset(0, 5),
+                            ),
+                          ] : [],
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.swap_horiz, color: isActive ? Colors.white : Colors.white70),
-                            const SizedBox(width: 8),
-                            Text(isActive ? 'Make an Offer' : 'Item Unavailable', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? Colors.white : Colors.white70)),
-                          ],
-                        )
+                        child: ElevatedButton(
+                          onPressed: isActive ? () {
+                            if (currentUserId.isEmpty) return;
+
+                            if (currentUserId == ownerId) {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  title: Text('แจ้งเตือน', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+                                  content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
+                                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('เข้าใจแล้ว', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)))],
+                                ),
+                              );
+                              return;
+                            }
+                            _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
+                          } : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: tealColor,
+                            disabledBackgroundColor: Colors.grey.shade400,
+                            minimumSize: const Size(double.infinity, 52), 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0, // ปิด elevation เดิมทิ้ง เพราะเราใช้ BoxShadow จาก Container แทนแล้ว
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.swap_horiz, color: isActive ? Colors.white : Colors.white70),
+                              const SizedBox(width: 8),
+                              Text(isActive ? 'Make an Offer' : 'Item Unavailable', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? Colors.white : Colors.white70)),
+                            ],
+                          )
+                        ),
                       ),
                     ),
                   ],
@@ -298,7 +310,7 @@ class ItemDetailScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20), border: Border.all(color: textColor.withOpacity(0.3))),
       child: Row(
-        mainAxisSize: MainAxisSize.min, // ให้ป้ายขยายตามตัวอักษร
+        mainAxisSize: MainAxisSize.min, 
         children: [
           Icon(icon, size: 12, color: textColor),
           const SizedBox(width: 4),
@@ -333,7 +345,7 @@ class ItemDetailScreen extends StatelessWidget {
         }
 
         return Container(
-          padding: const EdgeInsets.all(12), // 🟢 1. บีบ Padding ของการ์ดให้แคบลง
+          padding: const EdgeInsets.all(12), 
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -345,7 +357,6 @@ class ItemDetailScreen extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 🟢 2. รูปโปรไฟล์ (เอาไอคอน Verified สีเขียวออกแล้ว)
                   Container(
                     width: 46, height: 46, 
                     decoration: BoxDecoration(
@@ -359,9 +370,8 @@ class ItemDetailScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 🟢 3. ชื่อผู้ใช้ (เอาป้าย Verified ออกแล้ว)
                         Text(ownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 2), // 🟢 4. ลดช่องว่างบรรทัดให้ชิดขึ้น
+                        const SizedBox(height: 2), 
                         
                         FutureBuilder<int>(
                           future: () async {
@@ -384,7 +394,6 @@ class ItemDetailScreen extends StatelessWidget {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // 🟢 5. ลดขนาดฟอนต์เป็น 11 และใส่ height ให้บรรทัดชิดกัน
                                 Text('$tradeCount successful trades', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, height: 1.2)),
                                 Text('Member since $memberSinceYear', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, height: 1.2)),
                               ],
@@ -407,8 +416,7 @@ class ItemDetailScreen extends StatelessWidget {
                   )
                 ],
               ),
-              const SizedBox(height: 12), // 🟢 6. ลดช่องว่างระหว่างข้อมูลด้านบนกับปุ่มด้านล่าง
-              // 🟢 ปุ่ม View Profile แบบเต็มความกว้าง (ลบปุ่ม Message ออกเพื่อป้องกันการสแปมแชท)
+              const SizedBox(height: 12), 
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -434,90 +442,246 @@ class ItemDetailScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true, 
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-      ),
+      backgroundColor: Colors.transparent, // ให้พื้นหลัง Modal โปร่งใสเพื่อวาดขอบมนเอง
       builder: (context) {
         
         String? selectedMyItemId;
         Map<String, dynamic>? selectedMyItemData; 
         int coinOffset = 0;
-        bool requestCoins = false;
+        bool requestCoins = false; // false = Give extra, true = Ask for more
 
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
+            return Container(
+              margin: const EdgeInsets.only(top: 100), // เว้นระยะด้านบนให้เห็นฉากหลังชัดๆ
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black26, blurRadius: 20, spreadRadius: 5)
+                ]
+              ),
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-                left: 20, right: 20, top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                left: 24, right: 24, top: 16,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch, // ขยายของให้เต็มความกว้าง
                 children: [
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(height: 20),
-                  const Text('จัดแจงข้อเสนอแลกเปลี่ยน', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  // 🟢 ตัวจับลาก (Drag Handle)
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
                   const SizedBox(height: 24),
+                  
+                  // 🟢 ส่วนหัว
+                  const Center(
+                    child: Column(
+                      children: [
+                        Text('Make an Offer', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF004D40))),
+                        SizedBox(height: 4),
+                        Text('Propose a fair trade for this item', style: TextStyle(fontSize: 14, color: Colors.black54)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
 
-                  const Text('เลือกสิ่งของของคุณที่จะนำไปแลก', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
+                  // 🟢 SECTION: เลือกสิ่งของของคุณ (Your Offer Item)
+                  const Text('YOUR OFFER ITEM', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
+                  const SizedBox(height: 12),
+                  
                   FutureBuilder<QuerySnapshot>(
                     future: FirebaseFirestore.instance.collection('listings')
                         .where('owner_id', isEqualTo: currentUserId)
                         .where('status', isEqualTo: 'active').get(),
                     builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const LinearProgressIndicator();
+                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                       var items = snapshot.data!.docs;
-                      if (items.isEmpty) return const Text('คุณยังไม่มีสิ่งของในระบบ');
                       
-                      return DropdownButtonFormField<String>(
-                        decoration: InputDecoration(filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-                        hint: const Text('เลือกสิ่งของของคุณ'),
-                        items: items.map((doc) => DropdownMenuItem(value: doc.id, child: Text((doc.data() as Map)['title']))).toList(),
-                        onChanged: (val) {
-                          setModalState(() {
-                            selectedMyItemId = val;
-                            var selectedDoc = items.firstWhere((doc) => doc.id == val);
-                            selectedMyItemData = selectedDoc.data() as Map<String, dynamic>;
-                            selectedMyItemData!['listing_id'] = selectedDoc.id;
-                          });
+                      if (items.isEmpty) {
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                          child: const Center(child: Text('คุณยังไม่มีสิ่งของให้แลก', style: TextStyle(color: Colors.black54))),
+                        );
+                      }
+                      
+                      // ถ้ายังไม่เลือก ให้เลือกชิ้นแรกเป็นค่าเริ่มต้น
+                      if (selectedMyItemId == null && items.isNotEmpty) {
+                        selectedMyItemId = items.first.id;
+                        selectedMyItemData = items.first.data() as Map<String, dynamic>;
+                        selectedMyItemData!['listing_id'] = items.first.id;
+                      }
+
+                      return GestureDetector(
+                        onTap: () {
+                          // TODO: อนาคตสามารถทำหน้าต่างเด้งให้เลือกของได้หากมีหลายชิ้น 
+                          // ตอนนี้ใช้ Dropdown ควบคู่ไปก่อนให้ใช้งานได้จริง
                         },
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFF00C853).withOpacity(0.5), width: 1.5),
+                            boxShadow: [BoxShadow(color: const Color(0xFF00C853).withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]
+                          ),
+                          child: Row(
+                            children: [
+                              // รูปภาพขนาดย่อ
+                              Container(
+                                width: 50, height: 50,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: selectedMyItemData?['thumbnail_url'] != null && selectedMyItemData!['thumbnail_url'].isNotEmpty
+                                      ? DecorationImage(image: NetworkImage(selectedMyItemData!['thumbnail_url']), fit: BoxFit.cover)
+                                      : null,
+                                ),
+                                child: selectedMyItemData?['thumbnail_url'] == null || selectedMyItemData!['thumbnail_url'].isEmpty
+                                    ? const Icon(Icons.image, color: Colors.grey) : null,
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(selectedMyItemData?['title'] ?? 'ไม่ระบุชื่อ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(color: const Color(0xFF00C853).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                          child: Row(
+                                            children: [
+                                              const Icon(Icons.layers, size: 10, color: Color(0xFF00C853)),
+                                              const SizedBox(width: 4),
+                                              Text('~${selectedMyItemData?['estimated_coins'] ?? 0} Coins', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF00C853))),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        DropdownButtonHideUnderline(
+                                          child: DropdownButton<String>(
+                                            value: selectedMyItemId,
+                                            icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                            style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                                            isDense: true,
+                                            items: items.map((doc) => DropdownMenuItem(value: doc.id, child: Text((doc.data() as Map)['title']))).toList(),
+                                            onChanged: (val) {
+                                              setModalState(() {
+                                                selectedMyItemId = val;
+                                                var selectedDoc = items.firstWhere((doc) => doc.id == val);
+                                                selectedMyItemData = selectedDoc.data() as Map<String, dynamic>;
+                                                selectedMyItemData!['listing_id'] = selectedDoc.id;
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
 
-                  const Text('ส่วนต่างเหรียญ (Coins)', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
+                  // 🟢 SECTION: BALANCE THE TRADE
+                  const Text('BALANCE THE TRADE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
+                  const SizedBox(height: 12),
+                  
+                  // ปุ่มสลับ Give / Ask
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(hintText: 'จำนวนเหรียญ', filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-                          onChanged: (val) => coinOffset = int.tryParse(val) ?? 0,
+                        child: GestureDetector(
+                          onTap: () => setModalState(() => requestCoins = false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: !requestCoins ? const Color(0xFF00C853) : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.arrow_upward, size: 16, color: !requestCoins ? Colors.white : Colors.grey.shade600),
+                                const SizedBox(width: 6),
+                                Text('Give extra', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: !requestCoins ? Colors.white : Colors.grey.shade600)),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      ToggleButtons(
-                        isSelected: [!requestCoins, requestCoins],
-                        onPressed: (index) => setModalState(() => requestCoins = index == 1),
-                        borderRadius: BorderRadius.circular(12),
-                        selectedColor: Colors.white,
-                        fillColor: tealColor,
-                        children: const [Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('แถมให้')), Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('ขอเพิ่ม'))],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setModalState(() => requestCoins = true),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: requestCoins ? const Color(0xFFFF5252) : Colors.grey.shade100, // ใช้สีแดง/ส้มเมื่อขอเพิ่ม
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.arrow_downward, size: 16, color: requestCoins ? Colors.white : Colors.grey.shade600),
+                                const SizedBox(width: 6),
+                                Text('Ask for more', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: requestCoins ? Colors.white : Colors.grey.shade600)),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+
+                  // ช่องกรอกเหรียญ
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.shade200)
+                    ),
+                    child: TextField(
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                      decoration: InputDecoration(
+                        hintText: '0',
+                        hintStyle: TextStyle(color: Colors.grey.shade400),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.only(left: 20, right: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(color: Colors.amber, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.amber.withOpacity(0.4), blurRadius: 4)]),
+                            child: const Icon(Icons.layers, size: 16, color: Colors.white),
+                          ),
+                        ),
+                        suffixIcon: const Padding(
+                          padding: EdgeInsets.only(right: 20, top: 12),
+                          child: Text('coins', style: TextStyle(fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                        )
+                      ),
+                      onChanged: (val) => coinOffset = int.tryParse(val) ?? 0,
+                    ),
+                  ),
                   const SizedBox(height: 32),
 
-                  ElevatedButton(
+                  // 🟢 ปุ่ม Confirm ใหญ่ๆ
+                  ElevatedButton.icon(
                     onPressed: () async {
                       if (selectedMyItemId == null) {
-                         ScaffoldMessenger.of(context).showSnackBar(
-                           const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ')),
-                         );
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ')));
                          return;
                       }
 
@@ -563,8 +727,15 @@ class ItemDetailScreen extends StatelessWidget {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(roomId: roomRef.id)));
                       }
                     },
-                    style: ElevatedButton.styleFrom(backgroundColor: tealColor, minimumSize: const Size(double.infinity, 56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                    child: const Text('ยืนยันและเริ่มสนทนา', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    icon: const Icon(Icons.chat_bubble, color: Colors.white, size: 20),
+                    label: const Text('Confirm & Start Chat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF008080), 
+                      minimumSize: const Size(double.infinity, 56), 
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 4,
+                      shadowColor: const Color(0xFF008080).withOpacity(0.5)
+                    ),
                   ),
                 ],
               ),
