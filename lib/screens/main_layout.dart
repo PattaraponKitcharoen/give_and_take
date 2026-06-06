@@ -16,14 +16,15 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
-  final Color tealColor = const Color(0xFF008080); // สี Deep Teal
+  final Color tealColor = const Color(0xFF008080); 
+  final Color inactiveColor = Colors.grey.shade400; 
 
   Widget _buildNavItem(IconData icon, int index, {bool isChat = false}) {
     bool isSelected = _currentIndex == index;
     
     Widget iconWidget = Icon(
       icon,
-      color: isSelected ? tealColor : Colors.black54, 
+      color: isSelected ? tealColor : inactiveColor, 
       size: 28,
     );
 
@@ -55,7 +56,7 @@ class _MainLayoutState extends State<MainLayout> {
             children: [
               Icon(
                 icon,
-                color: isSelected ? tealColor : Colors.black54,
+                color: isSelected ? tealColor : inactiveColor,
                 size: 28,
               ),
               if (hasUnreadChat)
@@ -78,42 +79,81 @@ class _MainLayoutState extends State<MainLayout> {
       );
     }
 
-    return IconButton(
-      icon: iconWidget,
-      onPressed: () {
+    return GestureDetector(
+      onTap: () {
         setState(() {
           _currentIndex = index;
         });
       },
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: MediaQuery.of(context).size.width / 5 - 10, 
+        child: Column(
+          mainAxisSize: MainAxisSize.min, 
+          // 🟢 เปลี่ยนจาก spaceBetween เป็น start เพื่อดันของจากบนลงล่างตามใจเรา
+          mainAxisAlignment: MainAxisAlignment.start, 
+          children: [
+            // 🟢 ขีดด้านบน (บางลง และ ยาวขึ้น)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutQuint,
+              height: 2.5, // บางลง
+              width: isSelected ? 52 : 0, // ยาวขึ้น (ถ้าอยากให้ยาวกว่านี้ลองปรับเป็น 48-50 ดูครับ)
+              decoration: BoxDecoration(
+                color: tealColor,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(4)), 
+              ),
+            ),
+            const SizedBox(height: 8), // 🟢 เพิ่มช่องว่างดันไอคอนลงมาไม่ให้ชิดเส้นเกินไป
+            iconWidget,
+          ],
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 🟢 1. ตัด AddPostScreen ออก และขยับ Index ของ Chat กับ Profile ขึ้นมา
       body: IndexedStack(
         index: _currentIndex,
         children: const [
-          HomeScreen(),       // Index 0
-          MyListingScreen(),  // Index 1
-          ChatListScreen(),   // Index 2 
-          ProfileScreen(),    // Index 3 
+          HomeScreen(),       
+          MyListingScreen(),  
+          ChatListScreen(),   
+          ProfileScreen(),    
         ],
       ),
       
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // 🟢 2. สั่งเปิดหน้า AddPostScreen แบบเด้งทับขึ้นมา (Push)
+      floatingActionButton: GestureDetector(
+        onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const AddPostScreen()),
           );
         },
-        backgroundColor: tealColor,
-        shape: const CircleBorder(),
-        elevation: 4,
-        child: const Icon(Icons.add, color: Colors.white, size: 36),
+        child: Container(
+          height: 64, 
+          width: 64,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF20C997), Color(0xFF008080)], 
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF008080).withOpacity(0.4), 
+                blurRadius: 16, 
+                spreadRadius: 2, 
+                offset: const Offset(0, 6), 
+              ),
+            ],
+            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+          ),
+          child: const Icon(Icons.add_rounded, color: Colors.white, size: 36),
+        ),
       ),
       
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
@@ -121,19 +161,19 @@ class _MainLayoutState extends State<MainLayout> {
       bottomNavigationBar: BottomAppBar(
         color: Colors.white,
         shape: const CircularNotchedRectangle(), 
-        notchMargin: 8.0, 
-        elevation: 10,
-        padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4), 
-        height: 40,
+        notchMargin: 10.0, 
+        elevation: 20, 
+        padding: EdgeInsets.zero, 
+        // 🟢 ปรับความสูง Nav Bar เป็น 60 ให้มีพื้นที่หายใจ (ถ้าน้อยกว่านี้ไอคอนจะเบียดขอบล่าง)
+        height: 45, 
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, 
           children: [
-            _buildNavItem(Icons.home, 0),
+            _buildNavItem(Icons.home_rounded, 0),
             _buildNavItem(Icons.grid_view_rounded, 1),
-            const SizedBox(width: 48), // เว้นที่ให้ตรงกลาง
-            // 🟢 3. อัปเดต Index เป็น 2 และ 3 ให้ตรงกับ IndexedStack
-            _buildNavItem(Icons.chat_bubble_outline, 2, isChat: true), 
-            _buildNavItem(Icons.person_outline, 3),
+            const SizedBox(width: 48), 
+            _buildNavItem(Icons.chat_bubble_outline_rounded, 2, isChat: true), 
+            _buildNavItem(Icons.person_outline_rounded, 3),
           ],
         ),
       ),
