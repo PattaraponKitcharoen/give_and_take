@@ -16,12 +16,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _telController;
   late TextEditingController _bioController;
   bool _isLoading = false;
-  final Color tealColor = const Color(0xFF008080);
+  
+  final Color tealColor = const Color(0xFF10B981); // ปรับสี Teal ให้ตรงกับหน้า Register
+  final Color bgColor = const Color(0xFFF8FAFC);
 
   @override
   void initState() {
     super.initState();
-    // โหลดข้อมูลเดิมมาใส่ช่องกรอก (ถ้ามี)
     _nameController = TextEditingController(text: widget.currentData['name'] ?? '');
     _telController = TextEditingController(text: widget.currentData['tel'] ?? '');
     _bioController = TextEditingController(text: widget.currentData['bio'] ?? '');
@@ -41,8 +42,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (user == null) return;
 
     try {
-      // ใช้ SetOptions(merge: true) เพื่ออัปเดตเฉพาะฟิลด์ที่ส่งไป 
-      // หรือสร้างเอกสารใหม่เลยถ้ายังไม่มีข้อมูลในระบบ
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'user_id': user.uid,
         'email': user.email,
@@ -50,7 +49,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'tel': _telController.text.trim(),
         'bio': _bioController.text.trim(),
         'updated_at': FieldValue.serverTimestamp(),
-        // ข้อมูลอื่นๆ เช่น coins_balance หรือ rating จะถูกเซ็ตตอน Register
       }, SetOptions(merge: true));
 
       if (mounted) {
@@ -66,69 +64,177 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  // 🟢 ฟังก์ชันสร้าง TextField ให้ตรงกับสไตล์ในรูป
+  Widget _buildLabeledTextField({
+    required String label,
+    required TextEditingController controller,
+    required String hintText,
+    required IconData icon,
+    int maxLines = 1,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 0.5),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+            ],
+          ),
+          child: TextField(
+            controller: controller,
+            maxLines: maxLines,
+            keyboardType: maxLines > 1 ? TextInputType.multiline : TextInputType.text,
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('แก้ไขโปรไฟล์', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+        title: const Text('Edit Profile', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w900, fontSize: 18)),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        backgroundColor: bgColor,
+        elevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: InkWell(
+            onTap: () => Navigator.pop(context),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 18),
+            ),
+          ),
+        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+      body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Stack(
-                children: [
-                  CircleAvatar(radius: 50, backgroundColor: tealColor.withOpacity(0.1), child: Icon(Icons.person, size: 50, color: tealColor)),
-                  Positioned(
-                    bottom: 0, right: 0,
-                    child: CircleAvatar(backgroundColor: tealColor, radius: 18, child: const Icon(Icons.camera_alt, size: 18, color: Colors.white)),
-                  )
-                ],
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 🟢 ส่วนรูปโปรไฟล์
+                    Center(
+                      child: Column(
+                        children: [
+                          Stack(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 4),
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
+                                ),
+                                child: CircleAvatar(
+                                  radius: 50,
+                                  backgroundColor: tealColor.withOpacity(0.1),
+                                  child: Icon(Icons.person, size: 50, color: tealColor),
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 0, right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: tealColor,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
+                                ),
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _nameController.text.isNotEmpty ? _nameController.text : 'ชื่อผู้ใช้งาน',
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // 🟢 หัวข้อ Section
+                    const Text(
+                      'PERSONAL INFO',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 🟢 ฟอร์มกรอกข้อมูล
+                    _buildLabeledTextField(
+                      label: 'DISPLAY NAME',
+                      controller: _nameController,
+                      hintText: 'John Doe',
+                      icon: Icons.person_outline,
+                    ),
+                    
+                    _buildLabeledTextField(
+                      label: 'BIO / ABOUT ME',
+                      controller: _bioController,
+                      hintText: 'Tell others about yourself or what you like to trade',
+                      icon: Icons.info_outline,
+                      maxLines: 3,
+                    ),
+
+                    _buildLabeledTextField(
+                      label: 'PHONE NUMBER',
+                      controller: _telController,
+                      hintText: '08X-XXX-XXXX',
+                      icon: Icons.phone_iphone_outlined,
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 32),
-
-            const Text('ชื่อผู้ใช้งาน', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-            ),
-            const SizedBox(height: 16),
-
-            const Text('เบอร์โทรศัพท์', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _telController,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-            ),
-            const SizedBox(height: 16),
-
-            const Text('เกี่ยวกับฉัน (Bio)', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _bioController,
-              maxLines: 3,
-              decoration: InputDecoration(hintText: 'แนะนำตัวสั้นๆ ให้คนอื่นรู้จักคุณ', filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-            ),
-            const SizedBox(height: 40),
-
-            SizedBox(
-              width: double.infinity, height: 56,
-              child: ElevatedButton(
+            
+            // 🟢 ปุ่ม Save ที่ล็อคติดขอบล่างเสมอ
+            Container(
+              padding: const EdgeInsets.all(24.0),
+              decoration: BoxDecoration(
+                color: bgColor,
+              ),
+              child: ElevatedButton.icon(
                 onPressed: _isLoading ? null : _saveProfile,
-                style: ElevatedButton.styleFrom(backgroundColor: tealColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('บันทึกข้อมูล', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                icon: _isLoading ? const SizedBox() : const Icon(Icons.check, color: Colors.white, size: 20),
+                label: _isLoading 
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Save Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: tealColor,
+                  minimumSize: const Size(double.infinity, 56),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 2,
+                  shadowColor: tealColor.withOpacity(0.4),
+                ),
               ),
             ),
           ],
