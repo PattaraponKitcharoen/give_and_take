@@ -172,49 +172,79 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             child: const Icon(Icons.delete, color: Colors.white),
                           ),
                           confirmDismiss: (direction) async {
+                            // 1. เช็กเงื่อนไขก่อนว่า "สถานะของแชทนี้อนุญาตให้ลบได้ไหม"
                             if (offerId != null && offerId.isNotEmpty) {
                               try {
                                 final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
-                                if (!offerDoc.exists) return true; 
+                                
+                                if (offerDoc.exists) {
+                                  final status = offerDoc.data()?['status'] ?? '';
+                                  if (status == 'completed') {
+                                    bool hasReviewed = false;
+                                    final txSnap = await FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
+                                    if (txSnap.docs.isNotEmpty) {
+                                      final txId = txSnap.docs.first.id;
+                                      final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
+                                          .where('transaction_id', isEqualTo: txId)
+                                          .where('reviewer_id', isEqualTo: currentUserId)
+                                          .get();
+                                      if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
+                                    } else {
+                                      final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
+                                          .where('offer_id', isEqualTo: offerId)
+                                          .where('reviewer_id', isEqualTo: currentUserId)
+                                          .get();
+                                      if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
+                                    }
 
-                                final status = offerDoc.data()?['status'] ?? '';
-                                if (status == 'completed') {
-                                  bool hasReviewed = false;
-                                  final txSnap = await FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: offerId).limit(1).get();
-                                  if (txSnap.docs.isNotEmpty) {
-                                    final txId = txSnap.docs.first.id;
-                                    final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
-                                        .where('transaction_id', isEqualTo: txId)
-                                        .where('reviewer_id', isEqualTo: currentUserId)
-                                        .get();
-                                    if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
-                                  } else {
-                                    final reviewSnap = await FirebaseFirestore.instance.collection('reviews')
-                                        .where('offer_id', isEqualTo: offerId)
-                                        .where('reviewer_id', isEqualTo: currentUserId)
-                                        .get();
-                                    if (reviewSnap.docs.isNotEmpty) hasReviewed = true;
-                                  }
-
-                                  if (!hasReviewed) {
+                                    if (!hasReviewed) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: const Text('คุณยังไม่ได้รีวิวการแลกเปลี่ยนนี้'), behavior: SnackBarBehavior.floating, margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16), backgroundColor: Colors.orange.shade800)
+                                        );
+                                      }
+                                      return false; // ไม่ให้ลบ
+                                    }
+                                  } else if (status != 'rejected' && status != 'cancelled') {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: const Text('คุณยังไม่ได้รีวิวการแลกเปลี่ยนนี้'), behavior: SnackBarBehavior.floating, margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16), backgroundColor: Colors.orange.shade800)
+                                        SnackBar(content: const Text('การแลกเปลี่ยนยังไม่สมบูรณ์'), behavior: SnackBarBehavior.floating, margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16), backgroundColor: Colors.red)
                                       );
                                     }
-                                    return false; 
+                                    return false; // ไม่ให้ลบ
                                   }
-                                } else if (status != 'rejected' && status != 'cancelled') {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: const Text('การแลกเปลี่ยนยังไม่สมบูรณ์'), behavior: SnackBarBehavior.floating, margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16), backgroundColor: Colors.red)
-                                    );
-                                  }
-                                  return false; 
                                 }
-                              } catch (e) { return false; }
+                              } catch (e) { 
+                                return false; // ถ้ามี Error ดักไว้ไม่ให้เผลอลบ
+                              }
                             }
-                            return true; 
+                            
+                            // 2. ถ้าผ่านด่านด้านบนมาได้ (อนุญาตให้ลบได้) ให้เปิด Popup ถามยืนยัน
+                            if (!context.mounted) return false;
+                            
+                            bool confirmDelete = await showDialog(
+                              context: context,
+                              builder: (BuildContext context) {
+                                return AlertDialog(
+                                  title: const Text('ยืนยันการลบแชท', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                  content: const Text('คุณแน่ใจหรือไม่ว่าต้องการลบห้องสนทนานี้?\nข้อมูลทั้งหมดจะหายไปและไม่สามารถกู้คืนได้'),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(false),
+                                      child: const Text('ยกเลิก', style: TextStyle(color: Colors.grey)),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.of(context).pop(true),
+                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                      child: const Text('ลบทิ้ง', style: TextStyle(color: Colors.white)),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ) ?? false; // ถ้ากดข้างนอกถือว่ายกเลิก
+
+                            return confirmDelete; 
                           },
                           onDismissed: (direction) async {
                             await FirebaseFirestore.instance.collection('chat_rooms').doc(roomId).update({
