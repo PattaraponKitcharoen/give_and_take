@@ -256,9 +256,10 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _sendSystemMessage(String text, {String type = 'system_log'}) async {
+  Future<void> _sendSystemMessage(String text, {String type = 'system_log', String? notiType}) async {
     List<String> roomUsers = await _getRoomParticipants();
 
+    // 1. บันทึกลงใน messages (ใช้ type เดิม เพื่อให้แสดงเป็นกล่องสีเทาตรงกลางแชท)
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
       'sender_id': 'system',
       'content': text,
@@ -266,9 +267,10 @@ class _ChatScreenState extends State<ChatScreen> {
       'type': type, 
     });
     
+    // 2. อัปเดตข้อมูลหน้าห้องแชท (ใช้ notiType เพื่อให้หน้า Noti ดึงไปแสดงผลตามที่เราต้องการ)
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message_text': text,
-      'last_message_type': type, 
+      'last_message_type': notiType ?? type, // 🟢 สับขาหลอกตรงนี้: ถ้ามี notiType ให้ใช้ทับไปเลย
       'last_sender_id': currentUserId, 
       'read_by': [currentUserId], 
       'updated_at': FieldValue.serverTimestamp(),
@@ -409,8 +411,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก', style: TextStyle(color: Colors.grey))),
                 ElevatedButton(
                   onPressed: () {
+                    // ถ้าปล่อยว่างไว้ จะถูกมองว่าเป็น 0
                     int amount = int.tryParse(amountController.text.trim()) ?? 0;
-                    if (amount > 0) {
+                    
+                    // 🟢 เปลี่ยนจาก amount > 0 เป็น >= 0 เพื่อให้กดแลกเฉยๆ ได้
+                    if (amount >= 0) {
                       Navigator.pop(context);
                       _submitCounterOffer(offerId, offerData, amount, iWillPay);
                     }
@@ -429,6 +434,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _submitCounterOffer(String offerId, Map<String, dynamic> offerData, int amount, bool iWillPay) async {
     String senderId = offerData['sender_id'];
     int newCoinOffset = 0;
+    
     if (currentUserId == senderId) {
       newCoinOffset = iWillPay ? amount : -amount;
     } else {
@@ -442,8 +448,20 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     String userName = await _getCurrentUserName();
-    String actionText = iWillPay ? 'เสนอจ่ายเงินเพิ่ม $amount Coins' : 'ขอรับเงินเพิ่ม $amount Coins';
-    _sendSystemMessage('$userName ได้ต่อรองเงื่อนไขใหม่: $actionText');
+    
+    String actionText;
+    if (amount == 0) {
+      actionText = 'เสนอแลกของต่อของ (ไม่ต้องเพิ่มเหรียญ)';
+    } else {
+      actionText = iWillPay ? 'เสนอจ่ายเงินเพิ่ม $amount Coins' : 'ขอรับเงินเพิ่ม $amount Coins';
+    }
+    
+    // 🟢 แก้ตรงนี้: ส่ง type เป็น log ธรรมดาสำหรับหน้าแชท แต่บังคับให้ Noti เห็นเป็น system_offer
+    _sendSystemMessage(
+      '$userName ได้ต่อรองเงื่อนไขใหม่: $actionText', 
+      type: 'system_log', 
+      notiType: 'system_offer'
+    );
   }
 
   void _showOtpDialog(BuildContext context, String offerId) {
