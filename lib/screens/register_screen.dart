@@ -66,6 +66,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'name': name, 
           'bio': '',
           'tel': '',
+          'role': 'user',
           'profile_img_url': '',
           'coins_balance': 1000, 
           'created_at': FieldValue.serverTimestamp(),

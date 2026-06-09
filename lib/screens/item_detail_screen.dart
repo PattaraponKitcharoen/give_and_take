@@ -23,18 +23,19 @@ class ItemDetailScreen extends StatelessWidget {
     final int coins = itemData['estimated_coins'] ?? 0;
     
     final Map<String, dynamic> metadata = itemData['metadata'] ?? {};
-    final String condition = metadata['condition'] ?? 'Like New';
+    final String condition = metadata['condition'] ?? 'มือสองสภาพดี';
     final String ownerId = itemData['owner_id'] ?? ''; 
     final String thumbnail = itemData['thumbnail_url'] ?? '';
 
-    String listedText = 'Listed recently';
+    // 🟢 แก้ไขการแสดงเวลาให้เป็นภาษาไทย
+    String listedText = 'โพสต์เมื่อไม่นานมานี้';
     if (itemData['created_at'] != null) {
       final Timestamp createdAt = itemData['created_at'];
       final int days = DateTime.now().difference(createdAt.toDate()).inDays;
       if (days == 0) {
-        listedText = 'Listed today';
+        listedText = 'โพสต์วันนี้';
       } else {
-        listedText = 'Listed $days days ago';
+        listedText = 'โพสต์เมื่อ $days วันที่แล้ว';
       }
     }
 
