@@ -378,52 +378,234 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _showCounterOfferDialog(BuildContext context, String offerId, Map<String, dynamic> offerData) {
     final TextEditingController amountController = TextEditingController();
-    bool iWillPay = true; 
+    String offerType = 'give'; // โหมดเริ่มต้น
+
+    // ฟังก์ชันช่วยบวกเหรียญแบบด่วน
+    void addCoins(int amount, StateSetter setState) {
+      int current = int.tryParse(amountController.text.replaceAll(',', '')) ?? 0;
+      amountController.text = (current + amount).toString();
+      amountController.selection = TextSelection.fromPosition(TextPosition(offset: amountController.text.length));
+    }
+
+    // ฟังก์ชันสร้างปุ่ม Segment
+    Widget buildSegmentButton(String text, IconData icon, String value, String currentValue, VoidCallback onTap) {
+      bool isSelected = (value == currentValue);
+      Color activeColor = value == 'give' ? const Color(0xFF008080) : (value == 'ask' ? Colors.orange : Colors.blueGrey);
+      
+      return Expanded(
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: isSelected ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))] : [],
+            ),
+            child: Column(
+              children: [
+                Icon(icon, size: 20, color: isSelected ? activeColor : Colors.grey.shade400),
+                const SizedBox(height: 6),
+                Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? activeColor : Colors.grey.shade500)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ฟังก์ชันสร้างปุ่ม Quick Add
+    Widget buildQuickAddButton(String text, VoidCallback onTap) {
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: OutlinedButton(
+            onPressed: onTap,
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              side: BorderSide(color: Colors.orange.shade200),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+          ),
+        ),
+      );
+    }
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('ต่อรองราคา', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButton<bool>(
-                    value: iWillPay,
-                    isExpanded: true,
-                    items: const [
-                      DropdownMenuItem(value: true, child: Text('ฉันจะจ่ายเงินเพิ่ม')),
-                      DropdownMenuItem(value: false, child: Text('ฉันขอรับเงินเพิ่ม')),
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              insetPadding: const EdgeInsets.all(20),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 🟢 Header & Close Button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Counter Offer', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.black87)),
+                              SizedBox(height: 4),
+                              Text('ปรับเปลี่ยนข้อเสนอของคุณ', style: TextStyle(fontSize: 14, color: Colors.blueGrey)),
+                            ],
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                              child: const Icon(Icons.close, size: 16, color: Colors.black54),
+                            ),
+                          )
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+
+                      // 🟢 Negotiation Mode (Segmented Control)
+                      const Text('NEGOTIATION MODE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 1.2)),
+                      const SizedBox(height: 12),
+                      Container(
+                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+                        padding: const EdgeInsets.all(6),
+                        child: Row(
+                          children: [
+                            buildSegmentButton('Give Coins', Icons.payments_outlined, 'give', offerType, () => setState(() => offerType = 'give')),
+                            buildSegmentButton('Trade Only', Icons.handshake_outlined, 'none', offerType, () => setState(() { offerType = 'none'; amountController.clear(); })),
+                            buildSegmentButton('Ask Coins', Icons.request_page_outlined, 'ask', offerType, () => setState(() => offerType = 'ask')),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+
+                      // 🟢 Coin Amount Section
+                      if (offerType != 'none') ...[
+                        const Text('COIN AMOUNT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 1.2)),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.orange.shade200, width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
+                                ),
+                                child: const Icon(Icons.attach_money, color: Colors.white, size: 24),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: TextField(
+                                  controller: amountController,
+                                  keyboardType: TextInputType.number,
+                                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.black87),
+                                  decoration: InputDecoration(
+                                    hintText: '0',
+                                    hintStyle: TextStyle(color: Colors.grey.shade300),
+                                    border: InputBorder.none,
+                                  ),
+                                ),
+                              ),
+                              const Text('COINS', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.orange)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // 🟢 Quick Add Buttons
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            buildQuickAddButton('+50', () => addCoins(50, setState)),
+                            buildQuickAddButton('+100', () => addCoins(100, setState)),
+                            buildQuickAddButton('+200', () => addCoins(200, setState)),
+                            buildQuickAddButton('+500', () => addCoins(500, setState)),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+                      ] else ...[
+                        // 🟢 Trade Only Placeholder
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 32),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF008080).withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF008080).withOpacity(0.2)),
+                          ),
+                          child: const Column(
+                            children: [
+                              Icon(Icons.sync_alt, size: 40, color: Color(0xFF008080)),
+                              SizedBox(height: 12),
+                              Text('แลกของต่อของ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF008080))),
+                              Text('ไม่มีการใช้เหรียญในข้อเสนอนี้', style: TextStyle(color: Colors.blueGrey)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                      ],
+
+                      // 🟢 Action Buttons
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            int amount = 0;
+                            if (offerType != 'none') {
+                              amount = int.tryParse(amountController.text.replaceAll(',', '')) ?? 0;
+                              if (amount <= 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาระบุจำนวนเหรียญให้ถูกต้อง')));
+                                return;
+                              }
+                            }
+                            Navigator.pop(context);
+                            bool iWillPay = (offerType == 'give'); 
+                            _submitCounterOffer(offerId, offerData, amount, iWillPay);
+                          },
+                          icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                          label: const Text('Send Counter Offer', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF4CAF50), // สีเขียวสไตล์ Confirmation
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: const Text('Cancel', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.blueGrey)),
+                        ),
+                      ),
                     ],
-                    onChanged: (value) => setState(() => iWillPay = value!),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(hintText: 'จำนวนเหรียญ (Coins)', suffixText: 'Coins'),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('ยกเลิก', style: TextStyle(color: Colors.grey))),
-                ElevatedButton(
-                  onPressed: () {
-                    // ถ้าปล่อยว่างไว้ จะถูกมองว่าเป็น 0
-                    int amount = int.tryParse(amountController.text.trim()) ?? 0;
-                    
-                    // 🟢 เปลี่ยนจาก amount > 0 เป็น >= 0 เพื่อให้กดแลกเฉยๆ ได้
-                    if (amount >= 0) {
-                      Navigator.pop(context);
-                      _submitCounterOffer(offerId, offerData, amount, iWillPay);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                  child: const Text('ส่งข้อเสนอ', style: TextStyle(color: Colors.white)),
                 ),
-              ],
+              ),
             );
           }
         );

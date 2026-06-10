@@ -197,6 +197,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
   Widget build(BuildContext context) {
     // 🟢 3. ครอบ Scaffold ด้วย GestureDetector เพื่อดักจับการแตะพื้นที่ว่าง
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         // เมื่อแตะพื้นที่ว่าง ให้ยกเลิกการโฟกัส (ปิดคีย์บอร์ด)
         FocusScope.of(context).unfocus();

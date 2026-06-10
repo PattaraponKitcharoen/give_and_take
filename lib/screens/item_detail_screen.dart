@@ -440,305 +440,338 @@ class ItemDetailScreen extends StatelessWidget {
   }
 
   void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, String ownerId) {
+    String? selectedMyItemId;
+    Map<String, dynamic>? selectedMyItemData; 
+    int coinOffset = 0;
+    String offerType = 'none'; 
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true, 
-      backgroundColor: Colors.transparent, // ให้พื้นหลัง Modal โปร่งใสเพื่อวาดขอบมนเอง
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        
-        String? selectedMyItemId;
-        Map<String, dynamic>? selectedMyItemData; 
-        int coinOffset = 0;
-        bool requestCoins = false; // false = Give extra, true = Ask for more
-
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Container(
-              margin: const EdgeInsets.only(top: 100), // เว้นระยะด้านบนให้เห็นฉากหลังชัดๆ
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black26, blurRadius: 20, spreadRadius: 5)
-                ]
-              ),
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-                left: 24, right: 24, top: 16,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch, // ขยายของให้เต็มความกว้าง
-                children: [
-                  // 🟢 ตัวจับลาก (Drag Handle)
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
-                  const SizedBox(height: 24),
-                  
-                  // 🟢 ส่วนหัว
-                  const Center(
-                    child: Column(
-                      children: [
-                        Text('Make an Offer', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF004D40))),
-                        SizedBox(height: 4),
-                        Text('Propose a fair trade for this item', style: TextStyle(fontSize: 14, color: Colors.black54)),
-                      ],
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              // 🟢 ห่อหุ้มด้วย GestureDetector ตรงนี้เพื่อดักจับการแตะพื้นที่ว่างภายในแผงทั้งหมด
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  FocusScope.of(context).unfocus(); // สั่งพับคีย์บอร์ดเมื่อแตะพื้นที่ว่าง
+                },
+                child: SingleChildScrollView(
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 80), 
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black26, blurRadius: 20, spreadRadius: 5)
+                      ]
                     ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // 🟢 SECTION: เลือกสิ่งของของคุณ (Your Offer Item)
-                  const Text('YOUR OFFER ITEM', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
-                  const SizedBox(height: 12),
-                  
-                  FutureBuilder<QuerySnapshot>(
-                    future: FirebaseFirestore.instance.collection('listings')
-                        .where('owner_id', isEqualTo: currentUserId)
-                        .where('status', isEqualTo: 'active').get(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                      var items = snapshot.data!.docs;
-                      
-                      if (items.isEmpty) {
-                        return Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-                          child: const Center(child: Text('คุณยังไม่มีสิ่งของให้แลก', style: TextStyle(color: Colors.black54))),
-                        );
-                      }
-                      
-                      // ถ้ายังไม่เลือก ให้เลือกชิ้นแรกเป็นค่าเริ่มต้น
-                      if (selectedMyItemId == null && items.isNotEmpty) {
-                        selectedMyItemId = items.first.id;
-                        selectedMyItemData = items.first.data() as Map<String, dynamic>;
-                        selectedMyItemData!['listing_id'] = items.first.id;
-                      }
-
-                      return GestureDetector(
-                        onTap: () {
-                          // TODO: อนาคตสามารถทำหน้าต่างเด้งให้เลือกของได้หากมีหลายชิ้น 
-                          // ตอนนี้ใช้ Dropdown ควบคู่ไปก่อนให้ใช้งานได้จริง
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFF00C853).withOpacity(0.5), width: 1.5),
-                            boxShadow: [BoxShadow(color: const Color(0xFF00C853).withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]
-                          ),
-                          child: Row(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // ตัวจับลาก (Drag Handle)
+                        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
+                        const SizedBox(height: 24),
+                        
+                        // ส่วนหัว
+                        const Center(
+                          child: Column(
                             children: [
-                              // รูปภาพขนาดย่อ
-                              Container(
-                                width: 50, height: 50,
+                              Text('Make an Offer', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF004D40))),
+                              SizedBox(height: 4),
+                              Text('Propose a fair trade for this item', style: TextStyle(fontSize: 14, color: Colors.black54)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+
+                        // SECTION: เลือกสิ่งของของคุณ (Your Offer Item)
+                        const Text('YOUR OFFER ITEM', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
+                        const SizedBox(height: 12),
+                        
+                        FutureBuilder<QuerySnapshot>(
+                          future: FirebaseFirestore.instance.collection('listings')
+                              .where('owner_id', isEqualTo: currentUserId)
+                              .where('status', isEqualTo: 'active').get(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                            var items = snapshot.data!.docs;
+                            
+                            if (items.isEmpty) {
+                              return Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                                child: const Center(child: Text('คุณยังไม่มีสิ่งของให้แลก', style: TextStyle(color: Colors.black54))),
+                              );
+                            }
+                            
+                            if (selectedMyItemId == null && items.isNotEmpty) {
+                              selectedMyItemId = items.first.id;
+                              selectedMyItemData = items.first.data() as Map<String, dynamic>;
+                              selectedMyItemData!['listing_id'] = items.first.id;
+                            }
+
+                            return GestureDetector(
+                              onTap: () {},
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(8),
-                                  image: selectedMyItemData?['thumbnail_url'] != null && selectedMyItemData!['thumbnail_url'].isNotEmpty
-                                      ? DecorationImage(image: NetworkImage(selectedMyItemData!['thumbnail_url']), fit: BoxFit.cover)
-                                      : null,
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFF00C853).withOpacity(0.5), width: 1.5),
+                                  boxShadow: [BoxShadow(color: const Color(0xFF00C853).withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]
                                 ),
-                                child: selectedMyItemData?['thumbnail_url'] == null || selectedMyItemData!['thumbnail_url'].isEmpty
-                                    ? const Icon(Icons.image, color: Colors.grey) : null,
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                child: Row(
                                   children: [
-                                    Text(selectedMyItemData?['title'] ?? 'ไม่ระบุชื่อ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(color: const Color(0xFF00C853).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                                          child: Row(
+                                    Container(
+                                      width: 50, height: 50,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(8),
+                                        image: selectedMyItemData?['thumbnail_url'] != null && selectedMyItemData!['thumbnail_url'].isNotEmpty
+                                            ? DecorationImage(image: NetworkImage(selectedMyItemData!['thumbnail_url']), fit: BoxFit.cover)
+                                            : null,
+                                      ),
+                                      child: selectedMyItemData?['thumbnail_url'] == null || selectedMyItemData!['thumbnail_url'].isEmpty
+                                          ? const Icon(Icons.image, color: Colors.grey) : null,
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(selectedMyItemData?['title'] ?? 'ไม่ระบุชื่อ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          const SizedBox(height: 4),
+                                          Row(
                                             children: [
-                                              const Icon(Icons.layers, size: 10, color: Color(0xFF00C853)),
-                                              const SizedBox(width: 4),
-                                              Text('~${selectedMyItemData?['estimated_coins'] ?? 0} Coins', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF00C853))),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(color: const Color(0xFF00C853).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                                child: Row(
+                                                  children: [
+                                                    const Icon(Icons.layers, size: 10, color: Color(0xFF00C853)),
+                                                    const SizedBox(width: 4),
+                                                    Text('~${selectedMyItemData?['estimated_coins'] ?? 0} Coins', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF00C853))),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              DropdownButtonHideUnderline(
+                                                child: DropdownButton<String>(
+                                                  value: selectedMyItemId,
+                                                  icon: const Icon(Icons.keyboard_arrow_down, size: 16),
+                                                  style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
+                                                  isDense: true,
+                                                  items: items.map((doc) => DropdownMenuItem(value: doc.id, child: Text((doc.data() as Map)['title']))).toList(),
+                                                  onChanged: (val) {
+                                                    setModalState(() {
+                                                      selectedMyItemId = val;
+                                                      var selectedDoc = items.firstWhere((doc) => doc.id == val);
+                                                      selectedMyItemData = selectedDoc.data() as Map<String, dynamic>;
+                                                      selectedMyItemData!['listing_id'] = selectedDoc.id;
+                                                    });
+                                                  },
+                                                ),
+                                              ),
                                             ],
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        DropdownButtonHideUnderline(
-                                          child: DropdownButton<String>(
-                                            value: selectedMyItemId,
-                                            icon: const Icon(Icons.keyboard_arrow_down, size: 16),
-                                            style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
-                                            isDense: true,
-                                            items: items.map((doc) => DropdownMenuItem(value: doc.id, child: Text((doc.data() as Map)['title']))).toList(),
-                                            onChanged: (val) {
-                                              setModalState(() {
-                                                selectedMyItemId = val;
-                                                var selectedDoc = items.firstWhere((doc) => doc.id == val);
-                                                selectedMyItemData = selectedDoc.data() as Map<String, dynamic>;
-                                                selectedMyItemData!['listing_id'] = selectedDoc.id;
-                                              });
-                                            },
-                                          ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
+                        const SizedBox(height: 24),
 
-                  // 🟢 SECTION: BALANCE THE TRADE
-                  const Text('BALANCE THE TRADE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
-                  const SizedBox(height: 12),
-                  
-                  // ปุ่มสลับ Give / Ask
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setModalState(() => requestCoins = false),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                        // SECTION: BALANCE THE TRADE
+                        const Text('BALANCE THE TRADE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
+                        const SizedBox(height: 12),
+                        
+                        // ปุ่มสลับรูปแบบการแลกเปลี่ยน 3 แบบ
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setModalState(() => offerType = 'give'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: offerType == 'give' ? const Color(0xFF00C853) : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.arrow_upward, size: 18, color: offerType == 'give' ? Colors.white : Colors.grey.shade500),
+                                      const SizedBox(height: 4),
+                                      Text('แถมเหรียญ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: offerType == 'give' ? Colors.white : Colors.grey.shade600)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setModalState(() { offerType = 'none'; coinOffset = 0; }), 
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: offerType == 'none' ? const Color(0xFF008080) : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.sync_alt, size: 18, color: offerType == 'none' ? Colors.white : Colors.grey.shade500),
+                                      const SizedBox(height: 4),
+                                      Text('แลกของเท่านั้น', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: offerType == 'none' ? Colors.white : Colors.grey.shade600)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setModalState(() => offerType = 'ask'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: offerType == 'ask' ? const Color(0xFFFF5252) : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(Icons.arrow_downward, size: 18, color: offerType == 'ask' ? Colors.white : Colors.grey.shade500),
+                                      const SizedBox(height: 4),
+                                      Text('ขอเหรียญเพิ่ม', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: offerType == 'ask' ? Colors.white : Colors.grey.shade600)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // ซ่อนช่องกรอกถ้าเลือกแบบไม่ใช้เหรียญ
+                        if (offerType != 'none')
+                          Container(
                             decoration: BoxDecoration(
-                              color: !requestCoins ? const Color(0xFF00C853) : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(24),
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey.shade200)
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.arrow_upward, size: 16, color: !requestCoins ? Colors.white : Colors.grey.shade600),
-                                const SizedBox(width: 6),
-                                Text('Give extra', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: !requestCoins ? Colors.white : Colors.grey.shade600)),
-                              ],
+                            child: TextField(
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                              decoration: InputDecoration(
+                                hintText: '0',
+                                hintStyle: TextStyle(color: Colors.grey.shade400),
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.only(left: 20, right: 10),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(color: Colors.amber, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.amber.withOpacity(0.4), blurRadius: 4)]),
+                                    child: const Icon(Icons.layers, size: 16, color: Colors.white),
+                                  ),
+                                ),
+                                suffixIcon: const Padding(
+                                  padding: EdgeInsets.only(right: 20, top: 12),
+                                  child: Text('coins', style: TextStyle(fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                                )
+                              ),
+                              onChanged: (val) => coinOffset = int.tryParse(val) ?? 0,
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text('ใช้สิ่งของแลกเปลี่ยนกันโดยตรง ไม่มีการใช้เหรียญ', style: TextStyle(color: Colors.grey.shade500, fontSize: 13))
                             ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setModalState(() => requestCoins = true),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              color: requestCoins ? const Color(0xFFFF5252) : Colors.grey.shade100, // ใช้สีแดง/ส้มเมื่อขอเพิ่ม
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.arrow_downward, size: 16, color: requestCoins ? Colors.white : Colors.grey.shade600),
-                                const SizedBox(width: 6),
-                                Text('Ask for more', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: requestCoins ? Colors.white : Colors.grey.shade600)),
-                              ],
-                            ),
+                          
+                        const SizedBox(height: 32),
+
+                        // ปุ่ม Confirm
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            if (selectedMyItemId == null) {
+                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ')));
+                               return;
+                            }
+
+                            String coinText = "";
+                            int finalCoinOffset = 0;
+                            
+                            if (offerType != 'none' && coinOffset > 0) {
+                              finalCoinOffset = offerType == 'ask' ? -coinOffset : coinOffset;
+                              coinText = " และยินดี${offerType == 'ask' ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
+                            }
+                            
+                            final offerRef = await FirebaseFirestore.instance.collection('offers').add({
+                              'sender_id': currentUserId,
+                              'target_user_id': ownerId,
+                              'target_listing_id': itemData['listing_id'] ?? '', 
+                              'offered_listing_id': selectedMyItemId,
+                              'coin_offset': finalCoinOffset, 
+                              'status': 'pending',
+                              'created_at': FieldValue.serverTimestamp(),
+                            });
+
+                            final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
+                              'participants': [currentUserId, ownerId],
+                              'active_offer_id': offerRef.id,
+                              'last_message_text': 'ยื่นข้อเสนอแลกเปลี่ยนสิ่งของใหม่',
+                              'last_message_type': 'system_offer', 
+                              'last_sender_id': currentUserId,
+                              'read_by': [currentUserId], 
+                              'updated_at': FieldValue.serverTimestamp(),
+                              'created_at': FieldValue.serverTimestamp(),
+                            });
+
+                            await FirebaseFirestore.instance.collection('chat_rooms').doc(roomRef.id).collection('messages').add({
+                              'sender_id': currentUserId,
+                              'content': 'สวัสดีครับ! ผมขอเสนอแลกสิ่งของ$coinText ครับ',
+                              'timestamp': FieldValue.serverTimestamp(),
+                              'type': 'system_offer',
+                              'offer_data': {
+                                 'target_item': itemData, 
+                                 'offered_item': selectedMyItemData, 
+                              }
+                            });
+
+                            if (context.mounted) {
+                              Navigator.pop(context); 
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(roomId: roomRef.id)));
+                            }
+                          },
+                          icon: const Icon(Icons.chat_bubble, color: Colors.white, size: 20),
+                          label: const Text('Confirm & Start Chat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF008080), 
+                            minimumSize: const Size(double.infinity, 56), 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 4,
+                            shadowColor: const Color(0xFF008080).withOpacity(0.5)
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // ช่องกรอกเหรียญ
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade200)
-                    ),
-                    child: TextField(
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
-                      decoration: InputDecoration(
-                        hintText: '0',
-                        hintStyle: TextStyle(color: Colors.grey.shade400),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        prefixIcon: Padding(
-                          padding: const EdgeInsets.only(left: 20, right: 10),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.amber, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.amber.withOpacity(0.4), blurRadius: 4)]),
-                            child: const Icon(Icons.layers, size: 16, color: Colors.white),
-                          ),
-                        ),
-                        suffixIcon: const Padding(
-                          padding: EdgeInsets.only(right: 20, top: 12),
-                          child: Text('coins', style: TextStyle(fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-                        )
-                      ),
-                      onChanged: (val) => coinOffset = int.tryParse(val) ?? 0,
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 32),
-
-                  // 🟢 ปุ่ม Confirm ใหญ่ๆ
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      if (selectedMyItemId == null) {
-                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ')));
-                         return;
-                      }
-
-                      String coinText = "";
-                      if (coinOffset > 0) {
-                        coinText = " และยินดี${requestCoins ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
-                      }
-                      
-                      final offerRef = await FirebaseFirestore.instance.collection('offers').add({
-                        'sender_id': currentUserId,
-                        'target_user_id': ownerId,
-                        'target_listing_id': itemData['listing_id'] ?? '', 
-                        'offered_listing_id': selectedMyItemId,
-                        'coin_offset': requestCoins ? -coinOffset : coinOffset,
-                        'status': 'pending',
-                        'created_at': FieldValue.serverTimestamp(),
-                      });
-
-                      final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
-                        'participants': [currentUserId, ownerId],
-                        'active_offer_id': offerRef.id,
-                        'last_message_text': 'ยื่นข้อเสนอแลกเปลี่ยนสิ่งของใหม่',
-                        'last_message_type': 'system_offer', 
-                        'last_sender_id': currentUserId,
-                        'read_by': [currentUserId], 
-                        'updated_at': FieldValue.serverTimestamp(),
-                        'created_at': FieldValue.serverTimestamp(),
-                      });
-
-                      await FirebaseFirestore.instance.collection('chat_rooms').doc(roomRef.id).collection('messages').add({
-                        'sender_id': currentUserId,
-                        'content': 'สวัสดีครับ! ผมขอเสนอแลกสิ่งของ$coinText ครับ',
-                        'timestamp': FieldValue.serverTimestamp(),
-                        'type': 'system_offer',
-                        'offer_data': {
-                           'target_item': itemData, 
-                           'offered_item': selectedMyItemData, 
-                        }
-                      });
-
-                      if (context.mounted) {
-                        Navigator.pop(context); 
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(roomId: roomRef.id)));
-                      }
-                    },
-                    icon: const Icon(Icons.chat_bubble, color: Colors.white, size: 20),
-                    label: const Text('Confirm & Start Chat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF008080), 
-                      minimumSize: const Size(double.infinity, 56), 
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 4,
-                      shadowColor: const Color(0xFF008080).withOpacity(0.5)
-                    ),
-                  ),
-                ],
+                ),
               ),
             );
           },
