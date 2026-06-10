@@ -168,121 +168,124 @@ class ItemDetailScreen extends StatelessWidget {
         ),
       ),
       
-      bottomNavigationBar: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('listings').doc(listingId).snapshots(),
-        builder: (context, snapshot) {
-          bool isActive = false;
-          bool isLiked = false; 
-          
-          final currentUser = FirebaseAuth.instance.currentUser;
-          final currentUserId = currentUser?.uid ?? '';
+      // 🟢 ดักจับกรณีที่แอปยังโหลด ID ไม่ทัน เพื่อไม่ให้ StreamBuilder พัง
+      bottomNavigationBar: listingId.isEmpty 
+        ? const SizedBox.shrink() 
+        : StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('listings').doc(listingId).snapshots(),
+            builder: (context, snapshot) {
+              bool isActive = false;
+              bool isLiked = false; 
+              
+              final currentUser = FirebaseAuth.instance.currentUser;
+              final currentUserId = currentUser?.uid ?? '';
 
-          if (snapshot.hasData && snapshot.data!.exists) {
-            final latestData = snapshot.data!.data() as Map<String, dynamic>;
-            if (latestData['status'] == 'active') {
-              isActive = true;
-            }
-            
-            final List likedBy = latestData['liked_by'] ?? [];
-            isLiked = likedBy.contains(currentUserId);
-          }
+              if (snapshot.hasData && snapshot.data!.exists) {
+                final latestData = snapshot.data!.data() as Map<String, dynamic>;
+                if (latestData['status'] == 'active') {
+                  isActive = true;
+                }
+                
+                final List likedBy = latestData['liked_by'] ?? [];
+                isLiked = likedBy.contains(currentUserId);
+              }
 
-          return Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
-            ),
-            child: SafeArea(
-              top: false, 
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), 
-                child: Row(
-                  children: [
-                    Container(
-                      height: 52, width: 52, 
-                      decoration: BoxDecoration(
-                        color: isLiked ? Colors.red.shade50 : lightTeal,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isLiked ? Colors.red.shade200 : tealColor.withOpacity(0.3)),
-                      ),
-                      child: IconButton(
-                        icon: Icon(
-                          isLiked ? Icons.favorite : Icons.favorite_border,
-                          color: isLiked ? Colors.red : tealColor, 
-                        ),
-                        onPressed: () async {
-                          if (currentUserId.isEmpty) return;
-                          
-                          final docRef = FirebaseFirestore.instance.collection('listings').doc(listingId);
-                          
-                          if (isLiked) {
-                            await docRef.update({
-                              'liked_by': FieldValue.arrayRemove([currentUserId])
-                            });
-                          } else {
-                            await docRef.update({
-                              'liked_by': FieldValue.arrayUnion([currentUserId])
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      // 🟢 เพิ่ม Container ห่อปุ่มไว้เพื่อทำเอฟเฟกต์เงาแบบเดียวกับหน้า Add Item
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: isActive ? [
-                            BoxShadow(
-                              color: tealColor.withOpacity(0.3),
-                              blurRadius: 15,
-                              offset: const Offset(0, 5),
-                            ),
-                          ] : [],
-                        ),
-                        child: ElevatedButton(
-                          onPressed: isActive ? () {
-                            if (currentUserId.isEmpty) return;
-
-                            if (currentUserId == ownerId) {
-                              showDialog(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                  title: Text('แจ้งเตือน', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
-                                  content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
-                                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('เข้าใจแล้ว', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)))],
-                                ),
-                              );
-                              return;
-                            }
-                            _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
-                          } : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: tealColor,
-                            disabledBackgroundColor: Colors.grey.shade400,
-                            minimumSize: const Size(double.infinity, 52), 
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            elevation: 0, // ปิด elevation เดิมทิ้ง เพราะเราใช้ BoxShadow จาก Container แทนแล้ว
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.swap_horiz, color: isActive ? Colors.white : Colors.white70),
-                              const SizedBox(width: 8),
-                              Text(isActive ? 'Make an Offer' : 'Item Unavailable', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? Colors.white : Colors.white70)),
-                            ],
-                          )
-                        ),
-                      ),
-                    ),
-                  ],
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
                 ),
-              ),
-            ),
-          );
-        }
+                child: SafeArea(
+                  top: false, 
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), 
+                    child: Row(
+                      children: [
+                        Container(
+                          height: 52, width: 52, 
+                          decoration: BoxDecoration(
+                            color: isLiked ? Colors.red.shade50 : lightTeal,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: isLiked ? Colors.red.shade200 : tealColor.withOpacity(0.3)),
+                          ),
+                          child: IconButton(
+                            icon: Icon(
+                              isLiked ? Icons.favorite : Icons.favorite_border,
+                              color: isLiked ? Colors.red : tealColor, 
+                            ),
+                            onPressed: () async {
+                              if (currentUserId.isEmpty) return;
+                              
+                              final docRef = FirebaseFirestore.instance.collection('listings').doc(listingId);
+                              
+                              if (isLiked) {
+                                await docRef.update({
+                                  'liked_by': FieldValue.arrayRemove([currentUserId])
+                                });
+                              } else {
+                                await docRef.update({
+                                  'liked_by': FieldValue.arrayUnion([currentUserId])
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          // 🟢 เพิ่ม Container ห่อปุ่มไว้เพื่อทำเอฟเฟกต์เงาแบบเดียวกับหน้า Add Item
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: isActive ? [
+                                BoxShadow(
+                                  color: tealColor.withOpacity(0.3),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ] : [],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: isActive ? () {
+                                if (currentUserId.isEmpty) return;
+
+                                if (currentUserId == ownerId) {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                      title: Text('แจ้งเตือน', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+                                      content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
+                                      actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('เข้าใจแล้ว', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)))],
+                                    ),
+                                  );
+                                  return;
+                                }
+                                _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
+                              } : null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: tealColor,
+                                disabledBackgroundColor: Colors.grey.shade400,
+                                minimumSize: const Size(double.infinity, 52), 
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                elevation: 0, // ปิด elevation เดิมทิ้ง เพราะเราใช้ BoxShadow จาก Container แทนแล้ว
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.swap_horiz, color: isActive ? Colors.white : Colors.white70),
+                                  const SizedBox(width: 8),
+                                  Text(isActive ? 'Make an Offer' : 'Item Unavailable', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? Colors.white : Colors.white70)),
+                                ],
+                              )
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
       ),
     );
   }
@@ -377,15 +380,20 @@ class ItemDetailScreen extends StatelessWidget {
                         FutureBuilder<int>(
                           future: () async {
                             try {
+                              // 🟢 เปลี่ยนมาใช้คำสั่ง .count() มันจะนับแค่ตัวเลขโดยไม่ดึงข้อมูลลงมาทั้งดุ้น
                               final sentSnap = await FirebaseFirestore.instance.collection('offers')
                                   .where('sender_id', isEqualTo: ownerId)
                                   .where('status', isEqualTo: 'completed')
+                                  .count() // เพิ่มตรงนี้
                                   .get();
                               final receivedSnap = await FirebaseFirestore.instance.collection('offers')
                                   .where('target_user_id', isEqualTo: ownerId)
                                   .where('status', isEqualTo: 'completed')
+                                  .count() // เพิ่มตรงนี้
                                   .get();
-                              return sentSnap.docs.length + receivedSnap.docs.length;
+                              
+                              // ดึงค่าผลลัพธ์ผ่าน property .count
+                              return (sentSnap.count ?? 0) + (receivedSnap.count ?? 0);
                             } catch (e) {
                               return 0;
                             }
@@ -511,11 +519,17 @@ class ItemDetailScreen extends StatelessWidget {
                               );
                             }
                             
-                            if (selectedMyItemId == null && items.isNotEmpty) {
-                              selectedMyItemId = items.first.id;
-                              selectedMyItemData = items.first.data() as Map<String, dynamic>;
-                              selectedMyItemData!['listing_id'] = items.first.id;
-                            }
+                            // ถ้ายังไม่เลือก ให้เลือกชิ้นแรกเป็นค่าเริ่มต้น
+                          // 🟢 ใช้ addPostFrameCallback เพื่อหน่วงเวลาให้หน้าจอวาดเสร็จก่อน ค่อยอัปเดต State ป้องกัน UI แครช
+                          if (selectedMyItemId == null && items.isNotEmpty) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              setModalState(() {
+                                selectedMyItemId = items.first.id;
+                                selectedMyItemData = items.first.data() as Map<String, dynamic>;
+                                selectedMyItemData!['listing_id'] = items.first.id;
+                              });
+                            });
+                          }
 
                             return GestureDetector(
                               onTap: () {},
