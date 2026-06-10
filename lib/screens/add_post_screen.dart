@@ -133,8 +133,25 @@ class _AddPostScreenState extends State<AddPostScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // 🟢 1. วิ่งไปดึงข้อมูลผู้ใช้จากคอลเลกชัน users แค่ครั้งเดียวก่อนเซฟ
+      String ownerName = 'ผู้ใช้งาน';
+      String profileImgUrl = '';
+      double ratingScore = 0.0;
+      
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        ownerName = userData['name'] ?? 'ผู้ใช้งาน';
+        profileImgUrl = userData['profile_img_url'] ?? '';
+        ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
+      }
+
+      // 🟢 2. เซฟข้อมูลพร้อมแปะชื่อและรูปโปรไฟล์ลงไปเลย
       await FirebaseFirestore.instance.collection('listings').add({
         'owner_id': user.uid,
+        'owner_name': ownerName,
+        'owner_profile_img': profileImgUrl,
+        'owner_rating_scores': ratingScore,
         'type': 'item',
         'title': title,
         'description': description,

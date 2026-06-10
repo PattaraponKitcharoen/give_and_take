@@ -424,17 +424,17 @@ class _HomeScreenState extends State<HomeScreen> {
             // ห้ามเห็นของตัวเองเด็ดขาด
             if (ownerId == currentUserId) return false; 
 
-            // 🟢 ระบบ Intersect สำหรับ Wishlists
+            // ระบบ Intersect สำหรับ Wishlists
             bool hasWishlistFilter = _selectedCategories.contains('Wishlists');
             if (hasWishlistFilter && !likedBy.contains(currentUserId)) {
-              return false; // ถ้าเลือก Wishlist แต่เราไม่ได้กดหัวใจไว้ ให้ตัดทิ้งเลย
+              return false; 
             }
 
-            // 🟢 ระบบตรวจสอบหมวดหมู่อื่นๆ (ถ้าเลือกหลายอัน)
+            // ระบบตรวจสอบหมวดหมู่อื่นๆ
             List<String> activeCats = _selectedCategories.where((c) => c != 'Wishlists').toList();
             if (activeCats.isNotEmpty && !activeCats.contains('All')) {
               if (!activeCats.contains(category)) {
-                return false; // ถ้าของชิ้นนี้ไม่ได้อยู่ในหมวดหมู่ใดๆ ที่เลือกไว้ ให้ตัดทิ้ง
+                return false; 
               }
             }
 
@@ -465,6 +465,11 @@ class _HomeScreenState extends State<HomeScreen> {
               final title = data['title'] ?? 'No Title';
               final coins = data['estimated_coins'] ?? 0;
               final thumbnail = data['thumbnail_url'] ?? '';
+
+              // 🟢 ดึงข้อมูล Owner จาก itemData โดยตรง ไม่ต้องใช้ FutureBuilder แล้ว!
+              final ownerName = data['owner_name']?.trim().isEmpty == false ? data['owner_name'] : 'ผู้ใช้งาน';
+              final profileImg = data['owner_profile_img'] ?? '';
+              final ratingScore = (data['owner_rating_scores'] ?? 0.0).toDouble();
               
               return InkWell( 
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: data))),
@@ -514,32 +519,21 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 8),
-                            FutureBuilder<DocumentSnapshot>(
-                              future: FirebaseFirestore.instance.collection('users').doc(data['owner_id']).get(),
-                              builder: (context, userSnap) {
-                                String ownerName = 'ผู้ใช้งาน'; double ratingScore = 0.0; String profileImg = '';
-                                if (userSnap.hasData && userSnap.data!.exists) {
-                                  final userData = userSnap.data!.data() as Map<String, dynamic>;
-                                  ownerName = userData['name']?.trim().isEmpty == false ? userData['name'] : 'ผู้ใช้งาน';
-                                  ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
-                                  profileImg = userData['profile_img_url'] ?? '';
-                                }
-                                return Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Row(
-                                        children: [
-                                          CircleAvatar(radius: 8, backgroundColor: Colors.grey.shade300, backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null, child: profileImg.isEmpty ? const Icon(Icons.person, size: 10, color: Colors.white) : null),
-                                          const SizedBox(width: 6),
-                                          Expanded(child: Text(ownerName, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), overflow: TextOverflow.ellipsis)),
-                                        ],
-                                      ),
-                                    ),
-                                    Row(children: [const Icon(Icons.star, size: 12, color: Colors.amber), const SizedBox(width: 2), Text(ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade800))]),
-                                  ],
-                                );
-                              }
+                            // 🟢 วาด UI ด้วยข้อมูลที่เตรียมไว้ด้านบนทันที
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(radius: 8, backgroundColor: Colors.grey.shade300, backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null, child: profileImg.isEmpty ? const Icon(Icons.person, size: 10, color: Colors.white) : null),
+                                      const SizedBox(width: 6),
+                                      Expanded(child: Text(ownerName, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), overflow: TextOverflow.ellipsis)),
+                                    ],
+                                  ),
+                                ),
+                                Row(children: [const Icon(Icons.star, size: 12, color: Colors.amber), const SizedBox(width: 2), Text(ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade800))]),
+                              ],
                             ),
                             const SizedBox(height: 12),
                             Container(
