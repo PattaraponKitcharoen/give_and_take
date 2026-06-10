@@ -67,28 +67,43 @@ class _EditListingScreenState extends State<EditListingScreen> {
   Future<void> _updateListing() async {
     setState(() => _isLoading = true);
     try {
-      // 🟢 จัดเตรียมข้อมูล metadata เดิมเพื่อไม่ให้ค่าอื่นๆ หาย
+      // จัดเตรียมข้อมูล metadata เดิมเพื่อไม่ให้ค่าอื่นๆ หาย
       Map<String, dynamic> metadata = widget.itemData['metadata'] ?? {};
       metadata['condition'] = _selectedCondition;
 
-      // 🟢 อัปเดตข้อมูลทั้งหมดลงฐานข้อมูล
+      // อัปเดตข้อมูลทั้งหมดลงฐานข้อมูล
       await FirebaseFirestore.instance.collection('listings').doc(widget.itemId).update({
         'title': _titleController.text.trim(),
         'description': _descController.text.trim(),
         'estimated_coins': int.tryParse(_coinsController.text.trim()) ?? 0,
         'category': _selectedCategory,
         'metadata': metadata,
-        // หมายเหตุ: หากทำระบบอัปโหลดรูป ให้เพิ่ม 'thumbnail_url': _thumbnailUrl ตรงนี้ด้วย
         'updated_at': FieldValue.serverTimestamp(),
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('บันทึกข้อมูลเรียบร้อย')));
+        // 🟢 ปรับ SnackBar ให้เป็นแบบ Floating เพื่อไม่ให้ดัน UI ด้านล่าง
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('บันทึกข้อมูลเรียบร้อย'),
+            behavior: SnackBarBehavior.floating, // สั่งให้ลอยทับ UI
+            margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20), // เพิ่มระยะห่างขอบให้ดูสวยขึ้น
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), // ลบมุมขอบให้มนๆ
+            backgroundColor: tealColor,
+          )
+        );
         Navigator.pop(context); 
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('เกิดข้อผิดพลาด: $e'),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+            backgroundColor: Colors.red.shade600,
+          )
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
