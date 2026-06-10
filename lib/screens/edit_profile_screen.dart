@@ -36,6 +36,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        // 🟢 Floating ทำให้ SnackBar ลอยเหนือเนื้อหาปกติ
+        behavior: SnackBarBehavior.floating,
+        // 🟢 margin คือหัวใจ: ตั้งค่าให้ลอยห่างจากขอบล่าง 100 pixels เพื่อไม่ให้ทับปุ่ม Save
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
@@ -52,12 +66,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }, SetOptions(merge: true));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('บันทึกโปรไฟล์เรียบร้อย')));
+        _showSuccessSnackBar('บันทึกโปรไฟล์เรียบร้อย');
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e')));
+        _showSuccessSnackBar('เกิดข้อผิดพลาด: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

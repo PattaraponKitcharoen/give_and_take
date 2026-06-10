@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart'; // 🟢 เพิ่ม Geolocator
+import 'package:geocoding/geocoding.dart';   // 🟢 เพิ่ม Geocoding
 import 'item_detail_screen.dart';
 import 'item_search_delegate.dart';
 import 'notification_screen.dart';
@@ -17,12 +19,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final Color tealColor = const Color(0xFF008080);
   final Color bgColor = const Color(0xFFF4F6F8); 
 
-  // 🟢 1. เปลี่ยนมาเก็บค่าเป็น List สำหรับ Multiple Selection
   List<String> _selectedCategories = ['All'];
   String _sortBy = 'newest'; 
   final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
-  // รายชื่อหมวดหมู่ทั้งหมด
+  // 🟢 เพิ่มตัวแปรสำหรับระบบ Location
+  String _currentLocation = 'หาดใหญ่, สงขลา'; 
+  bool _isLoadingLocation = false;
+
   final List<String> _allCategories = [
     'Wishlists', 
     'อุปกรณ์ไอที & แก็ดเจ็ต',
@@ -38,20 +42,121 @@ class _HomeScreenState extends State<HomeScreen> {
     'อื่นๆ (Miscellaneous)'
   ];
 
-  // 🟢 2. Logic การเลือกหมวดหมู่แบบเปิด-ปิด (Toggle)
+  // 🟢 ฟังก์ชันหลักสำหรับขอสิทธิ์และดึงตำแหน่ง
+  Future<void> _updateLocation() async {
+    setState(() => _isLoadingLocation = true);
+
+    try {
+      bool serviceEnabled;
+      LocationPermission permission;
+
+      // เช็กว่าผู้ใช้เปิด GPS ในเครื่องหรือยัง
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showSnackBar('กรุณาเปิดบริการตำแหน่ง (GPS) ในเครื่องของคุณ');
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      // เช็กสิทธิ์ว่าเคยอนุญาตให้แอปหรือยัง
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showSnackBar('ไม่สามารถอัปเดตได้เนื่องจากคุณปฏิเสธการเข้าถึงตำแหน่ง');
+          setState(() => _isLoadingLocation = false);
+          return;
+        }
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+        _showSnackBar('การเข้าถึงตำแหน่งถูกปฏิเสธถาวร กรุณาไปเปิดในการตั้งค่าของเครื่อง');
+        setState(() => _isLoadingLocation = false);
+        return;
+      }
+
+      // ดึงพิกัดปัจจุบัน
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high
+      );
+
+      // แปลงพิกัดเป็นชื่อ อำเภอ/จังหวัด
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude, 
+        position.longitude
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks.first;
+        
+        String district = place.subAdministrativeArea ?? '';
+        String province = place.administrativeArea ?? '';
+
+        district = district.replaceAll('อำเภอ', '').replaceAll('เขต', '').trim();
+        province = province.replaceAll('จังหวัด', '').trim();
+
+        String newLocationInfo = '$district, $province';
+
+        // อัปเดต UI
+        setState(() {
+          _currentLocation = newLocationInfo;
+          _isLoadingLocation = false;
+        });
+
+        // บันทึกลง Firestore
+        await _saveLocationToDatabase(position.latitude, position.longitude, district, province);
+        
+        _showSnackBar('อัปเดตตำแหน่งของคุณเป็น $newLocationInfo เรียบร้อยแล้ว');
+      }
+    } catch (e) {
+      setState(() => _isLoadingLocation = false);
+      _showSnackBar('เกิดข้อผิดพลาดในการค้นหาตำแหน่ง: $e');
+    }
+  }
+
+  // 🟢 ฟังก์ชันอัปเดตข้อมูลลงฐานข้อมูลของผู้ใช้
+  Future<void> _saveLocationToDatabase(double lat, double lng, String district, String province) async {
+    if (currentUserId != null) {
+      await FirebaseFirestore.instance.collection('users').doc(currentUserId).set({
+        'location': {
+          'latitude': lat,
+          'longitude': lng,
+          'district': district,
+          'province': province,
+          'display_name': '$district, $province',
+        },
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+  }
+
+  // 🟢 ฟังก์ชันสำหรับโชว์แจ้งเตือน
+  void _showSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating, // 🟢 ทำให้ลอย
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 10), // 🟢 100 คือระยะห่างจากขอบล่าง (ลองปรับตัวเลขนี้ดูครับ)
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
   void _toggleCategory(String cat) {
     setState(() {
       if (cat == 'All') {
-        _selectedCategories = ['All']; // ถ้าเลือก All ให้เคลียร์อันอื่นทิ้ง
+        _selectedCategories = ['All']; 
       } else {
-        _selectedCategories.remove('All'); // ถ้าเลือกอันอื่น ให้เอา All ออก
+        _selectedCategories.remove('All'); 
         if (_selectedCategories.contains(cat)) {
-          _selectedCategories.remove(cat); // กดซ้ำเพื่อเอาออก
+          _selectedCategories.remove(cat); 
           if (_selectedCategories.isEmpty) {
-            _selectedCategories = ['All']; // ถ้าเอาออกจนหมด ให้กลับไปเป็น All
+            _selectedCategories = ['All']; 
           }
         } else {
-          _selectedCategories.add(cat); // เพิ่มหมวดหมู่เข้าไป
+          _selectedCategories.add(cat); 
         }
       }
     });
@@ -94,7 +199,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🟢 3. Popup แสดงหมวดหมู่ทั้งหมดเวลากด See all (เอาติ๊กถูกออกแล้ว)
   void _showAllCategoriesPopup() {
     showModalBottomSheet(
       context: context,
@@ -156,8 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(16),
                               side: BorderSide(color: isActive ? tealColor : Colors.grey.shade300)
                             ),
-                            showCheckmark: false, // ปิดการแสดงติ๊กถูกค่าเริ่มต้นของระบบ
-                            // 🟢 ลบบรรทัด avatar ออกไปแล้ว ทำให้ Layout ไม่ขยับ
+                            showCheckmark: false, 
                           );
                         }).toList(),
                       ),
@@ -262,7 +365,6 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildSearchBar(),
             _buildLocationBar(),
             _buildHeroBanner(),
-            // 🟢 ส่ง _showAllCategoriesPopup เข้าไปให้ทำงานตอนกด See all
             _buildSectionHeader('Categories', 'See all', onTrailingTap: _showAllCategoriesPopup),
             _buildCategoryChips(),
             _buildSectionHeader('Near You', 'อัปเดตใหม่วันนี้', isTrailingGreen: true),
@@ -299,13 +401,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 🟢 อัปเดต Location Bar ให้กดได้และเปลี่ยนตัวหนังสือตอนกำลังโหลด
   Widget _buildLocationBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(children: [Icon(Icons.location_on, color: tealColor, size: 18), const SizedBox(width: 4), const Text('หาดใหญ่, สงขลา', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 14)), const Icon(Icons.keyboard_arrow_down, color: Colors.grey, size: 18)]),
+          GestureDetector(
+            onTap: _isLoadingLocation ? null : _updateLocation, // กดแล้วรันฟังก์ชันดึงพิกัด
+            child: Row(
+              children: [
+                Icon(Icons.location_on, color: tealColor, size: 18), 
+                const SizedBox(width: 4), 
+                _isLoadingLocation 
+                  ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2)) // โชว์หมุนๆ
+                  : Text(_currentLocation, style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 14)), 
+                const SizedBox(width: 4),
+                const Icon(Icons.keyboard_arrow_down, color: Colors.grey, size: 18)
+              ],
+            ),
+          ),
           Text('ใกล้ฉัน', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
         ],
       ),
@@ -328,7 +444,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🟢 เพิ่มรับค่า onTrailingTap สำหรับกดปุ่มมุมขวา
   Widget _buildSectionHeader(String title, String trailing, {bool isTrailingGreen = false, VoidCallback? onTrailingTap}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
@@ -352,15 +467,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCategoryChips() {
-    final displayCategories = ['All', ..._allCategories]; // เรียง All ไว้หน้าสุด
+    final displayCategories = ['All', ..._allCategories]; 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: displayCategories.map((cat) {
-          bool isActive = _selectedCategories.contains(cat); // 🟢 เช็กจาก List
+          bool isActive = _selectedCategories.contains(cat); 
           return GestureDetector(
-            onTap: () => _toggleCategory(cat), // 🟢 เรียกใช้ Toggle
+            onTap: () => _toggleCategory(cat), 
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               margin: const EdgeInsets.only(right: 12),
@@ -421,16 +536,13 @@ class _HomeScreenState extends State<HomeScreen> {
             final category = data['category'] ?? '';
             final List likedBy = data['liked_by'] ?? []; 
 
-            // ห้ามเห็นของตัวเองเด็ดขาด
             if (ownerId == currentUserId) return false; 
 
-            // ระบบ Intersect สำหรับ Wishlists
             bool hasWishlistFilter = _selectedCategories.contains('Wishlists');
             if (hasWishlistFilter && !likedBy.contains(currentUserId)) {
               return false; 
             }
 
-            // ระบบตรวจสอบหมวดหมู่อื่นๆ
             List<String> activeCats = _selectedCategories.where((c) => c != 'Wishlists').toList();
             if (activeCats.isNotEmpty && !activeCats.contains('All')) {
               if (!activeCats.contains(category)) {
@@ -466,7 +578,6 @@ class _HomeScreenState extends State<HomeScreen> {
               final coins = data['estimated_coins'] ?? 0;
               final thumbnail = data['thumbnail_url'] ?? '';
 
-              // 🟢 ดึงข้อมูล Owner จาก itemData โดยตรง ไม่ต้องใช้ FutureBuilder แล้ว!
               final ownerName = data['owner_name']?.trim().isEmpty == false ? data['owner_name'] : 'ผู้ใช้งาน';
               final profileImg = data['owner_profile_img'] ?? '';
               final ratingScore = (data['owner_rating_scores'] ?? 0.0).toDouble();
@@ -519,7 +630,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 8),
-                            // 🟢 วาด UI ด้วยข้อมูลที่เตรียมไว้ด้านบนทันที
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
