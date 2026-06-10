@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'main_layout.dart';
+import 'package:flutter/gestures.dart';
+import '../constants/app_terms.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -18,6 +20,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmText = true;
   bool _isLoading = false;
   bool _agreeToTerms = false;
+
+  // 🟢 1. ตัวแปรเก็บสถานะว่าอ่านจบหรือยัง
+  bool _hasReadTerms = false;
+  bool _hasReadPrivacy = false;
 
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -89,6 +95,105 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  // 🟢 อัปเดตฟังก์ชัน Dialog บังคับอ่านให้จบ ปุ่มปิดถึงจะเปิดใช้งาน
+  void _showTermsDialog(String title, String content, bool isTerms) {
+    ScrollController scrollController = ScrollController();
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false, // 🟢 1. บังคับห้ามกดพื้นที่ว่างรอบๆ เพื่อปิด ป้องกันการลักไก่ข้ามขั้นตอน
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            
+            // ตรวจจับการเลื่อนหน้าจอ
+            scrollController.addListener(() {
+              if (scrollController.position.pixels >= scrollController.position.maxScrollExtent - 10) {
+                if (isTerms && !_hasReadTerms) {
+                  setState(() => _hasReadTerms = true);
+                  setDialogState(() {}); // อัปเดต UI ภายใน Dialog ทันที
+                } else if (!isTerms && !_hasReadPrivacy) {
+                  setState(() => _hasReadPrivacy = true);
+                  setDialogState(() {}); // อัปเดต UI ภายใน Dialog ทันที
+                }
+              }
+            });
+
+            // ตรวจสอบกรณีที่หน้าจอใหญ่หรือข้อความสั้นจนไม่ต้องเลื่อน
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (scrollController.hasClients && scrollController.position.maxScrollExtent <= 0) {
+                if (isTerms && !_hasReadTerms) {
+                  setState(() => _hasReadTerms = true);
+                  setDialogState(() {});
+                } else if (!isTerms && !_hasReadPrivacy) {
+                  setState(() => _hasReadPrivacy = true);
+                  setDialogState(() {});
+                }
+              }
+            });
+
+            bool currentReadStatus = isTerms ? _hasReadTerms : _hasReadPrivacy;
+
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text(title, style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.4, 
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        child: Text(content, style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.5)),
+                      ),
+                    ),
+                    if (!currentReadStatus)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.keyboard_arrow_down, color: Colors.orange.shade400, size: 16),
+                            const SizedBox(width: 4),
+                            Text('เลื่อนลงเพื่ออ่านให้จบก่อนปิด', style: TextStyle(fontSize: 12, color: Colors.orange.shade600, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                            const SizedBox(width: 4),
+                            Text('อ่านจบเรียบร้อย ปลดล็อคปุ่มปิดแล้ว', style: TextStyle(fontSize: 12, color: Colors.green.shade600, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  // 🟢 2. เช็กสถานะการอ่าน ถ้าอ่านจบ (true) ให้กดปิดได้ ถ้ายังไม่จบส่งค่า null ปุ่มจะเทาจางทันที
+                  onPressed: currentReadStatus ? () => Navigator.pop(context) : null,
+                  style: TextButton.styleFrom(
+                    foregroundColor: tealColor,
+                    disabledForegroundColor: Colors.grey.shade400, // 🟢 3. บังคับสีเทาจางตอนที่ยังกดไม่ได้
+                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  child: const Text('ปิด'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildLabeledTextField({
     required String label,
     required TextEditingController controller,
@@ -102,11 +207,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 0.5)),
-        const SizedBox(height: 4), // 🟢 บีบช่องว่าง
+        const SizedBox(height: 4), 
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12), // 🟢 ลดความมนลงนิดนึง
+            borderRadius: BorderRadius.circular(12), 
             border: Border.all(color: Colors.grey.shade200),
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
@@ -122,11 +227,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ? IconButton(icon: Icon(obscureState! ? Icons.visibility_off : Icons.visibility, color: Colors.grey.shade400, size: 18), onPressed: onToggleObscure)
                   : null,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12), // 🟢 บีบความอ้วนของช่องกรอก
+              contentPadding: const EdgeInsets.symmetric(vertical: 12), 
             ),
           ),
         ),
-        const SizedBox(height: 12), // 🟢 บีบช่องว่างระหว่างช่องกรอก
+        const SizedBox(height: 12), 
       ],
     );
   }
@@ -137,32 +242,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
       backgroundColor: bgColor,
       body: SafeArea(
         child: SingleChildScrollView(
-          physics: const ClampingScrollPhysics(), // 🟢 ป้องกันการเด้งยืดหยุ่นตอนสไลด์ ทำให้เหมือนโดนล็อค
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0), // 🟢 บีบขอบด้านข้างและบนล่าง
+          physics: const ClampingScrollPhysics(), 
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0), 
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 16),
-              // 🟢 ดึงรูปแอปไอคอนของคุณมาใช้ (ครอบให้ขอบมนนิดๆ ให้ดูเป็นโลโก้)
               Center(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.asset('assets/logo.png', width: 80, height: 80,color: Color.fromARGB(255, 16, 159, 111), fit: BoxFit.cover),
+                  child: Image.asset('assets/logo.png', width: 80, height: 80,color: const Color.fromARGB(255, 16, 159, 111), fit: BoxFit.cover),
                 ),
               ),
               const SizedBox(height: 12),
               const Text(
                 'Create an Account',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.black87), // 🟢 ลดขนาดฟอนต์หัวข้อ
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.black87), 
               ),
               const SizedBox(height: 4),
               const Text(
                 'Join the marketplace. Trade what you have.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.blueGrey), // 🟢 ลดขนาดฟอนต์ซับไตเติ้ล
+                style: TextStyle(fontSize: 13, color: Colors.blueGrey), 
               ),
-              const SizedBox(height: 24), // 🟢 บีบช่องว่างก่อนเข้าฟอร์ม
+              const SizedBox(height: 24), 
 
               _buildLabeledTextField(label: 'FULL NAME', controller: _nameController, hintText: 'John Doe', icon: Icons.person_outline),
               _buildLabeledTextField(label: 'EMAIL ADDRESS', controller: _emailController, hintText: 'email@example.com', icon: Icons.mail_outline),
@@ -174,18 +278,62 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 children: [
                   SizedBox(
                     width: 20, height: 20,
-                    child: Checkbox(value: _agreeToTerms, activeColor: tealColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)), onChanged: (value) => setState(() => _agreeToTerms = value ?? false)),
+                    child: Checkbox(
+                      value: _agreeToTerms, 
+                      activeColor: tealColor, 
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)), 
+                      // 🟢 3. ดักจับการกดติ๊กถูก
+                      onChanged: (value) {
+                        if (!_hasReadTerms || !_hasReadPrivacy) {
+                          // ถ้ายังอ่านไม่ครบ โชว์ SnackBar แจ้งเตือนและเด้งออก
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('กรุณากดเข้าไปอ่าน Terms of Service และ Privacy Policy ให้จบก่อนกดยอมรับ'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+                        setState(() => _agreeToTerms = value ?? false);
+                      }
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text.rich(
                       TextSpan(
                         text: 'I agree to the ',
-                        style: TextStyle(fontSize: 12, color: Colors.blueGrey), // 🟢 ลดขนาดฟอนต์
+                        style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
                         children: [
-                          TextSpan(text: 'Terms of Service', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
-                          TextSpan(text: ' and '),
-                          TextSpan(text: 'Privacy Policy', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                          TextSpan(
+                            text: 'Terms of Service', 
+                            style: TextStyle(
+                              color: _hasReadTerms ? const Color(0xFF10B981) : Colors.orange, // เปลี่ยนสีถ้าอ่านแล้ว
+                              fontWeight: FontWeight.bold,
+                              decoration: _hasReadTerms ? null : TextDecoration.underline,
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => _showTermsDialog(
+                                'Terms of Service', 
+                                AppTerms.termsOfService,
+                                true // ส่ง true บอกว่าเป็นไฟล์ Terms
+                              ),
+                          ),
+                          const TextSpan(text: ' and '),
+                          TextSpan(
+                            text: 'Privacy Policy', 
+                            style: TextStyle(
+                              color: _hasReadPrivacy ? const Color(0xFF10B981) : Colors.orange, // เปลี่ยนสีถ้าอ่านแล้ว
+                              fontWeight: FontWeight.bold,
+                              decoration: _hasReadPrivacy ? null : TextDecoration.underline,
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => _showTermsDialog(
+                                'Privacy Policy', 
+                                AppTerms.privacyPolicy,
+                                false // ส่ง false บอกว่าเป็นไฟล์ Privacy
+                              ),
+                          ),
                         ],
                       ),
                     ),
@@ -199,7 +347,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 onPressed: _isLoading ? null : _register,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: tealColor, foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14), // 🟢 บีบความอ้วนปุ่ม
+                  padding: const EdgeInsets.symmetric(vertical: 14), 
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 2, shadowColor: tealColor.withOpacity(0.4),
                 ),
@@ -223,7 +371,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 icon: const Text('G', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent)), 
                 label: const Text('Google', style: TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.bold)),
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12), // 🟢 บีบปุ่ม Google
+                  padding: const EdgeInsets.symmetric(vertical: 12), 
                   backgroundColor: Colors.white, side: BorderSide(color: Colors.grey.shade300),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
