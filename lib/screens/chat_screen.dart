@@ -76,13 +76,23 @@ class _ChatScreenState extends State<ChatScreen> {
       final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
       if (!offerDoc.exists) return {};
       final data = offerDoc.data()!;
+      
       String targetId = data['target_listing_id'] ?? '';
       String offeredId = data['offered_listing_id'] ?? '';
-      String itemToShowId = data['target_owner_id'] == currentUserId ? offeredId : targetId;
-      if (itemToShowId.isEmpty) itemToShowId = targetId; 
+      String senderId = data['sender_id'] ?? '';
       
-      final itemDoc = await FirebaseFirestore.instance.collection('listings').doc(itemToShowId).get();
-      if (itemDoc.exists) return itemDoc.data() as Map<String, dynamic>;
+      // 🟢 แยกการแสดงผลให้ชัดเจน:
+      // ถ้า "เรา" คือคนทักไปยื่นข้อเสนอ (sender) -> ต้องเห็นของเป้าหมายที่อยากได้ (target)
+      // ถ้า "เรา" คือคนถูกทัก (receiver) -> ต้องเห็นของที่เขาเอามาเสนอ (offered)
+      String itemToShowId = (currentUserId == senderId) ? targetId : offeredId;
+      
+      // ถ้ามี ID ให้ไปดึงข้อมูลสิ่งของมาแสดง
+      if (itemToShowId.isNotEmpty) {
+        final itemDoc = await FirebaseFirestore.instance.collection('listings').doc(itemToShowId).get();
+        if (itemDoc.exists) {
+          return itemDoc.data() as Map<String, dynamic>;
+        }
+      }
     } catch (e) {
       debugPrint('Error getting item info: $e');
     }

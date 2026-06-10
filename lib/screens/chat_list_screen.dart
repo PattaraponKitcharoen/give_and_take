@@ -73,11 +73,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
         return result;
       }
 
-      result['status'] = offerDoc.data()?['status'] ?? '';
+      final data = offerDoc.data()!;
+      result['status'] = data['status'] ?? '';
       
-      final targetItemId = offerDoc.data()?['target_listing_id'];
-      if (targetItemId != null) {
-        final itemDoc = await FirebaseFirestore.instance.collection('listings').doc(targetItemId).get();
+      String targetId = data['target_listing_id'] ?? '';
+      String offeredId = data['offered_listing_id'] ?? '';
+      String senderId = data['sender_id'] ?? '';
+      
+      // 🟢 สลับการดึงข้อมูลสิ่งของให้แสดง "ของฝ่ายตรงข้าม"
+      String itemToShowId = (currentUserId == senderId) ? targetId : offeredId;
+      if (itemToShowId.isEmpty) itemToShowId = targetId;
+      
+      if (itemToShowId.isNotEmpty) {
+        final itemDoc = await FirebaseFirestore.instance.collection('listings').doc(itemToShowId).get();
         if (itemDoc.exists) {
           result['title'] = itemDoc.data()?['title'] ?? 'ไม่มีชื่อสิ่งของ';
           result['thumbnail'] = itemDoc.data()?['thumbnail_url'] ?? '';

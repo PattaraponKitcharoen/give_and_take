@@ -722,14 +722,15 @@ class ItemDetailScreen extends StatelessWidget {
                             }
                             
                             final offerRef = await FirebaseFirestore.instance.collection('offers').add({
-                              'sender_id': currentUserId,
-                              'target_user_id': ownerId,
-                              'target_listing_id': itemData['listing_id'] ?? '', 
-                              'offered_listing_id': selectedMyItemId,
-                              'coin_offset': finalCoinOffset, 
-                              'status': 'pending',
-                              'created_at': FieldValue.serverTimestamp(),
-                            });
+                            'sender_id': currentUserId,
+                            'target_user_id': ownerId,
+                            // 🟢 แก้กลับมาใช้คำสั่งนี้ครับ ฟังก์ชันจะมองเห็นข้อมูลได้ถูกต้อง
+                            'target_listing_id': itemData['listing_id'] ?? '', 
+                            'offered_listing_id': selectedMyItemId,
+                            'coin_offset': finalCoinOffset, 
+                            'status': 'pending',
+                            'created_at': FieldValue.serverTimestamp(),
+                          });
 
                             final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
                               'participants': [currentUserId, ownerId],
