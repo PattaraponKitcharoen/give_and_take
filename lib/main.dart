@@ -4,12 +4,14 @@ import 'package:firebase_auth/firebase_auth.dart'; // 🟢 1. เพิ่ม Im
 import 'firebase_options.dart';
 import 'screens/main_layout.dart';
 import 'screens/login_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await NotificationService().initNotification();
   runApp(const GiveAndTakeApp());
 }
 
