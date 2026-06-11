@@ -29,6 +29,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  
+  final ScrollController _termsScrollController = ScrollController();
+  final ScrollController _privacyScrollController = ScrollController();
 
   @override
   void dispose() {
@@ -36,6 +39,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _termsScrollController.dispose();
+    _privacyScrollController.dispose();
     super.dispose();
   }
 
@@ -97,7 +102,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // 🟢 อัปเดตฟังก์ชัน Dialog บังคับอ่านให้จบ ปุ่มปิดถึงจะเปิดใช้งาน
   void _showTermsDialog(String title, String content, bool isTerms) {
-    ScrollController scrollController = ScrollController();
+    ScrollController scrollController = isTerms ? _termsScrollController : _privacyScrollController;
     
     showDialog(
       context: context,

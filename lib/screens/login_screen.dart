@@ -104,8 +104,8 @@ class _LoginScreenState extends State<LoginScreen> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               return SingleChildScrollView(
-                // 🟢 ล็อคไม่ให้เลื่อน โดยใช้ NeverScrollableScrollPhysics
-                physics: const NeverScrollableScrollPhysics(),
+                // 🟢 เปลี่ยนเพื่อให้หน้าจอเลื่อนหลบคีย์บอร์ดได้
+                physics: const BouncingScrollPhysics(),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     minHeight: constraints.maxHeight,

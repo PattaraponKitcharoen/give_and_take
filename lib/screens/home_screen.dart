@@ -98,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
         String newLocationInfo = '$district, $province';
 
         // อัปเดต UI
+        if (!mounted) return;
         setState(() {
           _currentLocation = newLocationInfo;
           _isLoadingLocation = false;
@@ -109,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _showSnackBar('อัปเดตตำแหน่งของคุณเป็น $newLocationInfo เรียบร้อยแล้ว');
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoadingLocation = false);
       _showSnackBar('เกิดข้อผิดพลาดในการค้นหาตำแหน่ง: $e');
     }

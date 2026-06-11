@@ -305,7 +305,10 @@ class _ChatScreenState extends State<ChatScreen> {
            var txData = txQuery.docs.first.data() as Map<String, dynamic>;
            String partnerId = (txData['members'] as List).firstWhere((id) => id != currentUserId);
            String transactionId = txQuery.docs.first.id;
-           Future.delayed(const Duration(milliseconds: 500), () => _showRatingDialog(context, partnerId, transactionId));
+           Future.delayed(const Duration(milliseconds: 500), () {
+             if (!mounted) return;
+             _showRatingDialog(context, partnerId, transactionId);
+           });
         }
       }
     } catch (e) {
