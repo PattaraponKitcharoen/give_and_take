@@ -40,7 +40,7 @@ dependencies:
   firebase_auth: ^6.4.0
   firebase_messaging: ^16.2.0 
   flutter_local_notifications: ^18.0.1
-  geolocator: ^11.0.0  # สำหรับดึงพิกัด GPS และจัดการเรื่อง Permission
+  geolocator: ^13.0.0  # สำหรับดึงพิกัด GPS และจัดการเรื่อง Permission
   geocoding: ^3.0.0    # สำหรับแปลงพิกัด GPS เป็นชื่อ อำเภอ/จังหวัด
 
 dev_dependencies:

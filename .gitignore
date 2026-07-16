@@ -45,3 +45,6 @@ app.*.map.json
 # Firebase config files
 google-services.json
 GoogleService-Info.plist
+
+# FVM Version Cache
+.fvm/
