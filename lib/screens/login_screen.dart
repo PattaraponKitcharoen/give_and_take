@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/auth_repository.dart';
 import 'main_layout.dart';
 import 'register_screen.dart';
 
@@ -34,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน')),
+        const SnackBar(content: Text('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน'), behavior: SnackBarBehavior.floating),
       );
       return;
     }
@@ -42,9 +44,9 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+      await context.read<AuthRepository>().signInWithEmailAndPassword(
+        email,
+        password,
       );
 
       if (mounted) {
@@ -65,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
+          SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
         );
       }
     } finally {
@@ -75,17 +77,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // 🟢 Widget ตัวช่วยสร้างป้ายความน่าเชื่อถือด้านล่าง
-  Widget _buildTrustBadge(IconData icon, String text, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(text, style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade400, fontWeight: FontWeight.w500)),
-      ],
-    );
-  }
 
 @override
   Widget build(BuildContext context) {

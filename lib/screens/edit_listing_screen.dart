@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/listing_repository.dart';
+import '../models/listing_model.dart';
 
 class EditListingScreen extends StatefulWidget {
-  final String itemId;
-  final Map<String, dynamic> itemData;
+  final ListingModel itemData;
 
   const EditListingScreen({
     super.key,
-    required this.itemId,
     required this.itemData,
   });
 
@@ -42,18 +42,17 @@ class _EditListingScreenState extends State<EditListingScreen> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.itemData['title']);
-    _descController = TextEditingController(text: widget.itemData['description']);
-    _coinsController = TextEditingController(text: (widget.itemData['estimated_coins'] ?? 0).toString());
+    _titleController = TextEditingController(text: widget.itemData.title);
+    _descController = TextEditingController(text: widget.itemData.description);
+    _coinsController = TextEditingController(text: widget.itemData.estimatedCoins.toString());
     
-    // 🟢 ดึงค่าเดิมของ Category, Condition และ รูปภาพ มาแสดง
-    _selectedCategory = widget.itemData['category'] ?? 'ทั่วไป';
+    _selectedCategory = widget.itemData.category;
     if (!_categories.contains(_selectedCategory)) _categories.add(_selectedCategory);
 
-    _selectedCondition = widget.itemData['metadata']?['condition'] ?? 'มือสองสภาพดี';
+    _selectedCondition = widget.itemData.condition;
     if (!_conditions.contains(_selectedCondition)) _conditions.add(_selectedCondition);
 
-    _thumbnailUrl = widget.itemData['thumbnail_url'] ?? '';
+    _thumbnailUrl = widget.itemData.thumbnailUrl;
   }
 
   @override
@@ -67,19 +66,16 @@ class _EditListingScreenState extends State<EditListingScreen> {
   Future<void> _updateListing() async {
     setState(() => _isLoading = true);
     try {
-      // จัดเตรียมข้อมูล metadata เดิมเพื่อไม่ให้ค่าอื่นๆ หาย
-      Map<String, dynamic> metadata = widget.itemData['metadata'] ?? {};
-      metadata['condition'] = _selectedCondition;
+      final updatedListing = widget.itemData.copyWith(
+        title: _titleController.text.trim(),
+        description: _descController.text.trim(),
+        estimatedCoins: int.tryParse(_coinsController.text.trim()) ?? 0,
+        category: _selectedCategory,
+        condition: _selectedCondition,
+        updatedAt: DateTime.now(),
+      );
 
-      // อัปเดตข้อมูลทั้งหมดลงฐานข้อมูล
-      await FirebaseFirestore.instance.collection('listings').doc(widget.itemId).update({
-        'title': _titleController.text.trim(),
-        'description': _descController.text.trim(),
-        'estimated_coins': int.tryParse(_coinsController.text.trim()) ?? 0,
-        'category': _selectedCategory,
-        'metadata': metadata,
-        'updated_at': FieldValue.serverTimestamp(),
-      });
+      await context.read<ListingRepository>().updateListing(updatedListing);
       
       if (mounted) {
         // 🟢 ปรับ SnackBar ให้เป็นแบบ Floating เพื่อไม่ให้ดัน UI ด้านล่าง
@@ -136,7 +132,7 @@ class _EditListingScreenState extends State<EditListingScreen> {
                 child: GestureDetector(
                   onTap: () {
                     // TODO: ใส่ฟังก์ชันเรียก Image Picker ตรงนี้ในอนาคต
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ระบบเปลี่ยนรูปภาพยังไม่เปิดใช้งาน')));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ระบบเปลี่ยนรูปภาพยังไม่เปิดใช้งาน'), behavior: SnackBarBehavior.floating));
                   },
                   child: Stack(
                     alignment: Alignment.center,

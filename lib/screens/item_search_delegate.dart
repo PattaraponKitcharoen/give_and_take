@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/listing_repository.dart';
 import 'item_detail_screen.dart';
+import '../models/listing_model.dart';
 
 class ItemSearchDelegate extends SearchDelegate<String> {
   final Color tealColor = const Color(0xFF008080);
-  final String? currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
   // เปลี่ยนคำใบ้ในช่องค้นหา
   @override
@@ -39,10 +40,9 @@ class ItemSearchDelegate extends SearchDelegate<String> {
   // สิ่งที่แสดงเมื่อผู้ใช้กดปุ่ม 'ค้นหา' หรือ 'Enter' บนคีย์บอร์ด
   @override
   Widget buildResults(BuildContext context) {
-    return _buildSearchResults();
+    return _buildSearchResults(context);
   }
 
-  // สิ่งที่แสดงแบบ Real-time ระหว่างที่กำลังพิมพ์
   @override
   Widget buildSuggestions(BuildContext context) {
     if (query.trim().isEmpty) {
@@ -57,17 +57,13 @@ class ItemSearchDelegate extends SearchDelegate<String> {
         ),
       );
     }
-    return _buildSearchResults();
+    return _buildSearchResults(context);
   }
 
-  // ฟังก์ชันหลักที่ใช้ดึงข้อมูลและกรองคำ
-  Widget _buildSearchResults() {
-    return StreamBuilder<QuerySnapshot>(
-      // โหลดเฉพาะของที่เป็น active มาทั้งหมด
-      stream: FirebaseFirestore.instance
-          .collection('listings')
-          .where('status', isEqualTo: 'active')
-          .snapshots(),
+  Widget _buildSearchResults(BuildContext context) {
+    final currentUserId = context.read<AuthRepository>().currentUser?.uid;
+    return StreamBuilder<List<ListingModel>>(
+      stream: context.read<ListingRepository>().getAllActiveListingsStream(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -75,54 +71,43 @@ class ItemSearchDelegate extends SearchDelegate<String> {
         if (snapshot.hasError) {
           return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
         }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(child: Text('ไม่พบสิ่งของในระบบ'));
         }
 
-        final rawDocs = snapshot.data!.docs;
+        final rawDocs = snapshot.data!;
         final searchQuery = query.toLowerCase().trim();
 
-        // 🟢 ลอจิกการกรองคำค้นหา (ทำในเครื่องมือถือ)
-        final filteredDocs = rawDocs.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          final ownerId = data['owner_id'] ?? '';
-          final title = (data['title'] ?? '').toString().toLowerCase();
-
-          if (ownerId == currentUserId) return false; // กฎเดิม: ไม่แสดงของตัวเอง
-          if (!title.contains(searchQuery)) return false; // ถ้าชื่อไม่มีคำที่พิมพ์ ให้ซ่อนไป
-
+        final filteredDocs = rawDocs.where((item) {
+          if (item.ownerId == currentUserId) return false;
+          if (!item.title.toLowerCase().contains(searchQuery)) return false;
           return true;
         }).toList();
 
-        // ถ้ากรองแล้วไม่เหลือของเลย
         if (filteredDocs.isEmpty) {
           return Center(
             child: Text('ไม่พบผลลัพธ์สำหรับ "$query"', style: const TextStyle(color: Colors.grey, fontSize: 16)),
           );
         }
 
-        // วาด UI แบบ GridView แบบเดียวกับหน้า Home 
         return GridView.builder(
           padding: const EdgeInsets.all(16),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 0.75, // ปรับสัดส่วนให้เหมือนหน้าแรก
+            childAspectRatio: 0.75, 
           ),
           itemCount: filteredDocs.length,
           itemBuilder: (context, index) {
-            final data = filteredDocs[index].data() as Map<String, dynamic>;
-            data['listing_id'] = filteredDocs[index].id;
-            
-            final title = data['title'] ?? 'No Title';
-            final coins = data['estimated_coins'] ?? 0;
-            final thumbnail = data['thumbnail_url'] ?? '';
+            final item = filteredDocs[index];
+            final title = item.title;
+            final coins = item.estimatedCoins;
+            final thumbnail = item.thumbnailUrl;
 
             return InkWell(
               onTap: () {
-                // พอกดที่สินค้า ให้เข้าไปหน้ารายละเอียดได้เลย
-                Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: data)));
+                Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(listing: item)));
               },
               child: Container(
                 decoration: BoxDecoration(
@@ -141,7 +126,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
                           color: Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: thumbnail.isNotEmpty 
+                        child: thumbnail != null && thumbnail.isNotEmpty 
                           ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(thumbnail, fit: BoxFit.cover))
                           : const Center(child: Icon(Icons.image, size: 40, color: Colors.black12)),
                       ),

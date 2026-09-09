@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/user_repository.dart';
+import '../models/user_model.dart';
 
 class EditProfileScreen extends StatefulWidget {
-  final Map<String, dynamic> currentData;
+  final UserModel currentUser;
 
-  const EditProfileScreen({super.key, required this.currentData});
+  const EditProfileScreen({super.key, required this.currentUser});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -23,9 +24,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.currentData['name'] ?? '');
-    _telController = TextEditingController(text: widget.currentData['tel'] ?? '');
-    _bioController = TextEditingController(text: widget.currentData['bio'] ?? '');
+    _nameController = TextEditingController(text: widget.currentUser.name);
+    _telController = TextEditingController(text: widget.currentUser.tel);
+    _bioController = TextEditingController(text: widget.currentUser.bio);
   }
 
   @override
@@ -52,18 +53,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'user_id': user.uid,
-        'email': user.email,
-        'name': _nameController.text.trim(),
-        'tel': _telController.text.trim(),
-        'bio': _bioController.text.trim(),
-        'updated_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final updatedUser = widget.currentUser.copyWith(
+        name: _nameController.text.trim(),
+        tel: _telController.text.trim(),
+        bio: _bioController.text.trim(),
+        updatedAt: DateTime.now(),
+      );
+      
+      await context.read<UserRepository>().updateUser(updatedUser);
 
       if (mounted) {
         _showSuccessSnackBar('บันทึกโปรไฟล์เรียบร้อย');
@@ -98,9 +96,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: Colors.grey.withOpacity( 0.3)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(color: Colors.black.withOpacity( 0.02), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
           child: TextField(
@@ -164,11 +162,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 4),
-                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity( 0.1), blurRadius: 10)],
                                 ),
                                 child: CircleAvatar(
                                   radius: 50,
-                                  backgroundColor: tealColor.withOpacity(0.1),
+                                  backgroundColor: tealColor.withOpacity( 0.5),
                                   child: Icon(Icons.person, size: 50, color: tealColor),
                                 ),
                               ),
@@ -247,7 +245,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   minimumSize: const Size(double.infinity, 56),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 2,
-                  shadowColor: tealColor.withOpacity(0.4),
+                  shadowColor: tealColor.withOpacity( 0.4),
                 ),
               ),
             ),

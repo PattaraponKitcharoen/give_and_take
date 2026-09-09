@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubits/transaction/transaction_cubit.dart';
+import '../cubits/transaction/transaction_state.dart'; 
+import '../repositories/offer_repository.dart';
+import '../models/listing_model.dart';
+import '../models/message_model.dart';
+import '../models/offer_model.dart';
 import '../screens/item_detail_screen.dart'; 
 
 class SystemOfferCard extends StatelessWidget {
-  final Map<String, dynamic> msgData;
+  final MessageModel msg;
   final String? activeOfferId;
   final String currentUserId;
   final VoidCallback onCancel;
@@ -13,29 +19,34 @@ class SystemOfferCard extends StatelessWidget {
   final VoidCallback onVerifyOtp;
   final VoidCallback onCancelDeal;
   final Function(String, String) onOpenRating;
+  final bool isSubmitting;
 
   const SystemOfferCard({
-    super.key, required this.msgData, required this.activeOfferId, required this.currentUserId,
+    super.key, required this.msg, required this.activeOfferId, required this.currentUserId,
     required this.onCancel, required this.onReject, required this.onAccept, required this.onCounter,
     required this.onVerifyOtp, required this.onCancelDeal, required this.onOpenRating,
+    this.isSubmitting = false,
   });
 
-  Widget _buildItemThumbnail(BuildContext context, Map<String, dynamic> item) {
+  Widget _buildItemThumbnail(BuildContext context, ListingModel? item) {
+    if (item == null) return const SizedBox(width: 80, height: 100);
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: item))),
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(listing: item)));
+      },
       child: Column(
         children: [
           Container(
             width: 80, height: 80,
             decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
-            child: (item['thumbnail_url'] != null && item['thumbnail_url'] != '') 
-                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(item['thumbnail_url'], fit: BoxFit.cover))
+            child: (item.thumbnailUrl != '') 
+                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(item.thumbnailUrl, fit: BoxFit.cover))
                 : const Icon(Icons.image, color: Colors.grey, size: 30),
           ),
           const SizedBox(height: 8),
           SizedBox(
             width: 80,
-            child: Text(item['title'] ?? 'ไม่มีชื่อ', overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            child: Text(item.title, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -44,34 +55,40 @@ class SystemOfferCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final offerDataFromMsg = msgData['offer_data'] ?? {};
-    final targetItem = offerDataFromMsg['target_item'] ?? {};
-    final offeredItem = offerDataFromMsg['offered_item'] ?? {};
+    final offerData = msg.offerData;
+    final targetItem = offerData?.targetItem;
+    final offeredItem = offerData?.offeredItem;
     
-    bool isSender = (msgData['sender_id'] == currentUserId);
+    bool isSender = (msg.senderId == currentUserId);
     var myItemData = isSender ? offeredItem : targetItem;
     var theirItemData = isSender ? targetItem : offeredItem;
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('offers').doc(activeOfferId).snapshots(),
-      builder: (context, offerSnap) {
-        String offerStatus = 'cancelled'; Map<String, dynamic> offerData = {};
-        if (offerSnap.hasData && offerSnap.data!.exists) {
-          offerData = offerSnap.data!.data() as Map<String, dynamic>;
-          offerStatus = offerData['status'] ?? 'pending';
+    if (activeOfferId == null || activeOfferId!.isEmpty) {
+      return const SizedBox();
+    }
+
+    return StreamBuilder<OfferModel>(
+      stream: context.read<OfferRepository>().getOfferStream(activeOfferId!),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
         }
 
-        String lastOfferBy = offerData['last_offer_by'] ?? offerData['sender_id'] ?? '';
+        OfferModel? currentOffer = snapshot.data;
+        String offerStatus = currentOffer?.status ?? 'pending';
+        String lastOfferBy = currentOffer?.lastOfferBy ?? currentOffer?.senderId ?? '';
         bool isMyTurn = (lastOfferBy != currentUserId); 
-        int currentOffset = offerData['coin_offset'] ?? 0;
-        String offsetText = 'แลกของต่อของ (ไม่มีการเพิ่มเหรียญ)'; Color offsetColor = Colors.black54;
+        int currentOffset = currentOffer?.coinOffset ?? 0;
+        
+        String offsetText = 'แลกของต่อของ (ไม่มีการเพิ่มเหรียญ)'; 
+        Color offsetColor = Colors.black54;
 
         if (currentOffset > 0) {
-          bool iAmSender = (currentUserId == offerData['sender_id']);
+          bool iAmSender = (currentUserId == currentOffer?.senderId);
           offsetText = iAmSender ? 'คุณเสนอจ่ายเพิ่ม $currentOffset Coins' : 'อีกฝ่ายเสนอจ่ายเพิ่ม $currentOffset Coins';
           offsetColor = iAmSender ? Colors.red : Colors.green;
         } else if (currentOffset < 0) {
-          bool iAmSender = (currentUserId == offerData['sender_id']);
+          bool iAmSender = (currentUserId == currentOffer?.senderId);
           offsetText = iAmSender ? 'คุณขอรับเงินเพิ่ม ${currentOffset.abs()} Coins' : 'อีกฝ่ายขอรับเงินเพิ่ม ${currentOffset.abs()} Coins';
           offsetColor = iAmSender ? Colors.green : Colors.red;
         }
@@ -122,58 +139,78 @@ class SystemOfferCard extends StatelessWidget {
                         children: [
                           Expanded(child: OutlinedButton(onPressed: onReject, style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)), child: const Text('ปฏิเสธ'))),
                           const SizedBox(width: 10),
-                          Expanded(child: ElevatedButton(onPressed: () => onCounter(offerData), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange), child: const Text('ต่อรอง', style: TextStyle(color: Colors.white)))),
+                          Expanded(child: ElevatedButton(onPressed: () {
+                            if (currentOffer != null) {
+                              onCounter(currentOffer.toJson());
+                            }
+                          }, style: ElevatedButton.styleFrom(backgroundColor: Colors.orange), child: const Text('ต่อรอง', style: TextStyle(color: Colors.white)))),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onAccept, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)), child: const Text('ยอมรับข้อเสนอ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))),
+                      SizedBox(
+                        width: double.infinity, 
+                        child: ElevatedButton(
+                          onPressed: isSubmitting ? null : onAccept, 
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)), 
+                          child: isSubmitting 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('ยอมรับข้อเสนอ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                        )
+                      ),
                     ],
                   )
               ] else if (offerStatus == 'accepted' || offerStatus == 'in_progress') ...[
                 Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)), child: const Text('ตกลงแลกเปลี่ยนแล้ว', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green))),
-                StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: activeOfferId).limit(1).snapshots(),
-                  builder: (context, txSnap) {
-                    if (!txSnap.hasData || txSnap.data!.docs.isEmpty) return const SizedBox();
-                    var txData = txSnap.data!.docs.first.data() as Map<String, dynamic>;
-                    var codes = txData['verification_codes'] ?? {};
-                    String myCode = codes[currentUserId] ?? '------';
-                    return Column(
-                      children: [
-                        const SizedBox(height: 16),
-                        Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)), child: Column(children: [const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)), Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: Color(0xFF008080)))])),
-                        const SizedBox(height: 12),
-                        SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onVerifyOtp, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)), child: const Text('กรอกรหัสของอีกฝ่าย', style: TextStyle(color: Colors.white)))),
-                        const SizedBox(height: 8),
-                        SizedBox(width: double.infinity, child: OutlinedButton(onPressed: onCancelDeal, style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)), child: const Text('ยกเลิกดีลนี้'))),
-                      ],
-                    );
+                BlocBuilder<TransactionCubit, TransactionState>(
+                  builder: (context, txState) {
+                    if (txState is TransactionInitial || txState is TransactionLoading) {
+                      if (activeOfferId != null && activeOfferId!.isNotEmpty) {
+                        context.read<TransactionCubit>().listenToTransactionByOfferId(activeOfferId!);
+                      }
+                      return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+                    }
+                    if (txState is TransactionLoaded) {
+                      var codes = txState.currentTransaction.verificationCodes ?? {};
+                      String myCode = codes[currentUserId] ?? '------';
+                      return Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)), child: Column(children: [const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)', style: TextStyle(color: Colors.black54)), Text(myCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 5, color: Color(0xFF008080)))])),
+                          const SizedBox(height: 12),
+                          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onVerifyOtp, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)), child: const Text('กรอกรหัสของอีกฝ่าย', style: TextStyle(color: Colors.white)))),
+                          const SizedBox(height: 8),
+                          SizedBox(width: double.infinity, child: OutlinedButton(onPressed: onCancelDeal, style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)), child: const Text('ยกเลิกดีลนี้'))),
+                        ],
+                      );
+                    }
+                    return const SizedBox();
                   }
                 )
               ] else ...[
                 Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: offerStatus == 'completed' ? Colors.green.shade50 : (offerStatus == 'rejected' ? Colors.orange.shade50 : Colors.red.shade50), borderRadius: BorderRadius.circular(8)), child: Text(offerStatus == 'completed' ? 'แลกเปลี่ยนสำเร็จสมบูรณ์' : (offerStatus == 'rejected' ? 'ถูกปฏิเสธ' : 'ถูกยกเลิกแล้ว'), style: TextStyle(fontWeight: FontWeight.bold, color: offerStatus == 'completed' ? Colors.green : (offerStatus == 'rejected' ? Colors.orange : Colors.red)))),
                 if (offerStatus == 'completed') ...[
-                  FutureBuilder<QuerySnapshot>(
-                    future: FirebaseFirestore.instance.collection('transactions').where('offer_id', isEqualTo: activeOfferId).limit(1).get(),
-                    builder: (context, txSnap) {
-                      if (!txSnap.hasData || txSnap.data!.docs.isEmpty) return const SizedBox();
-                      String transactionId = txSnap.data!.docs.first.id;
-                      var txData = txSnap.data!.docs.first.data() as Map<String, dynamic>;
-                      String partnerId = (txData['members'] as List).firstWhere((id) => id != currentUserId);
-                      return StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('reviews').where('transaction_id', isEqualTo: transactionId).where('reviewer_id', isEqualTo: currentUserId).snapshots(),
-                        builder: (context, reviewSnap) {
-                          bool hasReviewed = reviewSnap.hasData && reviewSnap.data!.docs.isNotEmpty;
-                          return Column(
-                            children: [
-                              const SizedBox(height: 12),
-                              SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: hasReviewed ? null : () => onOpenRating(partnerId, transactionId), icon: Icon(hasReviewed ? Icons.check_circle : Icons.star, color: hasReviewed ? Colors.white70 : Colors.white, size: 20), label: Text(hasReviewed ? 'คุณให้คะแนนเรียบร้อยแล้ว' : 'ให้คะแนนคู่กรณี', style: TextStyle(color: hasReviewed ? Colors.white70 : Colors.white, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade700, disabledBackgroundColor: Colors.grey.shade400))),
-                            ],
-                          );
-                        },
-                      );
+                  BlocBuilder<TransactionCubit, TransactionState>(
+                    builder: (context, txState) {
+                      if (txState is TransactionLoaded) {
+                        final tx = txState.currentTransaction;
+                        String transactionId = tx.transactionId;
+                        String partnerId = tx.members.firstWhere((id) => id != currentUserId, orElse: () => '');
+                        
+                        return Column(
+                          children: [
+                            const SizedBox(height: 12),
+                            SizedBox(width: double.infinity, child: ElevatedButton.icon(
+                              onPressed: () => onOpenRating(partnerId, transactionId), 
+                              icon: const Icon(Icons.star, color: Colors.white, size: 20), 
+                              label: const Text('จัดการคะแนน/รีวิว', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade700)
+                            )),
+                          ],
+                        );
+                      }
+                      return const SizedBox();
                     }
-                  ),
+                  )
                 ]
               ]
             ],

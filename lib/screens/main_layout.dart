@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/chat_repository.dart';
 import 'home_screen.dart';
 import 'my_listing_screen.dart';
 import 'add_post_screen.dart';
@@ -29,27 +30,13 @@ class _MainLayoutState extends State<MainLayout> {
     );
 
     if (isChat) {
-      iconWidget = StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('chat_rooms')
-            .where('participants', arrayContains: FirebaseAuth.instance.currentUser?.uid ?? '')
-            .snapshots(),
+      final currentUserId = context.read<AuthRepository>().currentUser?.uid;
+      iconWidget = StreamBuilder<bool>(
+        stream: currentUserId != null
+            ? context.read<ChatRepository>().hasUnreadNotifications(currentUserId)
+            : Stream.value(false),
         builder: (context, snapshot) {
-          bool hasUnreadChat = false;
-          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-
-          if (snapshot.hasData && currentUserId != null) {
-            for (var doc in snapshot.data!.docs) {
-              final room = doc.data() as Map<String, dynamic>;
-              final List readBy = room['read_by'] ?? [];
-              final String? lastMessage = room['last_message_text'];
-
-              if (lastMessage != null && !readBy.contains(currentUserId)) {
-                hasUnreadChat = true;
-                break;
-              }
-            }
-          }
+          bool hasUnreadChat = snapshot.data ?? false;
 
           return Stack(
             clipBehavior: Clip.none,

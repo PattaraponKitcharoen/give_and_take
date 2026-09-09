@@ -1,37 +1,42 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../models/listing_model.dart';
+import '../models/offer_model.dart';
+import '../repositories/listing_repository.dart';
+import '../repositories/offer_repository.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/user_repository.dart';
+import '../cubits/offer/offer_cubit.dart';
+import '../cubits/offer/offer_state.dart';
 import 'chat_screen.dart';
-import 'user_profile_screen.dart'; 
+import 'user_profile_screen.dart';
 
 class ItemDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> itemData;
+  final ListingModel listing;
 
-  const ItemDetailScreen({super.key, required this.itemData});
+  const ItemDetailScreen({super.key, required this.listing});
 
   @override
   Widget build(BuildContext context) {
     // 🟢 แก้รหัสสีให้ตรงกับหน้า Add Item (0xFF008080)
-    final Color tealColor = const Color(0xFF008080); 
-    final Color lightTeal = const Color(0xFFE0F2F1);
-    final Color coinGreen = const Color(0xFF00C853);
+    const Color tealColor = Color(0xFF008080); 
+    const Color lightTeal = Color(0xFFE0F2F1);
+    const Color coinGreen = Color(0xFF00C853);
     
-    final String listingId = itemData['listing_id'] ?? '';
-    final String title = itemData['title'] ?? 'ไม่มีชื่อสินค้า';
-    final String description = itemData['description'] ?? 'ไม่มีรายละเอียด';
-    final String category = itemData['category'] ?? 'ทั่วไป';
-    final int coins = itemData['estimated_coins'] ?? 0;
+    final String listingId = listing.listingId;
+    final String title = listing.title;
+    final String description = listing.description;
+    final String category = listing.category;
+    final int coins = listing.estimatedCoins;
     
-    final Map<String, dynamic> metadata = itemData['metadata'] ?? {};
-    final String condition = metadata['condition'] ?? 'มือสองสภาพดี';
-    final String ownerId = itemData['owner_id'] ?? ''; 
-    final String thumbnail = itemData['thumbnail_url'] ?? '';
+    final String condition = listing.condition.isEmpty ? 'ไม่ระบุสภาพ' : listing.condition;
+    final String ownerId = listing.ownerId; 
+    final String thumbnail = listing.thumbnailUrl;
 
     // 🟢 แก้ไขการแสดงเวลาให้เป็นภาษาไทย
     String listedText = 'โพสต์เมื่อไม่นานมานี้';
-    if (itemData['created_at'] != null) {
-      final Timestamp createdAt = itemData['created_at'];
-      final int days = DateTime.now().difference(createdAt.toDate()).inDays;
+    if (listing.createdAt != null) {
+      final int days = DateTime.now().difference(listing.createdAt!).inDays;
       if (days == 0) {
         listedText = 'โพสต์วันนี้';
       } else {
@@ -150,11 +155,11 @@ class ItemDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16), 
 
-                  _buildOwnerProfileCard(context, ownerId, tealColor),
+                  _buildOwnerProfileCard(context, listing, tealColor),
 
                   const SizedBox(height: 16), 
 
-                  Text('About This Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: tealColor)),
+                  const Text('About This Item', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: tealColor)),
                   const SizedBox(height: 8), 
                   Text(
                     description,
@@ -171,22 +176,22 @@ class ItemDetailScreen extends StatelessWidget {
       // 🟢 ดักจับกรณีที่แอปยังโหลด ID ไม่ทัน เพื่อไม่ให้ StreamBuilder พัง
       bottomNavigationBar: listingId.isEmpty 
         ? const SizedBox.shrink() 
-        : StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('listings').doc(listingId).snapshots(),
+        : StreamBuilder<ListingModel?>(
+            stream: context.read<ListingRepository>().getListingStream(listingId),
             builder: (context, snapshot) {
               bool isActive = false;
               bool isLiked = false; 
               
-              final currentUser = FirebaseAuth.instance.currentUser;
+              final currentUser = context.read<AuthRepository>().currentUser;
               final currentUserId = currentUser?.uid ?? '';
 
-              if (snapshot.hasData && snapshot.data!.exists) {
-                final latestData = snapshot.data!.data() as Map<String, dynamic>;
-                if (latestData['status'] == 'active') {
+              if (snapshot.hasData && snapshot.data != null) {
+                final latestData = snapshot.data!;
+                if (latestData.status == 'active') {
                   isActive = true;
                 }
                 
-                final List likedBy = latestData['liked_by'] ?? [];
+                final List<String> likedBy = latestData.likedBy;
                 isLiked = likedBy.contains(currentUserId);
               }
 
@@ -216,17 +221,7 @@ class ItemDetailScreen extends StatelessWidget {
                             onPressed: () async {
                               if (currentUserId.isEmpty) return;
                               
-                              final docRef = FirebaseFirestore.instance.collection('listings').doc(listingId);
-                              
-                              if (isLiked) {
-                                await docRef.update({
-                                  'liked_by': FieldValue.arrayRemove([currentUserId])
-                                });
-                              } else {
-                                await docRef.update({
-                                  'liked_by': FieldValue.arrayUnion([currentUserId])
-                                });
-                              }
+                              await context.read<ListingRepository>().toggleLike(listingId, currentUserId, isLiked);
                             },
                           ),
                         ),
@@ -245,22 +240,30 @@ class ItemDetailScreen extends StatelessWidget {
                               ] : [],
                             ),
                             child: ElevatedButton(
-                              onPressed: isActive ? () {
+                              onPressed: isActive ? () async {
+                                bool isVerified = await context.read<AuthRepository>().isEmailVerified();
+                                if (!isVerified) {
+                                  if (context.mounted) _showVerificationDialog(context, tealColor);
+                                  return;
+                                }
+
                                 if (currentUserId.isEmpty) return;
 
                                 if (currentUserId == ownerId) {
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                      title: Text('แจ้งเตือน', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
-                                      content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
-                                      actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('เข้าใจแล้ว', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)))],
-                                    ),
-                                  );
+                                  if (context.mounted) {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                        title: const Text('แจ้งเตือน', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+                                        content: const Text('คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
+                                        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('เข้าใจแล้ว', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)))],
+                                      ),
+                                    );
+                                  }
                                   return;
                                 }
-                                _showOfferBottomSheet(context, tealColor, currentUserId, ownerId);
+                                if (context.mounted) _showOfferBottomSheet(context, tealColor, currentUserId, listing);
                               } : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: tealColor,
@@ -287,6 +290,46 @@ class ItemDetailScreen extends StatelessWidget {
               );
             }
       ),
+    );
+  }
+
+  void _showVerificationDialog(BuildContext context, Color tealColor) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('ยืนยันอีเมลของคุณ', style: TextStyle(fontWeight: FontWeight.bold, color: tealColor)),
+          content: const Text('คุณต้องยืนยันอีเมลก่อนจึงจะสามารถยื่นข้อเสนอได้ กรุณาตรวจสอบกล่องจดหมายของคุณ'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('ปิด', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  await context.read<AuthRepository>().sendEmailVerification();
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: const Text('ส่งอีเมลยืนยันใหม่อีกครั้งแล้ว'), backgroundColor: tealColor, behavior: SnackBarBehavior.floating)
+                    );
+                  }
+                } catch (e) {
+                  if (dialogContext.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating)
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: tealColor),
+              child: const Text('ส่งอีเมลอีกครั้ง', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -324,130 +367,91 @@ class ItemDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildOwnerProfileCard(BuildContext context, String ownerId, Color tealColor) {
-    if (ownerId.isEmpty) return const SizedBox(); 
+  Widget _buildOwnerProfileCard(BuildContext context, ListingModel listing, Color tealColor) {
+    if (listing.ownerId.isEmpty) return const SizedBox(); 
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('users').doc(ownerId).get(),
-      builder: (context, snapshot) {
-        String ownerName = 'กำลังโหลด...';
-        double ratingScore = 0.0;
-        String profileImg = '';
-        String memberSinceYear = '2024'; 
+    String ownerName = listing.ownerName.trim().isEmpty ? 'ผู้ใช้งาน' : listing.ownerName;
+    double ratingScore = listing.ownerRatingScores;
+    String profileImg = listing.ownerProfileImg;
 
-        if (snapshot.hasData && snapshot.data!.exists) {
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-          ownerName = userData['name'] ?? 'ผู้ใช้งาน';
-          if (ownerName.trim().isEmpty) ownerName = 'ผู้ใช้งาน';
-          ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
-          profileImg = userData['profile_img_url'] ?? '';
-          
-          if (userData['created_at'] != null) {
-            final Timestamp createdAt = userData['created_at'];
-            memberSinceYear = createdAt.toDate().year.toString();
-          }
-        }
-
-        return Container(
-          padding: const EdgeInsets.all(12), 
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: Column(
+    return Container(
+      padding: const EdgeInsets.all(12), 
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 46, height: 46, 
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12),
-                      image: profileImg.isNotEmpty ? DecorationImage(image: NetworkImage(profileImg), fit: BoxFit.cover) : null,
-                    ),
-                    child: profileImg.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(ownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 2), 
-                        
-                        FutureBuilder<int>(
-                          future: () async {
-                            try {
-                              // 🟢 เปลี่ยนมาใช้คำสั่ง .count() มันจะนับแค่ตัวเลขโดยไม่ดึงข้อมูลลงมาทั้งดุ้น
-                              final sentSnap = await FirebaseFirestore.instance.collection('offers')
-                                  .where('sender_id', isEqualTo: ownerId)
-                                  .where('status', isEqualTo: 'completed')
-                                  .count() // เพิ่มตรงนี้
-                                  .get();
-                              final receivedSnap = await FirebaseFirestore.instance.collection('offers')
-                                  .where('target_user_id', isEqualTo: ownerId)
-                                  .where('status', isEqualTo: 'completed')
-                                  .count() // เพิ่มตรงนี้
-                                  .get();
-                              
-                              // ดึงค่าผลลัพธ์ผ่าน property .count
-                              return (sentSnap.count ?? 0) + (receivedSnap.count ?? 0);
-                            } catch (e) {
-                              return 0;
-                            }
-                          }(),
-                          builder: (context, tradeSnap) {
-                            int tradeCount = tradeSnap.data ?? 0;
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('$tradeCount successful trades', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, height: 1.2)),
-                                Text('Member since $memberSinceYear', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, height: 1.2)),
-                              ],
-                            );
-                          }
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.star, color: Colors.orange, size: 14),
-                        const SizedBox(width: 4),
-                        Text(ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  )
-                ],
+              Container(
+                width: 46, height: 46, 
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12),
+                  image: profileImg.isNotEmpty ? DecorationImage(image: NetworkImage(profileImg), fit: BoxFit.cover) : null,
+                ),
+                child: profileImg.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
               ),
-              const SizedBox(height: 12), 
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: ownerId))),
-                  icon: Icon(Icons.person_outline, size: 16, color: tealColor),
-                  label: Text('View Profile', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    backgroundColor: tealColor.withOpacity(0.05),
-                    side: BorderSide(color: tealColor.withOpacity(0.3)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                  ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(ownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2), 
+                    
+                    FutureBuilder<int>(
+                      future: context.read<OfferRepository>().getSuccessfulTradesCount(listing.ownerId),
+                      builder: (context, tradeSnap) {
+                        int tradeCount = tradeSnap.data ?? 0;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('$tradeCount successful trades', style: TextStyle(color: Colors.grey.shade500, fontSize: 11, height: 1.2)),
+                          ],
+                        );
+                      }
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.star, color: Colors.orange, size: 14),
+                    const SizedBox(width: 4),
+                    Text(ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 13)),
+                  ],
                 ),
               )
             ],
           ),
-        );
-      }
+          const SizedBox(height: 12), 
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: listing.ownerId))),
+              icon: Icon(Icons.person_outline, size: 16, color: tealColor),
+              label: Text('View Profile', style: TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                backgroundColor: tealColor.withOpacity(0.05),
+                side: BorderSide(color: tealColor.withOpacity(0.3)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+              ),
+            ),
+          )
+        ],
+      ),
     );
   }
 
-  void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, String ownerId) {
+  void _showOfferBottomSheet(BuildContext context, Color tealColor, String currentUserId, ListingModel listing) {
     String? selectedMyItemId;
     Map<String, dynamic>? selectedMyItemData; 
     int coinOffset = 0;
@@ -462,11 +466,10 @@ class ItemDetailScreen extends StatelessWidget {
           builder: (context, setModalState) {
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-              // 🟢 ห่อหุ้มด้วย GestureDetector ตรงนี้เพื่อดักจับการแตะพื้นที่ว่างภายในแผงทั้งหมด
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
-                  FocusScope.of(context).unfocus(); // สั่งพับคีย์บอร์ดเมื่อแตะพื้นที่ว่าง
+                  FocusScope.of(context).unfocus(); 
                 },
                 child: SingleChildScrollView(
                   child: Container(
@@ -483,11 +486,9 @@ class ItemDetailScreen extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // ตัวจับลาก (Drag Handle)
                         Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
                         const SizedBox(height: 24),
                         
-                        // ส่วนหัว
                         const Center(
                           child: Column(
                             children: [
@@ -499,17 +500,14 @@ class ItemDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 32),
 
-                        // SECTION: เลือกสิ่งของของคุณ (Your Offer Item)
                         const Text('YOUR OFFER ITEM', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
                         const SizedBox(height: 12),
                         
-                        FutureBuilder<QuerySnapshot>(
-                          future: FirebaseFirestore.instance.collection('listings')
-                              .where('owner_id', isEqualTo: currentUserId)
-                              .where('status', isEqualTo: 'active').get(),
+                        FutureBuilder<List<ListingModel>>(
+                          future: context.read<ListingRepository>().getUserActiveListings(currentUserId),
                           builder: (context, snapshot) {
                             if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                            var items = snapshot.data!.docs;
+                            var items = snapshot.data!;
                             
                             if (items.isEmpty) {
                               return Container(
@@ -519,14 +517,12 @@ class ItemDetailScreen extends StatelessWidget {
                               );
                             }
                             
-                            // ถ้ายังไม่เลือก ให้เลือกชิ้นแรกเป็นค่าเริ่มต้น
-                          // 🟢 ใช้ addPostFrameCallback เพื่อหน่วงเวลาให้หน้าจอวาดเสร็จก่อน ค่อยอัปเดต State ป้องกัน UI แครช
                           if (selectedMyItemId == null && items.isNotEmpty) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               setModalState(() {
-                                selectedMyItemId = items.first.id;
-                                selectedMyItemData = items.first.data() as Map<String, dynamic>;
-                                selectedMyItemData!['listing_id'] = items.first.id;
+                                selectedMyItemId = items.first.listingId;
+                                selectedMyItemData = items.first.toJson();
+                                selectedMyItemData!['listing_id'] = items.first.listingId;
                               });
                             });
                           }
@@ -582,13 +578,13 @@ class ItemDetailScreen extends StatelessWidget {
                                                   icon: const Icon(Icons.keyboard_arrow_down, size: 16),
                                                   style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade600),
                                                   isDense: true,
-                                                  items: items.map((doc) => DropdownMenuItem(value: doc.id, child: Text((doc.data() as Map)['title']))).toList(),
+                                                  items: items.map((item) => DropdownMenuItem(value: item.listingId, child: Text(item.title))).toList(),
                                                   onChanged: (val) {
                                                     setModalState(() {
                                                       selectedMyItemId = val;
-                                                      var selectedDoc = items.firstWhere((doc) => doc.id == val);
-                                                      selectedMyItemData = selectedDoc.data() as Map<String, dynamic>;
-                                                      selectedMyItemData!['listing_id'] = selectedDoc.id;
+                                                      var selectedItem = items.firstWhere((item) => item.listingId == val);
+                                                      selectedMyItemData = selectedItem.toJson();
+                                                      selectedMyItemData!['listing_id'] = selectedItem.listingId;
                                                     });
                                                   },
                                                 ),
@@ -606,11 +602,9 @@ class ItemDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 24),
 
-                        // SECTION: BALANCE THE TRADE
                         const Text('BALANCE THE TRADE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.blueGrey, letterSpacing: 0.5)),
                         const SizedBox(height: 12),
                         
-                        // ปุ่มสลับรูปแบบการแลกเปลี่ยน 3 แบบ
                         Row(
                           children: [
                             Expanded(
@@ -676,7 +670,6 @@ class ItemDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
 
-                        // ซ่อนช่องกรอกถ้าเลือกแบบไม่ใช้เหรียญ
                         if (offerType != 'none')
                           Container(
                             decoration: BoxDecoration(
@@ -719,69 +712,69 @@ class ItemDetailScreen extends StatelessWidget {
                           
                         const SizedBox(height: 32),
 
-                        // ปุ่ม Confirm
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            if (selectedMyItemId == null) {
-                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ')));
-                               return;
-                            }
-
-                            String coinText = "";
-                            int finalCoinOffset = 0;
-                            
-                            if (offerType != 'none' && coinOffset > 0) {
-                              finalCoinOffset = offerType == 'ask' ? -coinOffset : coinOffset;
-                              coinText = " และยินดี${offerType == 'ask' ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
-                            }
-                            
-                            final offerRef = await FirebaseFirestore.instance.collection('offers').add({
-                            'sender_id': currentUserId,
-                            'target_user_id': ownerId,
-                            // 🟢 แก้กลับมาใช้คำสั่งนี้ครับ ฟังก์ชันจะมองเห็นข้อมูลได้ถูกต้อง
-                            'target_listing_id': itemData['listing_id'] ?? '', 
-                            'offered_listing_id': selectedMyItemId,
-                            'coin_offset': finalCoinOffset, 
-                            'status': 'pending',
-                            'created_at': FieldValue.serverTimestamp(),
-                          });
-
-                            final roomRef = await FirebaseFirestore.instance.collection('chat_rooms').add({
-                              'participants': [currentUserId, ownerId],
-                              'active_offer_id': offerRef.id,
-                              'last_message_text': 'ยื่นข้อเสนอแลกเปลี่ยนสิ่งของใหม่',
-                              'last_message_type': 'system_offer', 
-                              'last_sender_id': currentUserId,
-                              'read_by': [currentUserId], 
-                              'updated_at': FieldValue.serverTimestamp(),
-                              'created_at': FieldValue.serverTimestamp(),
-                            });
-
-                            await FirebaseFirestore.instance.collection('chat_rooms').doc(roomRef.id).collection('messages').add({
-                              'sender_id': currentUserId,
-                              'content': 'สวัสดีครับ! ผมขอเสนอแลกสิ่งของ$coinText ครับ',
-                              'timestamp': FieldValue.serverTimestamp(),
-                              'type': 'system_offer',
-                              'offer_data': {
-                                 'target_item': itemData, 
-                                 'offered_item': selectedMyItemData, 
+                        BlocConsumer<OfferCubit, OfferState>(
+                          listener: (context, state) {
+                            if (state is OfferSuccess && state.message != 'ส่งข้อเสนอเรียบร้อยแล้ว' && state.message != 'ตกลงรับข้อเสนอเรียบร้อยแล้ว!') {
+                              final navigator = Navigator.of(context);
+                              if (context.mounted) {
+                                navigator.pop();
+                                navigator.push(MaterialPageRoute(builder: (context) => ChatScreen(roomId: state.message)));
                               }
-                            });
-
-                            if (context.mounted) {
-                              Navigator.pop(context); 
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(roomId: roomRef.id)));
+                            } else if (state is OfferError) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.error), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating));
                             }
                           },
-                          icon: const Icon(Icons.chat_bubble, color: Colors.white, size: 20),
-                          label: const Text('Confirm & Start Chat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF008080), 
-                            minimumSize: const Size(double.infinity, 56), 
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            elevation: 4,
-                            shadowColor: const Color(0xFF008080).withOpacity(0.5)
-                          ),
+                          builder: (context, state) {
+                            bool isSubmitting = state is OfferSubmitting;
+                            return ElevatedButton.icon(
+                              onPressed: isSubmitting ? null : () async {
+                                bool isVerified = await context.read<AuthRepository>().isEmailVerified();
+                                if (!isVerified) {
+                                  if (context.mounted) _showVerificationDialog(context, tealColor);
+                                  return;
+                                }
+
+                                if (selectedMyItemId == null) {
+                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ'), behavior: SnackBarBehavior.floating));
+                                   return;
+                                }
+
+                                String coinText = "";
+                                int finalCoinOffset = 0;
+                                
+                                if (offerType != 'none' && coinOffset > 0) {
+                                  finalCoinOffset = offerType == 'ask' ? -coinOffset : coinOffset;
+                                  coinText = " และยินดี${offerType == 'ask' ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
+                                }
+                                
+                                final offer = OfferModel(
+                                  offerId: '',
+                                  senderId: currentUserId,
+                                  targetUserId: listing.ownerId,
+                                  targetListingId: listing.listingId,
+                                  offeredListingId: selectedMyItemId!,
+                                  coinOffset: finalCoinOffset,
+                                  status: 'pending',
+                                );
+
+                                context.read<OfferCubit>().submitNewOffer(
+                                  offer: offer, 
+                                  targetItemData: listing.toJson(), 
+                                  offeredItemData: selectedMyItemData!, 
+                                  coinText: coinText
+                                );
+                              },
+                              icon: isSubmitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.chat_bubble, color: Colors.white, size: 20),
+                              label: Text(isSubmitting ? 'กำลังส่งข้อเสนอ...' : 'Confirm & Start Chat', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF008080), 
+                                minimumSize: const Size(double.infinity, 56), 
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                elevation: 4,
+                                shadowColor: const Color(0xFF008080).withOpacity(0.5)
+                              ),
+                            );
+                          }
                         ),
                       ],
                     ),

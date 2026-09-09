@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/user_repository.dart';
+import '../models/user_model.dart';
 import 'main_layout.dart';
 import 'package:flutter/gestures.dart';
 import '../constants/app_terms.dart';
@@ -74,38 +77,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final userCredential = await FirebaseAuth.instance
+      final userCredential = await context.read<AuthRepository>()
           .createUserWithEmailAndPassword(email: email, password: password);
 
       if (userCredential.user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userCredential.user!.uid)
-            .set({
-          'user_id': userCredential.user!.uid,
-          'email': email,
-          'name': name,
-          'bio': '',
-          'tel': '',
-          'role': 'user',
-          'status': 'active',
-          "is_email_verified": false,
-          "is_phone_verified": false,
-          'profile_img_url': '',
-          'coins_balance': 1000,
-          'rating_count': 0,
-          'rating_scores': 0,
-          'total_rating_sum': 0,
-          'location': {
-            'display_name': '',
-            'district': '',
-            'province': '',
-            'latitude': 0.0,
-            'longitude': 0.0,
-          },
-          'created_at': FieldValue.serverTimestamp(),
-          'updated_at': FieldValue.serverTimestamp(),
-        });
+        final userModel = UserModel(
+          uid: userCredential.user!.uid,
+          email: email,
+          name: name,
+          bio: '',
+          tel: '',
+          role: 'user',
+          status: 'active',
+          profileImgUrl: '',
+          coinsBalance: 1000,
+          isEmailVerified: false,
+          isPhoneVerified: false,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await context.read<UserRepository>().createUser(userModel);
       }
 
       if (mounted) {
@@ -116,15 +107,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
     } on FirebaseAuthException catch (e) {
       String message = 'เกิดข้อผิดพลาดในการสมัครสมาชิก';
-      if (e.code == 'weak-password')
+      if (e.code == 'weak-password') {
         message = 'รหัสผ่านอ่อนเกินไป (ต้อง 6 ตัวอักษรขึ้นไป)';
-      else if (e.code == 'email-already-in-use')
+      } else if (e.code == 'email-already-in-use') {
         message = 'อีเมลนี้ถูกใช้งานในระบบแล้ว';
-      else if (e.code == 'invalid-email') message = 'รูปแบบอีเมลไม่ถูกต้อง';
+      } else if (e.code == 'invalid-email') {
+        message = 'รูปแบบอีเมลไม่ถูกต้อง';
+      }
 
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(message)));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

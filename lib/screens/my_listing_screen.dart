@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/listing_repository.dart';
+import '../models/listing_model.dart';
 import 'edit_listing_screen.dart';
 
 class MyListingScreen extends StatefulWidget {
@@ -11,7 +13,7 @@ class MyListingScreen extends StatefulWidget {
 }
 
 class _MyListingScreenState extends State<MyListingScreen> {
-  final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  String get currentUserId => context.read<AuthRepository>().currentUser?.uid ?? '';
   final Color tealColor = const Color(0xFF008080);
   final Color bgColor = const Color(0xFFF4F6F8);
   
@@ -35,32 +37,25 @@ class _MyListingScreenState extends State<MyListingScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        // 🟢 เอา .where('status', isEqualTo: 'active') ออก เพื่อดึงของทั้งหมดมาโชว์
-        stream: FirebaseFirestore.instance
-            .collection('listings')
-            .where('owner_id', isEqualTo: currentUserId)
-            .snapshots(),
+      body: StreamBuilder<List<ListingModel>>(
+        stream: context.read<ListingRepository>().getUserListings(currentUserId),
         builder: (context, snapshot) {
           if (snapshot.hasError) return const Center(child: Text('เกิดข้อผิดพลาดในการดึงข้อมูล'));
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           
-          final docs = snapshot.data?.docs ?? [];
+          final docs = snapshot.data ?? [];
           
-          // 🟢 1. กรองเอาเฉพาะ Active และ In Negotiation มาใช้ (ทิ้ง Draft หรือของที่จบแล้วไปเลย)
           final validDocs = docs.where((doc) {
-            final status = (doc.data() as Map<String, dynamic>)['status'] ?? '';
+            final status = doc.status;
             return status == 'active' || status == 'in_negotiation';
           }).toList();
           
-          // 🟢 2. คำนวณสรุปยอดจาก validDocs แทน
           int total = validDocs.length;
-          int activeCount = validDocs.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'active').length;
-          int inDealCount = validDocs.where((d) => (d.data() as Map<String, dynamic>)['status'] == 'in_negotiation').length;
+          int activeCount = validDocs.where((d) => d.status == 'active').length;
+          int inDealCount = validDocs.where((d) => d.status == 'in_negotiation').length;
 
-          // 🟢 3. กรองข้อมูลตามแท็บที่เลือก (ลบเงื่อนไข Draft ออก)
           var filteredDocs = validDocs.where((doc) {
-            final status = (doc.data() as Map<String, dynamic>)['status'] ?? '';
+            final status = doc.status;
             if (_selectedFilter == 'Active' && status != 'active') return false;
             if (_selectedFilter == 'In Negotiation' && status != 'in_negotiation') return false;
             return true;
@@ -78,9 +73,8 @@ class _MyListingScreenState extends State<MyListingScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         itemCount: filteredDocs.length,
                         itemBuilder: (context, index) {
-                          final data = filteredDocs[index].data() as Map<String, dynamic>;
-                          final String itemId = filteredDocs[index].id;
-                          return _buildItemCard(context, itemId, data);
+                          final item = filteredDocs[index];
+                          return _buildItemCard(context, item);
                         },
                       ),
               ),
@@ -97,7 +91,7 @@ class _MyListingScreenState extends State<MyListingScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          _buildSummaryChip('$total Total', tealColor.withOpacity(0.1), tealColor),
+          _buildSummaryChip('$total Total', tealColor.withOpacity( 0.1), tealColor),
           const SizedBox(width: 8),
           _buildSummaryChip('$active Active', Colors.green.shade50, Colors.green.shade700, icon: Icons.check_circle),
           const SizedBox(width: 8),
@@ -113,7 +107,7 @@ class _MyListingScreenState extends State<MyListingScreen> {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: textColor.withOpacity(0.3)),
+        border: Border.all(color: textColor.withOpacity( 0.3)),
       ),
       child: Row(
         children: [
@@ -174,11 +168,11 @@ class _MyListingScreenState extends State<MyListingScreen> {
   }
 
   // 🟢 3. การ์ดแสดงสินค้า (Item Card)
-  Widget _buildItemCard(BuildContext context, String itemId, Map<String, dynamic> data) {
-    final String title = data['title'] ?? 'ไม่มีชื่อสินค้า';
-    final int coins = data['estimated_coins'] ?? 0;
-    final String status = data['status'] ?? 'draft';
-    final String thumbnail = data['thumbnail_url'] ?? '';
+  Widget _buildItemCard(BuildContext context, ListingModel item) {
+    final String title = item.title.isEmpty ? 'ไม่มีชื่อสินค้า' : item.title;
+    final int coins = item.estimatedCoins;
+    final String status = item.status;
+    final String thumbnail = item.thumbnailUrl;
 
     // ตั้งค่าสีและข้อความของ Status Badge
     Color statusBgColor = Colors.grey.shade100;
@@ -205,7 +199,7 @@ class _MyListingScreenState extends State<MyListingScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity( 0.02), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
@@ -232,7 +226,7 @@ class _MyListingScreenState extends State<MyListingScreen> {
                 // ป้ายสถานะ
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: statusBgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: statusTextColor.withOpacity(0.3))),
+                  decoration: BoxDecoration(color: statusBgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: statusTextColor.withOpacity( 0.3))),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -269,7 +263,7 @@ class _MyListingScreenState extends State<MyListingScreen> {
             children: [
               GestureDetector(
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => EditListingScreen(itemId: itemId, itemData: data)));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => EditListingScreen(itemData: item)));
                 },
                 child: Container(
                   padding: const EdgeInsets.all(8),
@@ -279,7 +273,7 @@ class _MyListingScreenState extends State<MyListingScreen> {
               ),
               const SizedBox(height: 12),
               GestureDetector(
-                onTap: () => _showDeleteConfirmDialog(context, itemId, tealColor),
+                onTap: () => _showDeleteConfirmDialog(context, item.listingId, tealColor),
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
@@ -293,7 +287,6 @@ class _MyListingScreenState extends State<MyListingScreen> {
     );
   }
 
-  // ลอจิกการลบแบบเดิมของคุณ (โค้ดไม่เปลี่ยน แค่จัดระเบียบให้เข้าที่)
   void _showDeleteConfirmDialog(BuildContext context, String itemId, Color tealColor) {
     showDialog(
       context: context,
@@ -309,30 +302,7 @@ class _MyListingScreenState extends State<MyListingScreen> {
               onPressed: () async {
                 Navigator.pop(contextDialog);
                 try {
-                  final offeredQuery = await FirebaseFirestore.instance.collection('offers').where('offered_listing_id', isEqualTo: itemId).get();
-                  final targetQuery = await FirebaseFirestore.instance.collection('offers').where('target_listing_id', isEqualTo: itemId).get();
-                  final allOffers = [...offeredQuery.docs, ...targetQuery.docs];
-
-                  for (var offerDoc in allOffers) {
-                    String offerId = offerDoc.id;
-                    final roomQuery = await FirebaseFirestore.instance.collection('chat_rooms').where('active_offer_id', isEqualTo: offerId).get();
-                    
-                    for (var roomDoc in roomQuery.docs) {
-                      await roomDoc.reference.collection('messages').add({
-                        'sender_id': 'system',
-                        'content': 'สิ่งของในข้อเสนอนี้ถูกลบออกจากระบบแล้ว',
-                        'timestamp': FieldValue.serverTimestamp(),
-                        'type': 'system_cancel',
-                      });
-                      await roomDoc.reference.update({
-                        'last_message_text': 'สิ่งของในข้อเสนอนี้ถูกลบออกจากระบบแล้ว',
-                        'last_message_type': 'system_cancel',
-                        'updated_at': FieldValue.serverTimestamp(),
-                      });
-                    }
-                    await offerDoc.reference.delete();
-                  }
-                  await FirebaseFirestore.instance.collection('listings').doc(itemId).delete();
+                  await context.read<ListingRepository>().deleteListingAndRelatedData(itemId);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(

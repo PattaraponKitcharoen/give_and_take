@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'item_detail_screen.dart'; 
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/user_repository.dart';
+import '../repositories/listing_repository.dart';
+import '../models/user_model.dart';
+import '../models/listing_model.dart';
+import 'item_detail_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
@@ -15,82 +19,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   final Color tealColor = const Color(0xFF008080);
   final Color bgColor = const Color(0xFFF8FAFC);
 
-  String _selectedTab = 'Active Items'; 
+  String _selectedTab = 'Active Items';
+  List<Map<String, dynamic>> _reviewsData = [];
+  bool _isLoadingReviews = true;
 
-  // 🟢 ฟังก์ชันดึงข้อมูลคนรีวิว + ข้อมูลของสิ่งของทั้ง 2 ฝั่ง
-  Future<Map<String, dynamic>> _fetchReviewDetails(String reviewerId, String transactionId) async {
-    String name = 'ผู้ใช้งาน';
-    String img = '';
-    Map<String, dynamic>? profileOwnerItemData;
-    Map<String, dynamic>? reviewerItemData;
+  @override
+  void initState() {
+    super.initState();
+    _fetchReviewDetails();
+  }
 
+  Future<void> _fetchReviewDetails() async {
     try {
-      final userFuture = FirebaseFirestore.instance.collection('users').doc(reviewerId).get();
-      
-      Future<void> fetchItems() async {
-        if (transactionId.isEmpty) return;
-        final txDoc = await FirebaseFirestore.instance.collection('transactions').doc(transactionId).get();
-        if (!txDoc.exists) return;
-        
-        final offerId = txDoc.data()?['offer_id'];
-        if (offerId == null || offerId.isEmpty) return;
-        
-        final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
-        if (!offerDoc.exists) return;
-        
-        final offerData = offerDoc.data() as Map<String, dynamic>;
-        String profileOwnerItemId = '';
-        String reviewerItemId = '';
-
-        // เช็กว่าเจ้าของโปรไฟล์นี้ (widget.userId) อยู่ฝั่งไหนของข้อเสนอ
-        if (offerData['target_user_id'] == widget.userId) {
-          profileOwnerItemId = offerData['target_listing_id'] ?? '';
-          reviewerItemId = offerData['offered_listing_id'] ?? '';
-        } else {
-          profileOwnerItemId = offerData['offered_listing_id'] ?? '';
-          reviewerItemId = offerData['target_listing_id'] ?? '';
-        }
-
-        // ดึงข้อมูลไอเทมของเจ้าของโปรไฟล์
-        if (profileOwnerItemId.isNotEmpty) {
-          final pDoc = await FirebaseFirestore.instance.collection('listings').doc(profileOwnerItemId).get();
-          if (pDoc.exists) {
-            profileOwnerItemData = pDoc.data() as Map<String, dynamic>;
-            profileOwnerItemData!['listing_id'] = pDoc.id; 
-          }
-        }
-
-        // ดึงข้อมูลไอเทมของคนรีวิว
-        if (reviewerItemId.isNotEmpty) {
-          final rDoc = await FirebaseFirestore.instance.collection('listings').doc(reviewerItemId).get();
-          if (rDoc.exists) {
-            reviewerItemData = rDoc.data() as Map<String, dynamic>;
-            reviewerItemData!['listing_id'] = rDoc.id;
-          }
-        }
+      final reviews = await context.read<UserRepository>().getEnrichedReviews(widget.userId);
+      if (mounted) {
+        setState(() {
+          _reviewsData = reviews;
+          _isLoadingReviews = false;
+        });
       }
-
-      await Future.wait([
-        userFuture.then((snap) {
-          if (snap.exists) {
-            final data = snap.data() as Map<String, dynamic>;
-            name = data['name'] ?? 'ผู้ใช้งาน';
-            img = data['profile_img_url'] ?? '';
-          }
-        }),
-        fetchItems()
-      ]);
-
     } catch (e) {
-      debugPrint('Error fetching review details: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingReviews = false;
+        });
+      }
     }
-
-    return {
-      'name': name, 
-      'img': img, 
-      'profileOwnerItem': profileOwnerItemData, 
-      'reviewerItem': reviewerItemData
-    };
   }
 
   @override
@@ -99,23 +53,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent, // 🟢 1. ปิดสีเคลือบสะท้อนของ Material 3
-        scrolledUnderElevation: 0, // 🟢 2. ปิดเงาและการยกระดับตอนเลื่อนจอ
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
-        // 🟢 ไม่มี actions menu (ไม่สามารถแก้ไข หรือ logout ได้)
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(widget.userId).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: tealColor));
-          if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text('ไม่พบข้อมูลผู้ใช้'));
+      body: StreamBuilder<UserModel>(
+        stream: context.read<UserRepository>().getUserStream(widget.userId),
+        builder: (context, userSnapshot) {
+          if (userSnapshot.hasError) return const Center(child: Text('เกิดข้อผิดพลาด'));
+          if (userSnapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: tealColor));
 
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-          final String name = userData['name'] ?? 'ผู้ใช้ใหม่';
-          final String bio = userData['bio'] ?? 'ยังไม่มีคำอธิบายตัวเอง';
-          final double rating = (userData['rating_scores'] ?? 0.0).toDouble();
-          final String profileImg = userData['profile_img_url'] ?? '';
+          final userData = userSnapshot.data;
+          if (userData == null) return const Center(child: Text('ไม่พบข้อมูลผู้ใช้'));
 
           return NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) {
@@ -135,10 +85,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(24),
                                 color: Colors.grey.shade200,
-                                image: profileImg.isNotEmpty ? DecorationImage(image: NetworkImage(profileImg), fit: BoxFit.cover) : null,
-                                boxShadow: [BoxShadow(color: tealColor.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10))],
+                                image: userData.profileImgUrl.isNotEmpty ? DecorationImage(image: NetworkImage(userData.profileImgUrl), fit: BoxFit.cover) : null,
+                                boxShadow: [BoxShadow(color: tealColor.withOpacity( 0.2), blurRadius: 20, offset: const Offset(0, 10))],
                               ),
-                              child: profileImg.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.white) : null,
+                              child: userData.profileImgUrl.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.white) : null,
                             ),
                             Container(
                               padding: const EdgeInsets.all(4),
@@ -149,44 +99,27 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                         const SizedBox(height: 16),
                         
-                        Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
+                        Text(userData.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF004D40))),
                         const SizedBox(height: 4),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 32),
-                          child: Text(bio, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.4)),
+                          child: Text(userData.bio, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.4)),
                         ),
                         const SizedBox(height: 20),
 
-                        // 🟢 แถบสถิติ 2 ช่อง (ตัด Coins ออก)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance.collection('listings').where('owner_id', isEqualTo: widget.userId).where('status', isEqualTo: 'active').snapshots(),
+                            FutureBuilder<int>(
+                              future: context.read<ListingRepository>().getActiveListingCount(widget.userId),
                               builder: (context, itemSnap) {
-                                int itemCount = itemSnap.hasData ? itemSnap.data!.docs.length : 0;
+                                int itemCount = itemSnap.data ?? 0;
                                 return _buildStatPill(Icons.inventory_2_outlined, '$itemCount Items');
                               }
                             ),
                             const SizedBox(width: 8),
                             FutureBuilder<int>(
-                              future: () async {
-                                try {
-                                  final sentSnap = await FirebaseFirestore.instance.collection('offers')
-                                      .where('sender_id', isEqualTo: widget.userId)
-                                      .where('status', isEqualTo: 'completed')
-                                      .get();
-                                  
-                                  final receivedSnap = await FirebaseFirestore.instance.collection('offers')
-                                      .where('target_user_id', isEqualTo: widget.userId)
-                                      .where('status', isEqualTo: 'completed')
-                                      .get();
-                                      
-                                  return sentSnap.docs.length + receivedSnap.docs.length;
-                                } catch (e) {
-                                  return 0;
-                                }
-                              }(),
+                              future: context.read<UserRepository>().getTradeCount(widget.userId),
                               builder: (context, tradeSnap) {
                                 int tradeCount = tradeSnap.data ?? 0;
                                 return _buildStatPill(Icons.swap_horiz, '$tradeCount Trades');
@@ -196,7 +129,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                         const SizedBox(height: 20),
 
-                        _buildRatingCard(rating),
+                        _buildRatingCard(userData.rating),
                         const SizedBox(height: 20),
 
                         Padding(
@@ -230,7 +163,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tealColor.withOpacity(0.3)),
+        border: Border.all(color: tealColor.withOpacity( 0.3)),
       ),
       child: Row(
         children: [
@@ -247,7 +180,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.shade50.withOpacity(0.5),
+        color: Colors.green.shade50.withOpacity( 0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.green.shade100),
       ),
@@ -282,7 +215,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: Colors.green.shade100.withOpacity(0.5), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.green.shade200)),
+            decoration: BoxDecoration(color: Colors.green.shade100.withOpacity( 0.5), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.green.shade200)),
             child: Row(
               children: [
                 Icon(Icons.help_outline, size: 12, color: Colors.green.shade700),
@@ -306,7 +239,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           color: isSelected ? tealColor : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: isSelected ? tealColor : Colors.grey.shade300),
-          boxShadow: isSelected ? [BoxShadow(color: tealColor.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
+          boxShadow: isSelected ? [BoxShadow(color: tealColor.withOpacity( 0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -321,30 +254,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildActiveItemsGrid() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('listings').where('owner_id', isEqualTo: widget.userId).where('status', isEqualTo: 'active').snapshots(),
+    return StreamBuilder<List<ListingModel>>(
+      stream: context.read<ListingRepository>().getUserActiveListingsStream(widget.userId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return Center(child: Text('ผู้ใช้นี้ยังไม่มีสิ่งของ', style: TextStyle(color: Colors.grey.shade500)));
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return Center(child: Text('ผู้ใช้นี้ยังไม่มีสิ่งของ', style: TextStyle(color: Colors.grey.shade500)));
 
-        final docs = snapshot.data!.docs;
+        final listings = snapshot.data!;
         return GridView.builder(
           padding: const EdgeInsets.all(16),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 0.75
           ),
-          itemCount: docs.length,
+          itemCount: listings.length,
           itemBuilder: (context, index) {
-            final data = docs[index].data() as Map<String, dynamic>;
-            data['listing_id'] = docs[index].id;
+            final item = listings[index];
             
             return InkWell(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: data))),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(listing: item))),
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white, borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.grey.shade200),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity( 0.02), blurRadius: 10, offset: const Offset(0, 4))],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,10 +285,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.grey.shade100, borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                          image: (data['thumbnail_url'] != null && data['thumbnail_url'] != '') 
-                              ? DecorationImage(image: NetworkImage(data['thumbnail_url']), fit: BoxFit.cover) : null,
+                          image: (item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty) 
+                              ? DecorationImage(image: NetworkImage(item.thumbnailUrl!), fit: BoxFit.cover) : null,
                         ),
-                        child: (data['thumbnail_url'] == null || data['thumbnail_url'] == '') ? const Center(child: Icon(Icons.image, color: Colors.grey)) : null,
+                        child: (item.thumbnailUrl == null || item.thumbnailUrl!.isEmpty) ? const Center(child: Icon(Icons.image, color: Colors.grey)) : null,
                       ),
                     ),
                     Padding(
@@ -364,7 +296,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(data['title'] ?? 'No Title', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -374,7 +306,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               children: [
                                 Icon(Icons.monetization_on, color: Colors.green.shade700, size: 10),
                                 const SizedBox(width: 4),
-                                Text('${data['estimated_coins'] ?? 0}', style: TextStyle(color: Colors.green.shade700, fontSize: 10, fontWeight: FontWeight.bold)),
+                                Text('${item.estimatedCoins}', style: TextStyle(color: Colors.green.shade700, fontSize: 10, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           )
@@ -391,9 +323,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildItemSide(BuildContext context, Map<String, dynamic>? item, String label, {bool isRight = false}) {
-    final title = item?['title'] ?? 'ถูกลบไปแล้ว';
-    final img = item?['thumbnail_url'] ?? '';
+  Widget _buildItemSide(BuildContext context, ListingModel? item, String label, {bool isRight = false}) {
+    final title = item?.title ?? 'ถูกลบไปแล้ว';
+    final img = item?.thumbnailUrl ?? '';
 
     Widget imageWidget = Container(
       width: 36, height: 36,
@@ -425,7 +357,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return GestureDetector(
       onTap: () {
         if (item != null) {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(itemData: item)));
+          Navigator.push(context, MaterialPageRoute(builder: (context) => ItemDetailScreen(listing: item)));
         }
       },
       child: Container(
@@ -438,7 +370,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildTradedItemBox(BuildContext context, Map<String, dynamic>? ownerItem, Map<String, dynamic>? reviewerItem) {
+  Widget _buildTradedItemBox(BuildContext context, ListingModel? ownerItem, ListingModel? reviewerItem) {
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
@@ -451,8 +383,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         children: [
           Expanded(child: _buildItemSide(context, reviewerItem, 'ของคู่เทรด')),
           Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade200)),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: tealColor.withOpacity( 0.1), shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade200)),
             child: Icon(Icons.swap_horiz, size: 16, color: tealColor),
           ),
           Expanded(child: _buildItemSide(context, ownerItem, 'ของเจ้าของโปรไฟล์', isRight: true)),
@@ -462,134 +394,102 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildReviewsList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('reviews')
-          .where('target_id', isEqualTo: widget.userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator(color: tealColor));
-        }
+    if (_isLoadingReviews) {
+      return Center(child: CircularProgressIndicator(color: tealColor));
+    }
+    
+    if (_reviewsData.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.chat_bubble_outline, size: 40, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            Text('ยังไม่มีรีวิว', style: TextStyle(color: Colors.grey.shade500)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _reviewsData.length,
+      itemBuilder: (context, index) {
+        final data = _reviewsData[index];
+        final double rating = (data['rating'] ?? 0).toDouble();
+        final String comment = data['comment'] ?? '';
+        final DateTime? time = data['created_at'] != null 
+            ? (data['created_at'] is DateTime ? data['created_at'] : (data['created_at']).toDate()) 
+            : null;
         
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.chat_bubble_outline, size: 40, color: Colors.grey.shade300),
-                const SizedBox(height: 12),
-                Text('ยังไม่มีรีวิว', style: TextStyle(color: Colors.grey.shade500)),
-              ],
-            ),
-          );
+        String timeText = '';
+        if (time != null) {
+          timeText = '${time.day}/${time.month}/${time.year}';
         }
 
-        final docs = snapshot.data!.docs;
-        docs.sort((a, b) {
-          final dataA = a.data() as Map<String, dynamic>;
-          final dataB = b.data() as Map<String, dynamic>;
-          Timestamp timeA = dataA['created_at'] ?? Timestamp.now();
-          Timestamp timeB = dataB['created_at'] ?? Timestamp.now();
-          return timeB.compareTo(timeA);
-        });
+        String reviewerName = data['reviewer_name'] ?? 'ผู้ใช้งาน';
+        String reviewerImg = data['reviewer_img'] ?? '';
+        ListingModel? ownerItem = data['profileOwnerItem']; 
+        ListingModel? reviewerItem = data['reviewerItem']; 
 
-        return ListView.builder(
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(16),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final data = docs[index].data() as Map<String, dynamic>;
-            final String reviewerId = data['reviewer_id'] ?? '';
-            final String transactionId = data['transaction_id'] ?? '';
-            final double rating = (data['rating'] ?? 0).toDouble();
-            final String comment = data['comment'] ?? '';
-            final Timestamp? time = data['created_at'];
-            
-            String timeText = '';
-            if (time != null) {
-              final date = time.toDate();
-              timeText = '${date.day}/${date.month}/${date.year}';
-            }
-
-            return FutureBuilder<Map<String, dynamic>>(
-              future: _fetchReviewDetails(reviewerId, transactionId),
-              builder: (context, detailsSnap) {
-                String reviewerName = 'กำลังโหลด...';
-                String reviewerImg = '';
-                Map<String, dynamic>? ownerItem;
-                Map<String, dynamic>? reviewerItem;
-
-                if (detailsSnap.hasData) {
-                  reviewerName = detailsSnap.data!['name'] ?? 'ผู้ใช้งาน';
-                  reviewerImg = detailsSnap.data!['img'] ?? '';
-                  ownerItem = detailsSnap.data!['profileOwnerItem']; 
-                  reviewerItem = detailsSnap.data!['reviewerItem']; 
-                }
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade200),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
-                    ],
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity( 0.02), blurRadius: 10, offset: const Offset(0, 4))
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.teal.shade50,
+                    backgroundImage: reviewerImg.isNotEmpty ? NetworkImage(reviewerImg) : null,
+                    child: reviewerImg.isEmpty ? Icon(Icons.person, color: tealColor) : null,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: Colors.teal.shade50,
-                            backgroundImage: reviewerImg.isNotEmpty ? NetworkImage(reviewerImg) : null,
-                            child: reviewerImg.isEmpty ? Icon(Icons.person, color: tealColor) : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(child: Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                    Text(timeText, style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: List.generate(5, (starIndex) => Icon(
-                                    starIndex < rating.floor() ? Icons.star : Icons.star_border,
-                                    color: Colors.orange, size: 14,
-                                  )),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (comment.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          comment, 
-                          style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.4)
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: Text(reviewerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            Text(timeText, style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: List.generate(5, (starIndex) => Icon(
+                            starIndex < rating.floor() ? Icons.star : Icons.star_border,
+                            color: Colors.orange, size: 14,
+                          )),
                         ),
                       ],
-                      if (detailsSnap.connectionState == ConnectionState.waiting)
-                         const Padding(padding: EdgeInsets.only(top: 12), child: Center(child: CircularProgressIndicator())),
-                      if (detailsSnap.hasData && (ownerItem != null || reviewerItem != null))
-                         _buildTradedItemBox(context, ownerItem, reviewerItem),
-                    ],
+                    ),
                   ),
-                );
-              },
-            );
-          },
+                ],
+              ),
+              if (comment.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  comment, 
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.4)
+                ),
+              ],
+              if (ownerItem != null || reviewerItem != null)
+                 _buildTradedItemBox(context, ownerItem, reviewerItem),
+            ],
+          ),
         );
       },
     );

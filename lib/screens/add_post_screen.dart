@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../models/listing_model.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/user_repository.dart';
+import '../repositories/listing_repository.dart';
 
 class AddPostScreen extends StatefulWidget {
   const AddPostScreen({super.key});
@@ -111,7 +115,54 @@ class _AddPostScreenState extends State<AddPostScreen> {
     );
   }
 
+  void _showVerificationDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('ยืนยันอีเมลของคุณ', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008080))),
+          content: const Text('คุณต้องยืนยันอีเมลก่อนจึงจะสามารถลงประกาศสิ่งของได้ กรุณาตรวจสอบกล่องจดหมายของคุณ'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('ปิด', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  await context.read<AuthRepository>().sendEmailVerification();
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('ส่งอีเมลยืนยันใหม่อีกครั้งแล้ว'), backgroundColor: Color(0xFF008080), behavior: SnackBarBehavior.floating)
+                    );
+                  }
+                } catch (e) {
+                  if (dialogContext.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating)
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
+              child: const Text('ส่งอีเมลอีกครั้ง', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _submitPost() async {
+    bool isVerified = await context.read<AuthRepository>().isEmailVerified();
+    
+    if (!isVerified) {
+      _showVerificationDialog();
+      return;
+    }
+
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
     final coinsText = _coinsController.text.trim();
@@ -127,45 +178,38 @@ class _AddPostScreenState extends State<AddPostScreen> {
       return;
     }
 
-    final User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    final User? firebaseUser = context.read<AuthRepository>().currentUser;
+    if (firebaseUser == null) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // 🟢 1. วิ่งไปดึงข้อมูลผู้ใช้จากคอลเลกชัน users แค่ครั้งเดียวก่อนเซฟ
-      String ownerName = 'ผู้ใช้งาน';
-      String profileImgUrl = '';
-      double ratingScore = 0.0;
-      
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (userDoc.exists) {
-        final userData = userDoc.data() as Map<String, dynamic>;
-        ownerName = userData['name'] ?? 'ผู้ใช้งาน';
-        profileImgUrl = userData['profile_img_url'] ?? '';
-        ratingScore = (userData['rating_scores'] ?? 0.0).toDouble();
-      }
+      final userRepo = context.read<UserRepository>();
+      final listingRepo = context.read<ListingRepository>();
 
-      // 🟢 2. เซฟข้อมูลพร้อมแปะชื่อและรูปโปรไฟล์ลงไปเลย
-      await FirebaseFirestore.instance.collection('listings').add({
-        'owner_id': user.uid,
-        'owner_name': ownerName,
-        'owner_profile_img': profileImgUrl,
-        'owner_rating_scores': ratingScore,
-        'type': 'item',
-        'title': title,
-        'description': description,
-        'category': _selectedCategory,
-        'estimated_coins': coins,
-        'thumbnail_url': '', 
-        'images': [], 
-        'location': {'province': 'สงขลา', 'lat': 7.0086, 'lng': 100.4746},
-        'metadata': {'condition': _selectedCondition},
-        'status': 'active',
-        'created_at': FieldValue.serverTimestamp(),
-        'updated_at': FieldValue.serverTimestamp(), 
-        'is_deleted': false, 
-      });
+      final currentUser = await userRepo.getUser(firebaseUser.uid);
+
+      final newListing = ListingModel(
+        listingId: '', 
+        type: 'item',
+        status: 'active',
+        category: _selectedCategory,
+        ownerId: currentUser.uid,
+        ownerName: currentUser.name,
+        ownerProfileImg: currentUser.profileImgUrl,
+        ownerRatingScores: 0.0,
+        title: title,
+        description: description,
+        condition: _selectedCondition,
+        estimatedCoins: coins,
+        thumbnailUrl: '',
+        images: [],
+        likedBy: [],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await listingRepo.createListing(newListing);
 
       if (mounted) {
         _titleController.clear();

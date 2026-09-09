@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/wallet_repository.dart';
 
 class WalletHistoryScreen extends StatelessWidget {
   const WalletHistoryScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    final Color tealColor = const Color(0xFF008080);
+    final currentUserId = context.read<AuthRepository>().currentUser?.uid;
+    const Color tealColor = Color(0xFF008080);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -23,11 +25,7 @@ class WalletHistoryScreen extends StatelessWidget {
           ? const Center(child: Text('กรุณาล็อกอิน'))
           : StreamBuilder<QuerySnapshot>(
               // 🟢 ดึงข้อมูลเฉพาะประวัติของคนที่ล็อกอินอยู่ เรียงจากใหม่ไปเก่า
-              stream: FirebaseFirestore.instance
-                  .collection('wallet_transactions')
-                  .where('user_id', isEqualTo: currentUserId)
-                  .orderBy('created_at', descending: true)
-                  .snapshots(),
+              stream: context.read<WalletRepository>().getWalletHistoryStream(currentUserId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());

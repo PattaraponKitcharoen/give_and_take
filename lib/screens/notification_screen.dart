@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/auth_repository.dart';
+import '../repositories/chat_repository.dart';
+import '../models/chat_room_model.dart';
 import 'chat_screen.dart';
 
 class NotificationScreen extends StatefulWidget {
@@ -12,80 +14,39 @@ class NotificationScreen extends StatefulWidget {
 
 class _NotificationScreenState extends State<NotificationScreen> {
   final Color tealColor = const Color(0xFF006666); 
-  final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
+  String get currentUserId => context.read<AuthRepository>().currentUser?.uid ?? '';
   
   String _selectedFilter = 'All';
   // 🟢 1. เปลี่ยนชื่อหมวดหมู่ตามที่คุณต้องการ
   final List<String> _filters = ['All', 'Pending', 'Accepted', 'Rejected', 'Cancelled'];
 
-  Future<String> _getChatRoomName(String? offerId) async {
-    if (offerId == null || offerId.isEmpty) return 'การแลกเปลี่ยน';
-    try {
-      final offerDoc = await FirebaseFirestore.instance.collection('offers').doc(offerId).get();
-      if (!offerDoc.exists) return 'การแลกเปลี่ยน';
-
-      final targetItemId = offerDoc.data()?['target_listing_id'];
-      if (targetItemId == null) return 'การแลกเปลี่ยน';
-
-      final itemDoc = await FirebaseFirestore.instance.collection('listings').doc(targetItemId).get();
-      if (!itemDoc.exists) return 'สิ่งของถูกลบไปแล้ว';
-
-      return itemDoc.data()?['title'] ?? 'การแลกเปลี่ยนสิ่งของ';
-    } catch (e) {
-      return 'การแลกเปลี่ยน';
-    }
-  }
-
   Future<void> _markAllAsRead(BuildContext context) async {
     try {
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('chat_rooms')
-          .where('participants', arrayContains: currentUserId)
-          .get();
-
-      final batch = FirebaseFirestore.instance.batch();
-      bool hasUpdates = false;
-
-      for (var doc in querySnapshot.docs) {
-        final room = doc.data() as Map<String, dynamic>;
-        final List readBy = room['read_by'] ?? [];
-        final String msgType = room['last_message_type'] ?? 'text';
-        
-        if (msgType != 'text' && !readBy.contains(currentUserId)) {
-          batch.update(doc.reference, {
-            'read_by': FieldValue.arrayUnion([currentUserId])
-          });
-          hasUpdates = true;
-        }
-      }
-
-      if (hasUpdates) {
-        await batch.commit(); 
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('อ่านการแจ้งเตือนทั้งหมดแล้ว'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: tealColor,
-              margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          );
-        }
+      await context.read<ChatRepository>().markAllAsRead(currentUserId);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('อ่านการแจ้งเตือนทั้งหมดแล้ว'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: tealColor,
+            margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
       }
     } catch (e) {
       debugPrint('Error marking all as read: $e');
     }
   }
 
-  String _getTimeAgo(Timestamp? timestamp) {
-    if (timestamp == null) return '';
-    final duration = DateTime.now().difference(timestamp.toDate());
+  String _getTimeAgo(DateTime? date) {
+    if (date == null) return '';
+    final duration = DateTime.now().difference(date);
     if (duration.inMinutes < 1) return 'Just now';
     if (duration.inMinutes < 60) return '${duration.inMinutes}m ago';
     if (duration.inHours < 24) return '${duration.inHours}h ago';
     if (duration.inDays < 7) return '${duration.inDays}d ago';
-    return '${timestamp.toDate().day}/${timestamp.toDate().month}/${timestamp.toDate().year}';
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   // 🟢 2. เพิ่มสไตล์ให้ครอบคลุมสถานะ Rejected
@@ -163,22 +124,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ),
 
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('chat_rooms')
-                  .where('participants', arrayContains: currentUserId)
-                  .orderBy('updated_at', descending: true)
-                  .snapshots(),
+            child: StreamBuilder<List<ChatRoomModel>>(
+              stream: context.read<ChatRepository>().getChatRoomsStream(currentUserId),
               builder: (context, snapshot) {
                 if (snapshot.hasError) return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล', style: TextStyle(color: Colors.red)));
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
-                final rawDocs = snapshot.data!.docs;
+                final rawDocs = snapshot.data ?? [];
                 
-                final notiDocs = rawDocs.where((doc) {
-                  final room = doc.data() as Map<String, dynamic>;
-                  final List readBy = room['read_by'] ?? [];
-                  final String msgType = room['last_message_type'] ?? 'text'; 
+                final notiDocs = rawDocs.where((room) {
+                  final List readBy = room.readBy;
+                  final String msgType = room.lastMessageType; 
                   
                   final bool isUnread = !readBy.contains(currentUserId);
                   
@@ -214,19 +170,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   padding: const EdgeInsets.all(16),
                   itemCount: notiDocs.length,
                   itemBuilder: (context, index) {
-                    final room = notiDocs[index].data() as Map<String, dynamic>;
-                    final String roomId = notiDocs[index].id;
-                    final String lastMessage = room['last_message_text'] ?? 'มีการอัปเดตใหม่ในดีลนี้';
-                    final String msgType = room['last_message_type'] ?? 'system_offer';
-                    final Timestamp? time = room['updated_at'];
+                    final room = notiDocs[index];
+                    final String roomId = room.id;
+                    final String lastMessage = room.lastMessageText.isEmpty ? 'มีการอัปเดตใหม่ในดีลนี้' : room.lastMessageText;
+                    final String msgType = room.lastMessageType.isEmpty ? 'system_offer' : room.lastMessageType;
+                    final DateTime? time = room.updatedAt;
                     
-                    final List readBy = room['read_by'] ?? [];
+                    final List readBy = room.readBy;
                     final bool isUnread = !readBy.contains(currentUserId);
 
                     final styleData = _getNotificationStyle(msgType);
 
                     return FutureBuilder<String>(
-                      future: _getChatRoomName(room['active_offer_id']),
+                      future: context.read<ChatRepository>().getChatRoomName(room.activeOfferId),
                       builder: (context, nameSnapshot) {
                         String itemName = nameSnapshot.data ?? '...';
 
@@ -238,7 +194,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               color: isUnread ? Colors.white : Colors.grey.shade50,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: Colors.grey.shade200),
-                              boxShadow: isUnread ? [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))] : [],
+                              boxShadow: isUnread ? [BoxShadow(color: Colors.black.withOpacity( 0.03), blurRadius: 10, offset: const Offset(0, 4))] : [],
                             ),
                             child: IntrinsicHeight(
                               child: Row(
@@ -260,7 +216,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                           Container(
                                             padding: const EdgeInsets.all(10),
                                             decoration: BoxDecoration(
-                                              color: (styleData['color'] as Color).withOpacity(0.1),
+                                              color: (styleData['color'] as Color).withOpacity( 0.1),
                                               shape: BoxShape.circle,
                                             ),
                                             child: Icon(styleData['icon'], color: styleData['color'], size: 24),
@@ -301,7 +257,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                                 Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                                                   decoration: BoxDecoration(
-                                                    color: (styleData['color'] as Color).withOpacity(0.1),
+                                                    color: (styleData['color'] as Color).withOpacity( 0.1),
                                                     borderRadius: BorderRadius.circular(8)
                                                   ),
                                                   child: Text(

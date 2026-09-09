@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../screens/user_profile_screen.dart'; 
+import '../models/message_model.dart';
 
 class ChatBubbleWidget extends StatefulWidget {
-  final Map<String, dynamic> msg;
+  final MessageModel msg;
   final bool isMe;
   final String timeStr;
   final bool showTimeByDefault;
@@ -43,7 +44,7 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
                     bottomLeft: const Radius.circular(16), bottomRight: Radius.circular(widget.showTimeByDefault ? 4 : 16),
                   ),
                 ),
-                child: Text(widget.msg['content'], style: const TextStyle(color: Colors.white, fontSize: 14)),
+                child: Text(widget.msg.content, style: const TextStyle(color: Colors.white, fontSize: 14)),
               ),
             ),
             AnimatedSize(
@@ -80,9 +81,9 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
           children: [
             if (widget.showAvatar) ...[
               GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: widget.msg['sender_id']))),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => UserProfileScreen(userId: widget.msg.senderId))),
                 child: FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance.collection('users').doc(widget.msg['sender_id']).get(),
+                  future: FirebaseFirestore.instance.collection('users').doc(widget.msg.senderId).get(),
                   builder: (context, userSnap) {
                     String profileImg = '';
                     if (userSnap.hasData && userSnap.data!.exists) profileImg = (userSnap.data!.data() as Map<String, dynamic>)['profile_img_url'] ?? '';
@@ -113,7 +114,7 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
                           bottomRight: const Radius.circular(16), bottomLeft: Radius.circular(widget.showTimeByDefault ? 4 : 16),
                         ),
                       ),
-                      child: Text(widget.msg['content'], style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                      child: Text(widget.msg.content, style: const TextStyle(color: Colors.black87, fontSize: 14)),
                     ),
                   ),
                   AnimatedSize(

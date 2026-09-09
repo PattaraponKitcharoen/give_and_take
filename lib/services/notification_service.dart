@@ -2,10 +2,11 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 
 // 🟢 ฟังก์ชันระดับ Top-level สำหรับจัดการข้อเสนอเวลาแอปอยู่ Background/Terminated
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print("พบการแจ้งเตือนเบื้องหลัง: ${message.messageId}");
+  debugPrint("พบการแจ้งเตือนเบื้องหลัง: ${message.messageId}");
 }
 
 class NotificationService {
@@ -19,7 +20,7 @@ class NotificationService {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('ผู้ใช้งานอนุญาตการแจ้งเตือนเรียบร้อยแล้ว');
+      debugPrint('ผู้ใช้งานอนุญาตการแจ้งเตือนเรียบร้อยแล้ว');
       
       // 2. ตั้งค่า Background Handler
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -94,11 +95,11 @@ class NotificationService {
           'fcm_token': token,
           'updated_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
-        print("บันทึก FCM Token สำเร็จ: $token");
+        debugPrint("บันทึก FCM Token สำเร็จ: $token");
       }
     } catch (e) {
       // ถ้าดึงไม่ได้ (เช่น รันบน Simulator) ให้พิมพ์บอกเฉยๆ แล้วปล่อยให้แอปทำงานต่อไป
-      print("ไม่สามารถดึง FCM Token ได้ (ปกติสำหรับ iOS Simulator): $e");
+      debugPrint("ไม่สามารถดึง FCM Token ได้ (ปกติสำหรับ iOS Simulator): $e");
     }
   }
 }
