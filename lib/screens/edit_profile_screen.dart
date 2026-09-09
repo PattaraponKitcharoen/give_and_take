@@ -16,6 +16,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
   late TextEditingController _telController;
   late TextEditingController _bioController;
+  String? _selectedFaculty;
+  String? _selectedAcademicYear;
   bool _isLoading = false;
   
   final Color tealColor = const Color(0xFF10B981); // ปรับสี Teal ให้ตรงกับหน้า Register
@@ -27,6 +29,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController = TextEditingController(text: widget.currentUser.name);
     _telController = TextEditingController(text: widget.currentUser.tel);
     _bioController = TextEditingController(text: widget.currentUser.bio);
+    _selectedFaculty = widget.currentUser.faculty;
+    _selectedAcademicYear = widget.currentUser.academicYear;
   }
 
   @override
@@ -58,6 +62,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         name: _nameController.text.trim(),
         tel: _telController.text.trim(),
         bio: _bioController.text.trim(),
+        faculty: _selectedFaculty,
+        academicYear: _selectedAcademicYear,
         updatedAt: DateTime.now(),
       );
       
@@ -112,6 +118,56 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
             ),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildDropdownField({
+    required String label,
+    required String? value,
+    required String hintText,
+    required IconData icon,
+    required List<String> items,
+    required void Function(String?) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 0.5),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.withOpacity( 0.3)),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity( 0.02), blurRadius: 10, offset: const Offset(0, 4)),
+            ],
+          ),
+          child: DropdownButtonFormField<String>(
+            value: (value != null && items.contains(value)) ? value : null,
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+              prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            ),
+            items: items.map((item) {
+              return DropdownMenuItem(
+                value: item,
+                child: Text(item, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+              );
+            }).toList(),
+            onChanged: onChanged,
+            icon: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey.shade400),
+            dropdownColor: Colors.white,
           ),
         ),
         const SizedBox(height: 20),
@@ -222,6 +278,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       controller: _telController,
                       hintText: '08X-XXX-XXXX',
                       icon: Icons.phone_iphone_outlined,
+                    ),
+
+                    const SizedBox(height: 8),
+                    const Text(
+                      'STUDENT VERIFICATION',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
+                    ),
+                    const SizedBox(height: 16),
+
+                    _buildDropdownField(
+                      label: 'FACULTY',
+                      value: _selectedFaculty,
+                      hintText: 'Select your faculty',
+                      icon: Icons.school_outlined,
+                      items: const [
+                        'วิศวกรรมศาสตร์',
+                        'วิทยาศาสตร์',
+                        'วิทยาการจัดการ',
+                        'ศิลปศาสตร์',
+                        'ทรัพยากรธรรมชาติ',
+                        'เภสัชศาสตร์',
+                        'แพทยศาสตร์',
+                        'พยาบาลศาสตร์',
+                        'ทันตแพทยศาสตร์',
+                        'อื่นๆ'
+                      ],
+                      onChanged: (val) => setState(() => _selectedFaculty = val),
+                    ),
+
+                    _buildDropdownField(
+                      label: 'ACADEMIC YEAR',
+                      value: _selectedAcademicYear,
+                      hintText: 'Select your academic year',
+                      icon: Icons.calendar_today_outlined,
+                      items: const ['ปี 1', 'ปี 2', 'ปี 3', 'ปี 4', 'ปี 5+'],
+                      onChanged: (val) => setState(() => _selectedAcademicYear = val),
                     ),
                   ],
                 ),
