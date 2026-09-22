@@ -29,7 +29,13 @@ class UserRepository {
   }
 
   Future<void> createUser(UserModel user) async {
-    await _firestore.collection('users').doc(user.uid).set(user.toJson());
+    final payload = user.toJson();
+    // Ensure the initial payload explicitly includes these newly added fields
+    payload['is_student'] = false;
+    payload['faculty'] = "";
+    payload['academic_year'] = "";
+    
+    await _firestore.collection('users').doc(user.uid).set(payload);
   }
 
   Future<int> getTradeCount(String userId) async {

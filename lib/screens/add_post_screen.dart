@@ -1,19 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../models/listing_model.dart';
+import '../cubits/add_post/add_post_cubit.dart';
+import '../cubits/add_post/add_post_state.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/listing_repository.dart';
+import '../widgets/multi_image_picker.dart';
 
-class AddPostScreen extends StatefulWidget {
+class AddPostScreen extends StatelessWidget {
   const AddPostScreen({super.key});
 
   @override
-  State<AddPostScreen> createState() => _AddPostScreenState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (context) => AddPostCubit(
+        listingRepository: context.read<ListingRepository>(),
+        userRepository: context.read<UserRepository>(),
+      ),
+      child: const _AddPostView(),
+    );
+  }
 }
 
-class _AddPostScreenState extends State<AddPostScreen> {
+class _AddPostView extends StatefulWidget {
+  const _AddPostView();
+
+  @override
+  State<_AddPostView> createState() => _AddPostViewState();
+}
+
+class _AddPostViewState extends State<_AddPostView> {
   final Color primaryTeal = const Color(0xFF008080);
   final Color bgColor = const Color(0xFFF8FAFC); 
 
@@ -44,7 +61,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
     'มือสองเสียหายเล็กน้อย'
   ];
 
-  bool _isLoading = false;
+  List<PickedImageEntry> _pickedImages = [];
 
   @override
   void dispose() {
@@ -157,7 +174,8 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
   Future<void> _submitPost() async {
     bool isVerified = await context.read<AuthRepository>().isEmailVerified();
-    
+    if (!mounted) return;
+
     if (!isVerified) {
       _showVerificationDialog();
       return;
@@ -181,53 +199,34 @@ class _AddPostScreenState extends State<AddPostScreen> {
     final User? firebaseUser = context.read<AuthRepository>().currentUser;
     if (firebaseUser == null) return;
 
-    setState(() => _isLoading = true);
+    // All post images are freshly picked here (never an existing Storage
+    // URL), so every entry maps to a NewListingImage — order preserved, so
+    // index 0 stays the cover photo.
+    final imageInputs = _pickedImages
+        .whereType<LocalPickedImage>()
+        .map<ListingImageInput>((entry) => NewListingImage(entry.file, isFromCamera: entry.isFromCamera))
+        .toList();
 
-    try {
-      final userRepo = context.read<UserRepository>();
-      final listingRepo = context.read<ListingRepository>();
+    context.read<AddPostCubit>().submitPost(
+      ownerId: firebaseUser.uid,
+      category: _selectedCategory,
+      title: title,
+      description: description,
+      condition: _selectedCondition,
+      estimatedCoins: coins,
+      images: imageInputs,
+    );
+  }
 
-      final currentUser = await userRepo.getUser(firebaseUser.uid);
-
-      final newListing = ListingModel(
-        listingId: '', 
-        type: 'item',
-        status: 'active',
-        category: _selectedCategory,
-        ownerId: currentUser.uid,
-        ownerName: currentUser.name,
-        ownerProfileImg: currentUser.profileImgUrl,
-        ownerRatingScores: 0.0,
-        title: title,
-        description: description,
-        condition: _selectedCondition,
-        estimatedCoins: coins,
-        thumbnailUrl: '',
-        images: [],
-        likedBy: [],
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
-      await listingRepo.createListing(newListing);
-
-      if (mounted) {
-        _titleController.clear();
-        _descriptionController.clear();
-        _coinsController.clear();
-        setState(() {
-          _selectedCategory = 'อุปกรณ์ไอที & แก็ดเจ็ต';
-          _selectedCondition = 'มือสองสภาพดี';
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('โพสต์สิ่งของสำเร็จ!'), backgroundColor: primaryTeal, behavior: SnackBarBehavior.floating));
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('เกิดข้อผิดพลาด ไม่สามารถโพสต์ได้'), backgroundColor: Colors.red.shade600, behavior: SnackBarBehavior.floating));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+  void _resetForm() {
+    _titleController.clear();
+    _descriptionController.clear();
+    _coinsController.clear();
+    setState(() {
+      _selectedCategory = 'อุปกรณ์ไอที & แก็ดเจ็ต';
+      _selectedCondition = 'มือสองสภาพดี';
+      _pickedImages = [];
+    });
   }
 
   InputDecoration _buildInputDecoration(String hintText, IconData icon) {
@@ -284,40 +283,10 @@ class _AddPostScreenState extends State<AddPostScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildSectionTitle('Photos'),
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                decoration: BoxDecoration(
-                  color: primaryTeal.withOpacity(0.03),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: primaryTeal.withOpacity(0.2), width: 1.5),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: primaryTeal.withOpacity(0.1), shape: BoxShape.circle),
-                      child: Icon(Icons.camera_alt, color: primaryTeal, size: 28),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text('Cover Photo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
-                    const SizedBox(height: 4),
-                    Text('แตะเพื่ออัปโหลดหรือถ่ายรูป', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        TextButton.icon(onPressed: () {}, icon: Icon(Icons.photo_library_outlined, size: 16, color: Colors.grey.shade700), label: Text('Gallery', style: TextStyle(color: Colors.grey.shade700))),
-                        const SizedBox(width: 16),
-                        TextButton.icon(onPressed: () {}, icon: Icon(Icons.camera_alt_outlined, size: 16, color: Colors.grey.shade700), label: Text('Camera', style: TextStyle(color: Colors.grey.shade700))),
-                      ],
-                    )
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 8, left: 4),
-                child: Text('อัปโหลดได้สูงสุด 6 รูป · รูปแรกจะเป็นรูปหน้าปก', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              MultiImagePickerWidget(
+                images: _pickedImages,
+                onChanged: (updated) => setState(() => _pickedImages = updated),
+                primaryColor: primaryTeal,
               ),
 
               _buildSectionTitle('Item Details'),
@@ -406,16 +375,30 @@ class _AddPostScreenState extends State<AddPostScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [BoxShadow(color: primaryTeal.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))],
               ),
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _submitPost,
-                icon: _isLoading ? const SizedBox.shrink() : const Icon(Icons.send, color: Colors.white, size: 18),
-                label: _isLoading
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Post Item', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryTeal, padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0,
-                ),
+              child: BlocConsumer<AddPostCubit, AddPostState>(
+                listener: (context, state) {
+                  if (state is AddPostSuccess) {
+                    _resetForm();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('โพสต์สิ่งของสำเร็จ!'), backgroundColor: primaryTeal, behavior: SnackBarBehavior.floating));
+                    Navigator.pop(context);
+                  } else if (state is AddPostError) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message), backgroundColor: Colors.red.shade600, behavior: SnackBarBehavior.floating));
+                  }
+                },
+                builder: (context, state) {
+                  final isSubmitting = state is AddPostSubmitting;
+                  return ElevatedButton.icon(
+                    onPressed: isSubmitting ? null : _submitPost,
+                    icon: isSubmitting ? const SizedBox.shrink() : const Icon(Icons.send, color: Colors.white, size: 18),
+                    label: isSubmitting
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Post Item', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryTeal, padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0,
+                    ),
+                  );
+                },
               ),
             ),
           ),

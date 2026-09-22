@@ -1,5 +1,31 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// One photo in a listing's [ListingModel.images] array: its Storage
+/// download URL plus whether it was taken with the in-app camera (used to
+/// show the "Camera" badge on the thumbnail).
+class ListingImage {
+  final String url;
+  final bool isFromCamera;
+
+  const ListingImage({required this.url, this.isFromCamera = false});
+
+  /// Accepts either the current map format (`{'url': ..., 'isCamera': ...}`)
+  /// or a bare string URL, so listings saved before this field existed
+  /// (a plain `List<String>` in Firestore) still parse instead of crashing.
+  factory ListingImage.fromMap(dynamic data) {
+    if (data is String) {
+      return ListingImage(url: data);
+    }
+    final map = Map<String, dynamic>.from(data as Map);
+    return ListingImage(
+      url: map['url'] ?? '',
+      isFromCamera: map['isCamera'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {'url': url, 'isCamera': isFromCamera};
+}
+
 class ListingModel {
   final String listingId;
   final String type;
@@ -14,7 +40,7 @@ class ListingModel {
   final String condition;
   final int estimatedCoins;
   final String thumbnailUrl;
-  final List<String> images;
+  final List<ListingImage> images;
   final List<String> likedBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -56,7 +82,7 @@ class ListingModel {
       condition: metadata?['condition'] ?? json['condition'] ?? '',
       estimatedCoins: json['estimated_coins'] ?? 0,
       thumbnailUrl: metadata?['thumbnail_url'] ?? json['thumbnail_url'] ?? '',
-      images: List<String>.from(json['images'] ?? []),
+      images: (json['images'] as List<dynamic>? ?? []).map((e) => ListingImage.fromMap(e)).toList(),
       likedBy: List<String>.from(json['liked_by'] ?? []),
       createdAt: json['created_at'] != null 
           ? (json['created_at'] as Timestamp).toDate() 
@@ -81,7 +107,7 @@ class ListingModel {
       'condition': condition,
       'estimated_coins': estimatedCoins,
       'thumbnail_url': thumbnailUrl,
-      'images': images,
+      'images': images.map((img) => img.toMap()).toList(),
       'liked_by': likedBy,
       if (createdAt != null) 'created_at': Timestamp.fromDate(createdAt!),
       if (updatedAt != null) 'updated_at': Timestamp.fromDate(updatedAt!),
@@ -102,7 +128,7 @@ class ListingModel {
     String? condition,
     int? estimatedCoins,
     String? thumbnailUrl,
-    List<String>? images,
+    List<ListingImage>? images,
     List<String>? likedBy,
     DateTime? createdAt,
     DateTime? updatedAt,

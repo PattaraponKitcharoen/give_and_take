@@ -77,8 +77,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final userCredential = await context.read<AuthRepository>()
-          .createUserWithEmailAndPassword(email: email, password: password);
+      final authRepo = context.read<AuthRepository>();
+      final userRepo = context.read<UserRepository>();
+      
+      final userCredential = await authRepo.createUserWithEmailAndPassword(email: email, password: password);
 
       if (userCredential.user != null) {
         final userModel = UserModel(
@@ -95,8 +97,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           isPhoneVerified: false,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
+          faculty: '',
+          academicYear: '',
+          isStudent: false,
         );
-        await context.read<UserRepository>().createUser(userModel);
+        await userRepo.createUser(userModel);
       }
 
       if (mounted) {

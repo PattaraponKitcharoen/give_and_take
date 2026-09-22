@@ -18,6 +18,7 @@ class UserModel {
   final DateTime? updatedAt;
   final String? faculty;
   final String? academicYear;
+  final bool isStudent;
 
   UserModel({
     required this.uid,
@@ -37,6 +38,7 @@ class UserModel {
     this.updatedAt,
     this.faculty,
     this.academicYear,
+    this.isStudent = false,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json, String documentId) {
@@ -62,6 +64,7 @@ class UserModel {
           : null,
       faculty: json['faculty'],
       academicYear: json['academic_year'],
+      isStudent: json['is_student'] ?? false,
     );
   }
 
@@ -81,8 +84,9 @@ class UserModel {
       'is_phone_verified': isPhoneVerified,
       if (createdAt != null) 'created_at': Timestamp.fromDate(createdAt!),
       if (updatedAt != null) 'updated_at': Timestamp.fromDate(updatedAt!),
-      if (faculty != null) 'faculty': faculty,
-      if (academicYear != null) 'academic_year': academicYear,
+      'faculty': faculty ?? '',
+      'academic_year': academicYear ?? '',
+      'is_student': isStudent,
     };
   }
 
@@ -104,6 +108,7 @@ class UserModel {
     DateTime? updatedAt,
     String? faculty,
     String? academicYear,
+    bool? isStudent,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -123,6 +128,7 @@ class UserModel {
       updatedAt: updatedAt ?? this.updatedAt,
       faculty: faculty ?? this.faculty,
       academicYear: academicYear ?? this.academicYear,
+      isStudent: isStudent ?? this.isStudent,
     );
   }
 }

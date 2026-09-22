@@ -58,12 +58,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
     try {
+      bool isStudent = (_selectedFaculty != null && _selectedFaculty!.isNotEmpty &&
+          _selectedAcademicYear != null && _selectedAcademicYear!.isNotEmpty);
+
       final updatedUser = widget.currentUser.copyWith(
         name: _nameController.text.trim(),
         tel: _telController.text.trim(),
         bio: _bioController.text.trim(),
         faculty: _selectedFaculty,
         academicYear: _selectedAcademicYear,
+        isStudent: isStudent,
         updatedAt: DateTime.now(),
       );
       
@@ -151,6 +155,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ],
           ),
           child: DropdownButtonFormField<String>(
+            isExpanded: true,
             value: (value != null && items.contains(value)) ? value : null,
             decoration: InputDecoration(
               hintText: hintText,
@@ -162,7 +167,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             items: items.map((item) {
               return DropdownMenuItem(
                 value: item,
-                child: Text(item, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+                child: Text(
+                  item,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  overflow: TextOverflow.ellipsis,
+                ),
               );
             }).toList(),
             onChanged: onChanged,

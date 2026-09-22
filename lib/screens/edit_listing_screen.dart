@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubits/edit_listing/edit_listing_cubit.dart';
+import '../cubits/edit_listing/edit_listing_state.dart';
 import '../repositories/listing_repository.dart';
 import '../models/listing_model.dart';
+import '../widgets/multi_image_picker.dart';
 
-class EditListingScreen extends StatefulWidget {
+class EditListingScreen extends StatelessWidget {
   final ListingModel itemData;
 
   const EditListingScreen({
@@ -12,20 +15,35 @@ class EditListingScreen extends StatefulWidget {
   });
 
   @override
-  State<EditListingScreen> createState() => _EditListingScreenState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (context) => EditListingCubit(
+        listingRepository: context.read<ListingRepository>(),
+      ),
+      child: _EditListingView(itemData: itemData),
+    );
+  }
 }
 
-class _EditListingScreenState extends State<EditListingScreen> {
+class _EditListingView extends StatefulWidget {
+  final ListingModel itemData;
+
+  const _EditListingView({required this.itemData});
+
+  @override
+  State<_EditListingView> createState() => _EditListingViewState();
+}
+
+class _EditListingViewState extends State<_EditListingView> {
   late TextEditingController _titleController;
   late TextEditingController _descController;
   late TextEditingController _coinsController;
-  
+
   // 🟢 เพิ่มตัวแปรสำหรับรับค่าอื่นๆ
   late String _selectedCategory;
   late String _selectedCondition;
-  late String _thumbnailUrl;
+  List<PickedImageEntry> _images = [];
 
-  bool _isLoading = false;
   final Color tealColor = const Color(0xFF008080);
 
   // 🟢 รายการตัวเลือก (สามารถปรับเปลี่ยนให้ตรงกับหน้า Add Item ได้)
@@ -45,14 +63,21 @@ class _EditListingScreenState extends State<EditListingScreen> {
     _titleController = TextEditingController(text: widget.itemData.title);
     _descController = TextEditingController(text: widget.itemData.description);
     _coinsController = TextEditingController(text: widget.itemData.estimatedCoins.toString());
-    
+
     _selectedCategory = widget.itemData.category;
     if (!_categories.contains(_selectedCategory)) _categories.add(_selectedCategory);
 
     _selectedCondition = widget.itemData.condition;
     if (!_conditions.contains(_selectedCondition)) _conditions.add(_selectedCondition);
 
-    _thumbnailUrl = widget.itemData.thumbnailUrl;
+    // Prefer the full images array; fall back to the legacy single
+    // thumbnailUrl for listings saved before multi-image upload existed
+    // (no camera metadata available for that legacy path).
+    _images = widget.itemData.images.isNotEmpty
+        ? widget.itemData.images
+            .map<PickedImageEntry>((img) => NetworkPickedImage(img.url, isFromCamera: img.isFromCamera))
+            .toList()
+        : (widget.itemData.thumbnailUrl.isNotEmpty ? [NetworkPickedImage(widget.itemData.thumbnailUrl)] : []);
   }
 
   @override
@@ -63,47 +88,25 @@ class _EditListingScreenState extends State<EditListingScreen> {
     super.dispose();
   }
 
-  Future<void> _updateListing() async {
-    setState(() => _isLoading = true);
-    try {
-      final updatedListing = widget.itemData.copyWith(
-        title: _titleController.text.trim(),
-        description: _descController.text.trim(),
-        estimatedCoins: int.tryParse(_coinsController.text.trim()) ?? 0,
-        category: _selectedCategory,
-        condition: _selectedCondition,
-        updatedAt: DateTime.now(),
-      );
+  void _updateListing() {
+    final imageInputs = _images
+        .map<ListingImageInput>((entry) => switch (entry) {
+              LocalPickedImage(:final file, :final isFromCamera) =>
+                NewListingImage(file, isFromCamera: isFromCamera),
+              NetworkPickedImage(:final url, :final isFromCamera) =>
+                ExistingListingImage(url, isFromCamera: isFromCamera),
+            })
+        .toList();
 
-      await context.read<ListingRepository>().updateListing(updatedListing);
-      
-      if (mounted) {
-        // 🟢 ปรับ SnackBar ให้เป็นแบบ Floating เพื่อไม่ให้ดัน UI ด้านล่าง
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('บันทึกข้อมูลเรียบร้อย'),
-            behavior: SnackBarBehavior.floating, // สั่งให้ลอยทับ UI
-            margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20), // เพิ่มระยะห่างขอบให้ดูสวยขึ้น
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), // ลบมุมขอบให้มนๆ
-            backgroundColor: tealColor,
-          )
-        );
-        Navigator.pop(context); 
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('เกิดข้อผิดพลาด: $e'),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
-            backgroundColor: Colors.red.shade600,
-          )
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    context.read<EditListingCubit>().updateListing(
+      originalListing: widget.itemData,
+      title: _titleController.text.trim(),
+      description: _descController.text.trim(),
+      category: _selectedCategory,
+      condition: _selectedCondition,
+      estimatedCoins: int.tryParse(_coinsController.text.trim()) ?? 0,
+      images: imageInputs,
+    );
   }
 
   @override
@@ -120,155 +123,157 @@ class _EditListingScreenState extends State<EditListingScreen> {
           elevation: 0.5,
           iconTheme: const IconThemeData(color: Colors.black87),
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 🟢 SECTION: จัดการรูปภาพ
-              const Text('รูปภาพหน้าปก', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-              const SizedBox(height: 12),
-              Center(
-                child: GestureDetector(
-                  onTap: () {
-                    // TODO: ใส่ฟังก์ชันเรียก Image Picker ตรงนี้ในอนาคต
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ระบบเปลี่ยนรูปภาพยังไม่เปิดใช้งาน'), behavior: SnackBarBehavior.floating));
-                  },
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        height: 160,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade300),
-                          image: _thumbnailUrl.isNotEmpty
-                              ? DecorationImage(image: NetworkImage(_thumbnailUrl), fit: BoxFit.cover)
-                              : null,
+        body: BlocListener<EditListingCubit, EditListingState>(
+          listener: (context, state) {
+            if (state is EditListingSuccess) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('บันทึกข้อมูลเรียบร้อย'),
+                  behavior: SnackBarBehavior.floating, // สั่งให้ลอยทับ UI
+                  margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20), // เพิ่มระยะห่างขอบให้ดูสวยขึ้น
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), // ลบมุมขอบให้มนๆ
+                  backgroundColor: tealColor,
+                )
+              );
+              Navigator.pop(context);
+            } else if (state is EditListingError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('เกิดข้อผิดพลาด: ${state.message}'),
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+                  backgroundColor: Colors.red.shade600,
+                )
+              );
+            }
+          },
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 🟢 SECTION: จัดการรูปภาพ
+                const Text('รูปภาพ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 12),
+                MultiImagePickerWidget(
+                  images: _images,
+                  onChanged: (updated) => setState(() => _images = updated),
+                  primaryColor: tealColor,
+                ),
+                const SizedBox(height: 24),
+
+                // 🟢 SECTION: ข้อมูลพื้นฐาน
+                const Text('ชื่อสิ่งของ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _titleController,
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                const Text('รายละเอียด', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _descController,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // 🟢 SECTION: หมวดหมู่และสภาพ
+                const Text('หมวดหมู่ (Category)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedCategory,
+                      isExpanded: true,
+                      icon: Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade600),
+                      items: _categories.map((String cat) {
+                        return DropdownMenuItem<String>(value: cat, child: Text(cat, style: const TextStyle(fontSize: 14)));
+                      }).toList(),
+                      onChanged: (newValue) {
+                        if (newValue != null) setState(() => _selectedCategory = newValue);
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                const Text('สภาพสิ่งของ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8.0, runSpacing: 8.0,
+                  children: _conditions.map((condition) {
+                    bool isSelected = _selectedCondition == condition;
+                    return ChoiceChip(
+                      label: Text(condition),
+                      selected: isSelected,
+                      onSelected: (selected) { if (selected) setState(() => _selectedCondition = condition); },
+                      selectedColor: tealColor,
+                      backgroundColor: Colors.grey.shade100,
+                      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade700, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 13),
+                      showCheckmark: false,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? tealColor : Colors.grey.shade300)),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+
+                // 🟢 SECTION: ราคา
+                const Text('ราคาประเมิน (Coins)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _coinsController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.monetization_on_outlined, color: Colors.orange),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                ),
+                const SizedBox(height: 40),
+
+                BlocBuilder<EditListingCubit, EditListingState>(
+                  builder: (context, state) {
+                    final isSubmitting = state is EditListingSubmitting;
+                    return SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: isSubmitting ? null : _updateListing,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: tealColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
-                        child: _thumbnailUrl.isEmpty
-                            ? const Icon(Icons.image, size: 50, color: Colors.black12)
-                            : null,
+                        child: isSubmitting
+                            ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('บันทึกการแก้ไข', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle),
-                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 24),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
-              ),
-              const SizedBox(height: 24),
-              
-              // 🟢 SECTION: ข้อมูลพื้นฐาน
-              const Text('ชื่อสิ่งของ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _titleController,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              const Text('รายละเอียด', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _descController,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // 🟢 SECTION: หมวดหมู่และสภาพ
-              const Text('หมวดหมู่ (Category)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedCategory,
-                    isExpanded: true,
-                    icon: Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade600),
-                    items: _categories.map((String cat) {
-                      return DropdownMenuItem<String>(value: cat, child: Text(cat, style: const TextStyle(fontSize: 14)));
-                    }).toList(),
-                    onChanged: (newValue) {
-                      if (newValue != null) setState(() => _selectedCategory = newValue);
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              const Text('สภาพสิ่งของ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8.0, runSpacing: 8.0,
-                children: _conditions.map((condition) {
-                  bool isSelected = _selectedCondition == condition;
-                  return ChoiceChip(
-                    label: Text(condition),
-                    selected: isSelected,
-                    onSelected: (selected) { if (selected) setState(() => _selectedCondition = condition); },
-                    selectedColor: tealColor,
-                    backgroundColor: Colors.grey.shade100,
-                    labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade700, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 13),
-                    showCheckmark: false, 
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? tealColor : Colors.grey.shade300)),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-
-              // 🟢 SECTION: ราคา
-              const Text('ราคาประเมิน (Coins)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _coinsController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.monetization_on_outlined, color: Colors.orange),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _updateListing,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: tealColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: _isLoading 
-                      ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('บันทึกการแก้ไข', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 40),
-            ],
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),

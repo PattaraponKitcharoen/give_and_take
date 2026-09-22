@@ -1,13 +1,65 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import '../models/listing_model.dart';
 
+/// One entry of a listing's image list as handed to [ListingRepository]:
+/// either a brand-new local file to upload ([NewListingImage]) or a photo
+/// that's already in Storage and should be kept as-is ([ExistingListingImage]).
+/// List order is preserved end-to-end, so index 0 stays the cover photo.
+/// Both variants carry [isFromCamera] so the "Camera" badge survives an
+/// upload (new photo) or a re-save (existing photo kept during an edit).
+sealed class ListingImageInput {
+  const ListingImageInput();
+}
+
+class NewListingImage extends ListingImageInput {
+  final File file;
+  final bool isFromCamera;
+  const NewListingImage(this.file, {this.isFromCamera = false});
+}
+
+class ExistingListingImage extends ListingImageInput {
+  final String url;
+  final bool isFromCamera;
+  const ExistingListingImage(this.url, {this.isFromCamera = false});
+}
+
 class ListingRepository {
   final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage;
 
-  ListingRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  ListingRepository({FirebaseFirestore? firestore, FirebaseStorage? storage})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _storage = storage ?? FirebaseStorage.instance;
+
+  Future<String> _uploadListingImage(File imageFile, String ownerId) async {
+    final fileName = '${ownerId}_${DateTime.now().millisecondsSinceEpoch}_${imageFile.hashCode}.jpg';
+    final ref = _storage.ref().child('listing_images/$fileName');
+    final uploadTask = await ref.putFile(imageFile);
+    return uploadTask.ref.getDownloadURL();
+  }
+
+  /// Uploads every [NewListingImage] and passes through every
+  /// [ExistingListingImage]'s URL unchanged, pairing each with its
+  /// [ListingImageInput.isFromCamera] flag, and resolves all of them in
+  /// parallel while preserving the input order — Future.wait completes its
+  /// result list in the same order as the futures it was given, regardless
+  /// of which upload finishes first, so index 0 is guaranteed to stay the
+  /// cover photo.
+  Future<List<ListingImage>> _resolveImages(List<ListingImageInput> images, String ownerId) {
+    final resolved = images.map((input) async {
+      return switch (input) {
+        NewListingImage(:final file, :final isFromCamera) =>
+          ListingImage(url: await _uploadListingImage(file, ownerId), isFromCamera: isFromCamera),
+        ExistingListingImage(:final url, :final isFromCamera) =>
+          ListingImage(url: url, isFromCamera: isFromCamera),
+      };
+    });
+    return Future.wait(resolved);
+  }
 
   Future<int> getActiveListingCount(String userId) async {
     final snap = await _firestore.collection('listings')
@@ -71,8 +123,18 @@ class ListingRepository {
       });
     }
   }
-  Future<void> createListing(ListingModel listing) async {
-    await _firestore.collection('listings').add(listing.toJson());
+  Future<void> createListing(ListingModel listing, {List<ListingImageInput> images = const []}) async {
+    ListingModel listingToSave = listing;
+
+    if (images.isNotEmpty) {
+      final resolved = await _resolveImages(images, listing.ownerId);
+      listingToSave = listing.copyWith(
+        thumbnailUrl: resolved.first.url,
+        images: resolved,
+      );
+    }
+
+    await _firestore.collection('listings').add(listingToSave.toJson());
   }
 
   Future<List<ListingModel>> getUserActiveListings(String uid) async {
@@ -90,8 +152,24 @@ class ListingRepository {
     });
   }
 
-  Future<void> updateListing(ListingModel listing) async {
-    await _firestore.collection('listings').doc(listing.listingId).update(listing.toJson());
+  /// [images], when provided, replaces the listing's photo set end-to-end
+  /// (uploading any [NewListingImage]s and keeping any [ExistingListingImage]
+  /// URLs, in order — index 0 becomes the new cover photo). Pass an empty
+  /// list to clear all photos, or omit the parameter entirely to leave the
+  /// listing's existing photos untouched.
+  Future<void> updateListing(ListingModel listing, {List<ListingImageInput>? images}) async {
+    ListingModel listingToSave = listing;
+
+    if (images != null) {
+      if (images.isEmpty) {
+        listingToSave = listing.copyWith(thumbnailUrl: '', images: const []);
+      } else {
+        final resolved = await _resolveImages(images, listing.ownerId);
+        listingToSave = listing.copyWith(thumbnailUrl: resolved.first.url, images: resolved);
+      }
+    }
+
+    await _firestore.collection('listings').doc(listing.listingId).update(listingToSave.toJson());
   }
 
   Future<void> deleteListingAndRelatedData(String listingId) async {

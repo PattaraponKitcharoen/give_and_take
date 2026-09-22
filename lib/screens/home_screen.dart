@@ -532,7 +532,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return GridView.builder(
               physics: const NeverScrollableScrollPhysics(), shrinkWrap: true,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 0.52),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 0.62),
               itemCount: filteredDocs.length,
               itemBuilder: (context, index) {
                 final item = filteredDocs[index];
@@ -553,8 +553,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: Colors.black.withOpacity( 0.03), blurRadius: 10, offset: const Offset(0, 4))]),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
+                        AspectRatio(
+                          aspectRatio: 1.0,
                           child: Stack(
                             children: [
                               Container(
@@ -582,12 +584,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis),
-                              const SizedBox(height: 8),
+                              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 6),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
@@ -596,17 +598,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                       children: [
                                         CircleAvatar(radius: 8, backgroundColor: Colors.grey.shade300, backgroundImage: profileImg.isNotEmpty ? NetworkImage(profileImg) : null, child: profileImg.isEmpty ? const Icon(Icons.person, size: 10, color: Colors.white) : null),
                                         const SizedBox(width: 6),
-                                        Expanded(child: Text(ownerName, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), overflow: TextOverflow.ellipsis)),
+                                        Expanded(child: Text(ownerName, maxLines: 1, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), overflow: TextOverflow.ellipsis)),
                                       ],
                                     ),
                                   ),
                                   Row(children: [const Icon(Icons.star, size: 12, color: Colors.amber), const SizedBox(width: 2), Text(ratingScore > 0 ? ratingScore.toStringAsFixed(1) : 'New', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade800))]),
                                 ],
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 8),
                               Container(
-                                width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: tealColor, borderRadius: BorderRadius.circular(8)),
-                                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.swap_horiz, color: Colors.white, size: 16), SizedBox(width: 4), Text('Swap', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))]),
+                                width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 6), decoration: BoxDecoration(color: tealColor, borderRadius: BorderRadius.circular(8)),
+                                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.swap_horiz, color: Colors.white, size: 14), SizedBox(width: 4), Text('Swap', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))]),
                               )
                             ],
                           ),

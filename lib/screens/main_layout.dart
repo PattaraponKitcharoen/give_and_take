@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/chat_repository.dart';
+import '../repositories/user_repository.dart';
+import '../repositories/listing_repository.dart';
+import '../cubits/profile/profile_cubit.dart';
+import '../cubits/profile/profile_state.dart';
+import '../widgets/student_verification_dialog.dart';
 import 'home_screen.dart';
 import 'my_listing_screen.dart';
 import 'add_post_screen.dart';
@@ -17,6 +22,7 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
+  bool _hasShownStudentDialog = false;
   final Color tealColor = const Color(0xFF008080); 
   final Color inactiveColor = Colors.grey.shade400; 
 
@@ -102,14 +108,39 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: const [
-          HomeScreen(),       
-          MyListingScreen(),  
-          ChatListScreen(),   
-          ProfileScreen(),    
-        ],
+      body: BlocProvider(
+        create: (context) {
+          final authRepo = context.read<AuthRepository>();
+          return ProfileCubit(
+            userRepository: context.read<UserRepository>(),
+            listingRepository: context.read<ListingRepository>(),
+            authRepository: authRepo,
+            userId: authRepo.currentUser?.uid ?? '',
+          );
+        },
+        child: BlocListener<ProfileCubit, ProfileState>(
+          listener: (context, state) {
+            if (state is ProfileLoaded && !_hasShownStudentDialog) {
+              if (state.user.isStudent != true) {
+                _hasShownStudentDialog = true;
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => StudentVerificationDialog(user: state.user),
+                );
+              }
+            }
+          },
+          child: IndexedStack(
+            index: _currentIndex,
+            children: const [
+              HomeScreen(),       
+              MyListingScreen(),  
+              ChatListScreen(),   
+              ProfileScreen(),    
+            ],
+          ),
+        ),
       ),
       
       floatingActionButton: GestureDetector(
