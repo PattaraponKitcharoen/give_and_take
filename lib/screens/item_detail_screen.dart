@@ -11,6 +11,7 @@ import '../cubits/offer/offer_cubit.dart';
 import '../cubits/offer/offer_state.dart';
 import 'chat_screen.dart';
 import 'user_profile_screen.dart';
+import '../widgets/email_verification_dialog.dart';
 
 /// [BouncingScrollPhysics] that hard-caps how far the user can pull down
 /// past the top, while leaving the bottom bounce completely normal.
@@ -503,8 +504,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                   .isEmailVerified();
                                               if (!isVerified) {
                                                 if (context.mounted)
-                                                  _showVerificationDialog(
-                                                      context, tealColor);
+                                                  showEmailVerificationDialog(
+                                                    context,
+                                                    message:
+                                                        'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถยื่นข้อเสนอได้ กรุณาตรวจสอบกล่องจดหมายของคุณ',
+                                                    themeColor: tealColor,
+                                                  );
                                                 return;
                                               }
 
@@ -601,52 +606,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   },
                 );
               }),
-    );
-  }
-
-  void _showVerificationDialog(BuildContext context, Color tealColor) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('ยืนยันอีเมลของคุณ',
-              style: TextStyle(fontWeight: FontWeight.bold, color: tealColor)),
-          content: const Text(
-              'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถยื่นข้อเสนอได้ กรุณาตรวจสอบกล่องจดหมายของคุณ'),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('ปิด', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  await context.read<AuthRepository>().sendEmailVerification();
-                  if (dialogContext.mounted) {
-                    Navigator.pop(dialogContext);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: const Text('ส่งอีเมลยืนยันใหม่อีกครั้งแล้ว'),
-                        backgroundColor: tealColor,
-                        behavior: SnackBarBehavior.floating));
-                  }
-                } catch (e) {
-                  if (dialogContext.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(e.toString()),
-                        backgroundColor: Colors.red,
-                        behavior: SnackBarBehavior.floating));
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: tealColor),
-              child: const Text('ส่งอีเมลอีกครั้ง',
-                  style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -1276,8 +1235,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     if (!context.mounted) return;
 
                                     if (!isVerified) {
-                                      _showVerificationDialog(
-                                          context, tealColor);
+                                      showEmailVerificationDialog(
+                                        context,
+                                        message:
+                                            'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถยื่นข้อเสนอได้ กรุณาตรวจสอบกล่องจดหมายของคุณ',
+                                        themeColor: tealColor,
+                                      );
                                       return;
                                     }
 

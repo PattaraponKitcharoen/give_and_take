@@ -7,6 +7,7 @@ import '../repositories/auth_repository.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/listing_repository.dart';
 import '../widgets/multi_image_picker.dart';
+import '../widgets/email_verification_dialog.dart';
 
 class AddPostScreen extends StatelessWidget {
   const AddPostScreen({super.key});
@@ -147,66 +148,17 @@ class _AddPostViewState extends State<_AddPostView> {
     );
   }
 
-  void _showVerificationDialog() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('ยืนยันอีเมลของคุณ',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Color(0xFF008080))),
-          content: const Text(
-              'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถลงประกาศสิ่งของได้ กรุณาตรวจสอบกล่องจดหมายของคุณ'),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('ปิด', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  await context.read<AuthRepository>().sendEmailVerification();
-                  // `context` here is this State's own context (the screen
-                  // behind the dialog), not `dialogContext` — guard each on
-                  // its own `mounted` instead of using dialogContext.mounted
-                  // as a stand-in for both.
-                  if (dialogContext.mounted) {
-                    Navigator.pop(dialogContext);
-                  }
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('ส่งอีเมลยืนยันใหม่อีกครั้งแล้ว'),
-                        backgroundColor: Color(0xFF008080),
-                        behavior: SnackBarBehavior.floating));
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(e.toString()),
-                        backgroundColor: Colors.red,
-                        behavior: SnackBarBehavior.floating));
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF008080)),
-              child: const Text('ส่งอีเมลอีกครั้ง',
-                  style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _submitPost() async {
     bool isVerified = await context.read<AuthRepository>().isEmailVerified();
     if (!mounted) return;
 
     if (!isVerified) {
-      _showVerificationDialog();
+      showEmailVerificationDialog(
+        context,
+        message:
+            'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถลงประกาศสิ่งของได้ กรุณาตรวจสอบกล่องจดหมายของคุณ',
+        themeColor: primaryTeal,
+      );
       return;
     }
 
