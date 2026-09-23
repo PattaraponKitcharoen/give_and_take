@@ -1,11 +1,25 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../models/user_model.dart';
 
 class UserRepository {
   final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage;
 
-  UserRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  UserRepository({FirebaseFirestore? firestore, FirebaseStorage? storage})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _storage = storage ?? FirebaseStorage.instance;
+
+  /// Uploads a (already-cropped) profile photo to Storage and returns its
+  /// download URL. Does not touch Firestore — callers persist the URL via
+  /// [updateUser] themselves, same two-step pattern as listing images.
+  Future<String> uploadProfileImage(File imageFile, String uid) async {
+    final fileName = '${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final ref = _storage.ref().child('profile_images/$fileName');
+    final uploadTask = await ref.putFile(imageFile);
+    return uploadTask.ref.getDownloadURL();
+  }
 
   Stream<UserModel> getUserStream(String uid) {
     return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {

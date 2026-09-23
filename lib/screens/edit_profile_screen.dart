@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../repositories/user_repository.dart';
 import '../models/user_model.dart';
 
@@ -19,8 +22,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _selectedFaculty;
   String? _selectedAcademicYear;
   bool _isLoading = false;
-  
-  final Color tealColor = const Color(0xFF10B981); // ปรับสี Teal ให้ตรงกับหน้า Register
+
+  // Profile photo: kept as separate local state from the rest of the form
+  // because the upload persists to Firestore immediately on its own,
+  // independent of the "Save Changes" button below.
+  late String _profileImgUrl;
+  bool _isUploadingPhoto = false;
+
+  final Color tealColor =
+      const Color(0xFF10B981); // ปรับสี Teal ให้ตรงกับหน้า Register
   final Color bgColor = const Color(0xFFF8FAFC);
 
   @override
@@ -31,6 +41,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _bioController = TextEditingController(text: widget.currentUser.bio);
     _selectedFaculty = widget.currentUser.faculty;
     _selectedAcademicYear = widget.currentUser.academicYear;
+    _profileImgUrl = widget.currentUser.profileImgUrl;
   }
 
   @override
@@ -55,11 +66,88 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: Colors.red.shade600,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadProfileImage() async {
+    try {
+      final XFile? pickedFile = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (pickedFile == null) return; // User cancelled the picker.
+
+      final CroppedFile? croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'ครอบตัดรูปโปรไฟล์',
+            toolbarColor: tealColor,
+            toolbarWidgetColor: Colors.white,
+            cropStyle: CropStyle.circle,
+            initAspectRatio: CropAspectRatioPreset.square,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
+            lockAspectRatio: true,
+          ),
+          IOSUiSettings(
+            title: 'ครอบตัดรูปโปรไฟล์',
+            cropStyle: CropStyle.circle,
+            aspectRatioLockEnabled: true,
+            aspectRatioPresets: const [CropAspectRatioPreset.square],
+            resetAspectRatioEnabled: false,
+          ),
+        ],
+      );
+      if (croppedFile == null) return; // User cancelled the cropper.
+
+      if (!mounted) return;
+      setState(() => _isUploadingPhoto = true);
+
+      final downloadUrl = await context
+          .read<UserRepository>()
+          .uploadProfileImage(File(croppedFile.path), widget.currentUser.uid);
+      if (!mounted) return;
+
+      await context.read<UserRepository>().updateUser(
+            widget.currentUser.copyWith(
+              profileImgUrl: downloadUrl,
+              updatedAt: DateTime.now(),
+            ),
+          );
+
+      if (mounted) {
+        setState(() {
+          _profileImgUrl = downloadUrl;
+          _isUploadingPhoto = false;
+        });
+        _showSuccessSnackBar('อัปเดตรูปโปรไฟล์เรียบร้อย');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+        _showErrorSnackBar('อัปโหลดรูปโปรไฟล์ไม่สำเร็จ: $e');
+      }
+    }
+  }
+
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
     try {
-      bool isStudent = (_selectedFaculty != null && _selectedFaculty!.isNotEmpty &&
-          _selectedAcademicYear != null && _selectedAcademicYear!.isNotEmpty);
+      bool isStudent = (_selectedFaculty != null &&
+          _selectedFaculty!.isNotEmpty &&
+          _selectedAcademicYear != null &&
+          _selectedAcademicYear!.isNotEmpty);
 
       final updatedUser = widget.currentUser.copyWith(
         name: _nameController.text.trim(),
@@ -68,9 +156,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         faculty: _selectedFaculty,
         academicYear: _selectedAcademicYear,
         isStudent: isStudent,
+        profileImgUrl: _profileImgUrl,
         updatedAt: DateTime.now(),
       );
-      
+
       await context.read<UserRepository>().updateUser(updatedUser);
 
       if (mounted) {
@@ -99,28 +188,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 0.5),
+          style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.blueGrey,
+              letterSpacing: 0.5),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.withOpacity( 0.3)),
+            border: Border.all(color: Colors.grey.withOpacity(0.3)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity( 0.02), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4)),
             ],
           ),
           child: TextField(
             controller: controller,
             maxLines: maxLines,
-            keyboardType: maxLines > 1 ? TextInputType.multiline : TextInputType.text,
+            keyboardType:
+                maxLines > 1 ? TextInputType.multiline : TextInputType.text,
             decoration: InputDecoration(
               hintText: hintText,
               hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
               prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
             ),
           ),
         ),
@@ -142,16 +240,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 0.5),
+          style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.blueGrey,
+              letterSpacing: 0.5),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.withOpacity( 0.3)),
+            border: Border.all(color: Colors.grey.withOpacity(0.3)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity( 0.02), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4)),
             ],
           ),
           child: DropdownButtonFormField<String>(
@@ -162,7 +267,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
               prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
             ),
             items: items.map((item) {
               return DropdownMenuItem(
@@ -175,7 +281,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               );
             }).toList(),
             onChanged: onChanged,
-            icon: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey.shade400),
+            icon: Icon(Icons.keyboard_arrow_down_rounded,
+                color: Colors.grey.shade400),
             dropdownColor: Colors.white,
           ),
         ),
@@ -189,7 +296,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Edit Profile', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w900, fontSize: 18)),
+        title: const Text('Edit Profile',
+            style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w900,
+                fontSize: 18)),
         centerTitle: true,
         backgroundColor: bgColor,
         elevation: 0,
@@ -203,7 +314,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 color: Colors.grey.shade200,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 18),
+              child: const Icon(Icons.arrow_back_ios_new_rounded,
+                  color: Colors.black87, size: 18),
             ),
           ),
         ),
@@ -213,7 +325,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0, vertical: 16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -221,38 +334,81 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     Center(
                       child: Column(
                         children: [
-                          Stack(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 4),
-                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity( 0.1), blurRadius: 10)],
-                                ),
-                                child: CircleAvatar(
-                                  radius: 50,
-                                  backgroundColor: tealColor.withOpacity( 0.5),
-                                  child: Icon(Icons.person, size: 50, color: tealColor),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 0, right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
+                          GestureDetector(
+                            onTap: _isUploadingPhoto
+                                ? null
+                                : _pickAndUploadProfileImage,
+                            child: Stack(
+                              children: [
+                                Container(
                                   decoration: BoxDecoration(
-                                    color: tealColor,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
+                                    border: Border.all(
+                                        color: Colors.white, width: 4),
+                                    boxShadow: [
+                                      BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 10)
+                                    ],
                                   ),
-                                  child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
+                                  child: CircleAvatar(
+                                    radius: 50,
+                                    backgroundColor: tealColor.withOpacity(0.5),
+                                    backgroundImage: _profileImgUrl.isNotEmpty
+                                        ? NetworkImage(_profileImgUrl)
+                                        : null,
+                                    child: _profileImgUrl.isEmpty
+                                        ? Icon(Icons.person,
+                                            size: 50, color: tealColor)
+                                        : null,
+                                  ),
                                 ),
-                              )
-                            ],
+                                if (_isUploadingPhoto)
+                                  Positioned.fill(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.black.withOpacity(0.4),
+                                      ),
+                                      child: const Center(
+                                        child: SizedBox(
+                                          width: 32,
+                                          height: 32,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 3,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: tealColor,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: Colors.white, width: 2),
+                                    ),
+                                    child: const Icon(Icons.camera_alt,
+                                        size: 14, color: Colors.white),
+                                  ),
+                                )
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            _nameController.text.isNotEmpty ? _nameController.text : 'ชื่อผู้ใช้งาน',
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+                            _nameController.text.isNotEmpty
+                                ? _nameController.text
+                                : 'ชื่อผู้ใช้งาน',
+                            style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87),
                           ),
                         ],
                       ),
@@ -262,7 +418,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     // 🟢 หัวข้อ Section
                     const Text(
                       'PERSONAL INFO',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueGrey,
+                          letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 16),
 
@@ -273,11 +433,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       hintText: 'John Doe',
                       icon: Icons.person_outline,
                     ),
-                    
+
                     _buildLabeledTextField(
                       label: 'BIO / ABOUT ME',
                       controller: _bioController,
-                      hintText: 'Tell others about yourself or what you like to trade',
+                      hintText:
+                          'Tell others about yourself or what you like to trade',
                       icon: Icons.info_outline,
                       maxLines: 3,
                     ),
@@ -292,7 +453,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     const SizedBox(height: 8),
                     const Text(
                       'STUDENT VERIFICATION',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueGrey,
+                          letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 16),
 
@@ -313,7 +478,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         'ทันตแพทยศาสตร์',
                         'อื่นๆ'
                       ],
-                      onChanged: (val) => setState(() => _selectedFaculty = val),
+                      onChanged: (val) =>
+                          setState(() => _selectedFaculty = val),
                     ),
 
                     _buildDropdownField(
@@ -322,13 +488,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       hintText: 'Select your academic year',
                       icon: Icons.calendar_today_outlined,
                       items: const ['ปี 1', 'ปี 2', 'ปี 3', 'ปี 4', 'ปี 5+'],
-                      onChanged: (val) => setState(() => _selectedAcademicYear = val),
+                      onChanged: (val) =>
+                          setState(() => _selectedAcademicYear = val),
                     ),
                   ],
                 ),
               ),
             ),
-            
+
             // 🟢 ปุ่ม Save ที่ล็อคติดขอบล่างเสมอ
             Container(
               padding: const EdgeInsets.all(24.0),
@@ -337,16 +504,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               child: ElevatedButton.icon(
                 onPressed: _isLoading ? null : _saveProfile,
-                icon: _isLoading ? const SizedBox() : const Icon(Icons.check, color: Colors.white, size: 20),
-                label: _isLoading 
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Save Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                icon: _isLoading
+                    ? const SizedBox()
+                    : const Icon(Icons.check, color: Colors.white, size: 20),
+                label: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : const Text('Save Changes',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: tealColor,
                   minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                   elevation: 2,
-                  shadowColor: tealColor.withOpacity( 0.4),
+                  shadowColor: tealColor.withOpacity(0.4),
                 ),
               ),
             ),
