@@ -427,22 +427,32 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          body: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildSearchBar(context),
-                _buildLocationBar(),
-                _buildHeroBanner(),
-                _buildSectionHeader('Categories', 'See all',
-                    onTrailingTap: () => _showAllCategoriesPopup(context)),
-                _buildCategoryChips(context),
-                _buildSectionHeader('Near You', 'อัปเดตใหม่วันนี้',
-                    isTrailingGreen: true),
-                _buildProductGrid(context),
-                const SizedBox(height: 30),
-              ],
-            ),
+          // CustomScrollView + slivers instead of a SingleChildScrollView
+          // wrapping a Column: the product grid below is a SliverGrid, so
+          // only items actually scrolled into view get built, instead of
+          // every item in the feed being laid out up front (which is what
+          // GridView.builder's `shrinkWrap: true` was forcing to make it
+          // fit inside a box-constrained Column/ScrollView).
+          body: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSearchBar(context),
+                    _buildLocationBar(),
+                    _buildHeroBanner(),
+                    _buildSectionHeader('Categories', 'See all',
+                        onTrailingTap: () => _showAllCategoriesPopup(context)),
+                    _buildCategoryChips(context),
+                    _buildSectionHeader('Near You', 'อัปเดตใหม่วันนี้',
+                        isTrailingGreen: true),
+                  ],
+                ),
+              ),
+              _buildProductGrid(context),
+              const SliverToBoxAdapter(child: SizedBox(height: 30)),
+            ],
           ),
         );
       }),
@@ -679,41 +689,48 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Returns a sliver (not a box widget) — this is placed directly inside
+  // the CustomScrollView's `slivers:` list in build(), so SliverGrid.builder
+  // below only builds the item cards actually scrolled near the viewport,
+  // instead of every item up front (which is what GridView.builder's
+  // `shrinkWrap: true` forced when this lived inside a boxed Column).
   Widget _buildProductGrid(BuildContext context) {
-    return Padding(
+    return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: BlocBuilder<HomeCubit, HomeState>(
+      sliver: BlocBuilder<HomeCubit, HomeState>(
         builder: (context, state) {
           if (state is HomeLoading) {
-            return const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: CircularProgressIndicator()));
+            return const SliverToBoxAdapter(
+                child: Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator())));
           }
           if (state is HomeError) {
-            return const Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล'));
+            return const SliverToBoxAdapter(
+                child: Center(child: Text('เกิดข้อผิดพลาดในการโหลดข้อมูล')));
           }
           if (state is HomeLoaded) {
             final filteredDocs = state.filteredItems;
 
             if (state.allItems.isEmpty) {
-              return const Center(
-                  child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้',
-                          style: TextStyle(color: Colors.grey))));
+              return const SliverToBoxAdapter(
+                  child: Center(
+                      child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้',
+                              style: TextStyle(color: Colors.grey)))));
             }
             if (filteredDocs.isEmpty) {
-              return const Center(
-                  child: Padding(
-                      padding: EdgeInsets.all(40.0),
-                      child: Text('ไม่พบสิ่งของในหมวดหมู่นี้',
-                          style: TextStyle(color: Colors.grey))));
+              return const SliverToBoxAdapter(
+                  child: Center(
+                      child: Padding(
+                          padding: EdgeInsets.all(40.0),
+                          child: Text('ไม่พบสิ่งของในหมวดหมู่นี้',
+                              style: TextStyle(color: Colors.grey)))));
             }
 
-            return GridView.builder(
-              physics: const NeverScrollableScrollPhysics(),
-              shrinkWrap: true,
+            return SliverGrid.builder(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   crossAxisSpacing: 16,
@@ -931,7 +948,7 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             );
           }
-          return const SizedBox.shrink();
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
         },
       ),
     );

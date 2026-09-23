@@ -31,6 +31,22 @@ class _ChatScreenState extends State<ChatScreen> {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
+  // Memoizes the target-item Future by offerId so the outer
+  // StreamBuilder<ChatRoomModel?> (which re-fires on every room-doc change,
+  // e.g. a read-receipt update) doesn't hand the AppBar's FutureBuilder a
+  // brand-new Future — and therefore a redundant Firestore read — on every
+  // single rebuild when the offer itself hasn't changed.
+  String? _cachedTargetOfferId;
+  Future<Map<String, dynamic>>? _cachedTargetItemInfoFuture;
+
+  Future<Map<String, dynamic>> _targetItemInfoFor(String? offerId) {
+    if (_cachedTargetOfferId != offerId) {
+      _cachedTargetOfferId = offerId;
+      _cachedTargetItemInfoFuture = _getTargetItemInfo(offerId);
+    }
+    return _cachedTargetItemInfoFuture!;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -209,7 +225,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 elevation: 0.5,
                 iconTheme: const IconThemeData(color: Colors.black87),
                 title: FutureBuilder<Map<String, dynamic>>(
-                    future: _getTargetItemInfo(activeOfferId),
+                    future: _targetItemInfoFor(activeOfferId),
                     builder: (context, itemSnap) {
                       if (!itemSnap.hasData || itemSnap.data!.isEmpty) {
                         return const Text('เจรจาแลกเปลี่ยน',
