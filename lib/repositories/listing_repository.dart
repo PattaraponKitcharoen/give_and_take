@@ -36,7 +36,8 @@ class ListingRepository {
         _storage = storage ?? FirebaseStorage.instance;
 
   Future<String> _uploadListingImage(File imageFile, String ownerId) async {
-    final fileName = '${ownerId}_${DateTime.now().millisecondsSinceEpoch}_${imageFile.hashCode}.jpg';
+    final fileName =
+        '${ownerId}_${DateTime.now().millisecondsSinceEpoch}_${imageFile.hashCode}.jpg';
     final ref = _storage.ref().child('listing_images/$fileName');
     final uploadTask = await ref.putFile(imageFile);
     return uploadTask.ref.getDownloadURL();
@@ -49,11 +50,13 @@ class ListingRepository {
   /// result list in the same order as the futures it was given, regardless
   /// of which upload finishes first, so index 0 is guaranteed to stay the
   /// cover photo.
-  Future<List<ListingImage>> _resolveImages(List<ListingImageInput> images, String ownerId) {
+  Future<List<ListingImage>> _resolveImages(
+      List<ListingImageInput> images, String ownerId) {
     final resolved = images.map((input) async {
       return switch (input) {
-        NewListingImage(:final file, :final isFromCamera) =>
-          ListingImage(url: await _uploadListingImage(file, ownerId), isFromCamera: isFromCamera),
+        NewListingImage(:final file, :final isFromCamera) => ListingImage(
+            url: await _uploadListingImage(file, ownerId),
+            isFromCamera: isFromCamera),
         ExistingListingImage(:final url, :final isFromCamera) =>
           ListingImage(url: url, isFromCamera: isFromCamera),
       };
@@ -62,22 +65,24 @@ class ListingRepository {
   }
 
   Future<int> getActiveListingCount(String userId) async {
-    final snap = await _firestore.collection('listings')
-      .where('owner_id', isEqualTo: userId)
-      .where('status', isEqualTo: 'active')
-      .count()
-      .get();
+    final snap = await _firestore
+        .collection('listings')
+        .where('owner_id', isEqualTo: userId)
+        .where('status', isEqualTo: 'active')
+        .count()
+        .get();
     return snap.count ?? 0;
   }
 
   Stream<List<ListingModel>> getUserActiveListingsStream(String userId) {
-    return _firestore.collection('listings')
-      .where('owner_id', isEqualTo: userId)
-      .where('status', isEqualTo: 'active')
-      .snapshots()
-      .map((snapshot) => snapshot.docs
-          .map((doc) => ListingModel.fromJson(doc.data(), doc.id))
-          .toList());
+    return _firestore
+        .collection('listings')
+        .where('owner_id', isEqualTo: userId)
+        .where('status', isEqualTo: 'active')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ListingModel.fromJson(doc.data(), doc.id))
+            .toList());
   }
 
   Stream<List<ListingModel>> getActiveItemsStream() {
@@ -102,28 +107,19 @@ class ListingRepository {
   }
 
   Stream<List<ListingModel>> getUserListings(String uid, {String? status}) {
-    Query query = _firestore.collection('listings').where('owner_id', isEqualTo: uid);
+    Query query =
+        _firestore.collection('listings').where('owner_id', isEqualTo: uid);
     if (status != null) {
       query = query.where('status', isEqualTo: status);
     }
     return query.snapshots().map((snapshot) => snapshot.docs
-        .map((doc) => ListingModel.fromJson(doc.data() as Map<String, dynamic>, doc.id))
+        .map((doc) =>
+            ListingModel.fromJson(doc.data() as Map<String, dynamic>, doc.id))
         .toList());
   }
 
-  Future<void> toggleLike(String listingId, String userId, bool isAlreadyLiked) async {
-    final docRef = _firestore.collection('listings').doc(listingId);
-    if (isAlreadyLiked) {
-      await docRef.update({
-        'liked_by': FieldValue.arrayRemove([userId])
-      });
-    } else {
-      await docRef.update({
-        'liked_by': FieldValue.arrayUnion([userId])
-      });
-    }
-  }
-  Future<void> createListing(ListingModel listing, {List<ListingImageInput> images = const []}) async {
+  Future<void> createListing(ListingModel listing,
+      {List<ListingImageInput> images = const []}) async {
     ListingModel listingToSave = listing;
 
     if (images.isNotEmpty) {
@@ -138,15 +134,22 @@ class ListingRepository {
   }
 
   Future<List<ListingModel>> getUserActiveListings(String uid) async {
-    final snapshot = await _firestore.collection('listings')
-      .where('owner_id', isEqualTo: uid)
-      .where('status', isEqualTo: 'active')
-      .get();
-    return snapshot.docs.map((doc) => ListingModel.fromJson(doc.data(), doc.id)).toList();
+    final snapshot = await _firestore
+        .collection('listings')
+        .where('owner_id', isEqualTo: uid)
+        .where('status', isEqualTo: 'active')
+        .get();
+    return snapshot.docs
+        .map((doc) => ListingModel.fromJson(doc.data(), doc.id))
+        .toList();
   }
 
   Stream<ListingModel?> getListingStream(String listingId) {
-    return _firestore.collection('listings').doc(listingId).snapshots().map((snapshot) {
+    return _firestore
+        .collection('listings')
+        .doc(listingId)
+        .snapshots()
+        .map((snapshot) {
       if (!snapshot.exists || snapshot.data() == null) return null;
       return ListingModel.fromJson(snapshot.data()!, snapshot.id);
     });
@@ -157,7 +160,8 @@ class ListingRepository {
   /// URLs, in order — index 0 becomes the new cover photo). Pass an empty
   /// list to clear all photos, or omit the parameter entirely to leave the
   /// listing's existing photos untouched.
-  Future<void> updateListing(ListingModel listing, {List<ListingImageInput>? images}) async {
+  Future<void> updateListing(ListingModel listing,
+      {List<ListingImageInput>? images}) async {
     ListingModel listingToSave = listing;
 
     if (images != null) {
@@ -165,21 +169,26 @@ class ListingRepository {
         listingToSave = listing.copyWith(thumbnailUrl: '', images: const []);
       } else {
         final resolved = await _resolveImages(images, listing.ownerId);
-        listingToSave = listing.copyWith(thumbnailUrl: resolved.first.url, images: resolved);
+        listingToSave = listing.copyWith(
+            thumbnailUrl: resolved.first.url, images: resolved);
       }
     }
 
-    await _firestore.collection('listings').doc(listing.listingId).update(listingToSave.toJson());
+    await _firestore
+        .collection('listings')
+        .doc(listing.listingId)
+        .update(listingToSave.toJson());
   }
 
   Future<void> deleteListingAndRelatedData(String listingId) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    
+
     List<QueryDocumentSnapshot> allOffers = [];
 
     try {
-      final offeredQuery = await _firestore.collection('offers')
+      final offeredQuery = await _firestore
+          .collection('offers')
           .where('offerer_id', isEqualTo: uid)
           .where('offered_listing_id', isEqualTo: listingId)
           .get();
@@ -189,7 +198,8 @@ class ListingRepository {
     }
 
     try {
-      final targetQuery = await _firestore.collection('offers')
+      final targetQuery = await _firestore
+          .collection('offers')
           .where('receiver_id', isEqualTo: uid)
           .where('target_listing_id', isEqualTo: listingId)
           .get();
@@ -200,13 +210,14 @@ class ListingRepository {
 
     for (var offerDoc in allOffers) {
       String offerId = offerDoc.id;
-      
+
       try {
-        final roomQuery = await _firestore.collection('chat_rooms')
+        final roomQuery = await _firestore
+            .collection('chat_rooms')
             .where('participants', arrayContains: uid)
             .where('active_offer_id', isEqualTo: offerId)
             .get();
-        
+
         for (var roomDoc in roomQuery.docs) {
           try {
             await roomDoc.reference.collection('messages').add({
@@ -225,7 +236,7 @@ class ListingRepository {
           }
         }
       } catch (e) {
-         debugPrint('Error fetching/updating Chat Rooms [Type]: $e');
+        debugPrint('Error fetching/updating Chat Rooms [Type]: $e');
       }
 
       try {

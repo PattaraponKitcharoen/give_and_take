@@ -126,7 +126,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
                           color: Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: thumbnail != null && thumbnail.isNotEmpty 
+                        child: thumbnail.isNotEmpty
                           ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(thumbnail, fit: BoxFit.cover))
                           : const Center(child: Icon(Icons.image, size: 40, color: Colors.black12)),
                       ),

@@ -19,6 +19,7 @@ class UserModel {
   final String? faculty;
   final String? academicYear;
   final bool isStudent;
+  final List<String> wishlist;
 
   UserModel({
     required this.uid,
@@ -39,6 +40,7 @@ class UserModel {
     this.faculty,
     this.academicYear,
     this.isStudent = false,
+    this.wishlist = const [],
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json, String documentId) {
@@ -56,15 +58,16 @@ class UserModel {
       location: json['location'] ?? {},
       isEmailVerified: json['is_email_verified'] ?? false,
       isPhoneVerified: json['is_phone_verified'] ?? false,
-      createdAt: json['created_at'] != null 
-          ? (json['created_at'] as Timestamp).toDate() 
+      createdAt: json['created_at'] != null
+          ? (json['created_at'] as Timestamp).toDate()
           : null,
-      updatedAt: json['updated_at'] != null 
-          ? (json['updated_at'] as Timestamp).toDate() 
+      updatedAt: json['updated_at'] != null
+          ? (json['updated_at'] as Timestamp).toDate()
           : null,
       faculty: json['faculty'],
       academicYear: json['academic_year'],
       isStudent: json['is_student'] ?? false,
+      wishlist: List<String>.from(json['wishlist'] ?? []),
     );
   }
 
@@ -87,6 +90,7 @@ class UserModel {
       'faculty': faculty ?? '',
       'academic_year': academicYear ?? '',
       'is_student': isStudent,
+      'wishlist': wishlist,
     };
   }
 
@@ -109,6 +113,7 @@ class UserModel {
     String? faculty,
     String? academicYear,
     bool? isStudent,
+    List<String>? wishlist,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -129,6 +134,7 @@ class UserModel {
       faculty: faculty ?? this.faculty,
       academicYear: academicYear ?? this.academicYear,
       isStudent: isStudent ?? this.isStudent,
+      wishlist: wishlist ?? this.wishlist,
     );
   }
 }

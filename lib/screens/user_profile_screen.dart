@@ -285,10 +285,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.grey.shade100, borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                          image: (item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty) 
-                              ? DecorationImage(image: NetworkImage(item.thumbnailUrl!), fit: BoxFit.cover) : null,
+                          image: item.thumbnailUrl.isNotEmpty
+                              ? DecorationImage(image: NetworkImage(item.thumbnailUrl), fit: BoxFit.cover) : null,
                         ),
-                        child: (item.thumbnailUrl == null || item.thumbnailUrl!.isEmpty) ? const Center(child: Icon(Icons.image, color: Colors.grey)) : null,
+                        child: item.thumbnailUrl.isEmpty ? const Center(child: Icon(Icons.image, color: Colors.grey)) : null,
                       ),
                     ),
                     Padding(

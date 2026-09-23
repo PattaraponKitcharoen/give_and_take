@@ -15,12 +15,14 @@ class HomeLoaded extends HomeState {
   final List<ListingModel> filteredItems; // Items shown to user
   final List<String> selectedCategories;
   final String sortBy; // 'newest', 'coins_asc', 'coins_desc'
+  final List<String> wishlist; // listingIds in the current user's wishlist
 
   const HomeLoaded({
     required this.allItems,
     required this.filteredItems,
     this.selectedCategories = const ['All'],
     this.sortBy = 'newest',
+    this.wishlist = const [],
   });
 
   HomeLoaded copyWith({
@@ -28,12 +30,14 @@ class HomeLoaded extends HomeState {
     List<ListingModel>? filteredItems,
     List<String>? selectedCategories,
     String? sortBy,
+    List<String>? wishlist,
   }) {
     return HomeLoaded(
       allItems: allItems ?? this.allItems,
       filteredItems: filteredItems ?? this.filteredItems,
       selectedCategories: selectedCategories ?? this.selectedCategories,
       sortBy: sortBy ?? this.sortBy,
+      wishlist: wishlist ?? this.wishlist,
     );
   }
 
@@ -43,6 +47,7 @@ class HomeLoaded extends HomeState {
         filteredItems,
         selectedCategories,
         sortBy,
+        wishlist,
       ];
 }
 

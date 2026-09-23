@@ -43,7 +43,6 @@ class AddPostCubit extends Cubit<AddPostState> {
         estimatedCoins: estimatedCoins,
         thumbnailUrl: '',
         images: const [],
-        likedBy: const [],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );

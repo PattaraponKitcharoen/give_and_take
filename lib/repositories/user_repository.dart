@@ -28,13 +28,29 @@ class UserRepository {
     await _firestore.collection('users').doc(user.uid).update(user.toJson());
   }
 
+  /// Adds or removes [listingId] from [uid]'s `wishlist` array, depending
+  /// on [isCurrentlyWishlisted] (the state before this call).
+  Future<void> toggleWishlist(
+      String uid, String listingId, bool isCurrentlyWishlisted) async {
+    final docRef = _firestore.collection('users').doc(uid);
+    if (isCurrentlyWishlisted) {
+      await docRef.update({
+        'wishlist': FieldValue.arrayRemove([listingId])
+      });
+    } else {
+      await docRef.update({
+        'wishlist': FieldValue.arrayUnion([listingId])
+      });
+    }
+  }
+
   Future<void> createUser(UserModel user) async {
     final payload = user.toJson();
     // Ensure the initial payload explicitly includes these newly added fields
     payload['is_student'] = false;
     payload['faculty'] = "";
     payload['academic_year'] = "";
-    
+
     await _firestore.collection('users').doc(user.uid).set(payload);
   }
 
@@ -64,7 +80,7 @@ class UserRepository {
           .collection('reviews')
           .where('target_id', isEqualTo: userId)
           .get();
-          
+
       final docs = reviewSnap.docs;
       docs.sort((a, b) {
         final dataA = a.data();
@@ -73,34 +89,39 @@ class UserRepository {
         Timestamp timeB = dataB['created_at'] ?? Timestamp.now();
         return timeB.compareTo(timeA);
       });
-      
+
       List<Map<String, dynamic>> results = [];
-      
+
       for (var doc in docs) {
         final data = doc.data();
         final String reviewerId = data['reviewer_id'] ?? '';
         final String transactionId = data['transaction_id'] ?? '';
-        
+
         String name = 'ผู้ใช้งาน';
         String img = '';
         Map<String, dynamic>? myItemData;
         Map<String, dynamic>? theirItemData;
-        
+
         if (reviewerId.isNotEmpty) {
-          final userDoc = await _firestore.collection('users').doc(reviewerId).get();
+          final userDoc =
+              await _firestore.collection('users').doc(reviewerId).get();
           if (userDoc.exists) {
             final uData = userDoc.data()!;
             name = uData['name'] ?? 'ผู้ใช้งาน';
             img = uData['profile_img_url'] ?? '';
           }
         }
-        
+
         if (transactionId.isNotEmpty) {
-          final txDoc = await _firestore.collection('transactions').doc(transactionId).get();
+          final txDoc = await _firestore
+              .collection('transactions')
+              .doc(transactionId)
+              .get();
           if (txDoc.exists) {
             final offerId = txDoc.data()?['offer_id'];
             if (offerId != null && offerId.toString().isNotEmpty) {
-              final offerDoc = await _firestore.collection('offers').doc(offerId).get();
+              final offerDoc =
+                  await _firestore.collection('offers').doc(offerId).get();
               if (offerDoc.exists) {
                 final offerData = offerDoc.data()!;
                 String myItemId = '';
@@ -115,7 +136,10 @@ class UserRepository {
                 }
 
                 if (myItemId.isNotEmpty) {
-                  final myDoc = await _firestore.collection('listings').doc(myItemId).get();
+                  final myDoc = await _firestore
+                      .collection('listings')
+                      .doc(myItemId)
+                      .get();
                   if (myDoc.exists) {
                     myItemData = myDoc.data();
                     myItemData!['listing_id'] = myDoc.id;
@@ -123,7 +147,10 @@ class UserRepository {
                 }
 
                 if (theirItemId.isNotEmpty) {
-                  final theirDoc = await _firestore.collection('listings').doc(theirItemId).get();
+                  final theirDoc = await _firestore
+                      .collection('listings')
+                      .doc(theirItemId)
+                      .get();
                   if (theirDoc.exists) {
                     theirItemData = theirDoc.data();
                     theirItemData!['listing_id'] = theirDoc.id;
@@ -133,7 +160,7 @@ class UserRepository {
             }
           }
         }
-        
+
         results.add({
           'review': data,
           'name': name,
@@ -148,7 +175,8 @@ class UserRepository {
     }
   }
 
-  Future<void> updateUserLocation(String uid, double lat, double lng, String district, String province) async {
+  Future<void> updateUserLocation(String uid, double lat, double lng,
+      String district, String province) async {
     await _firestore.collection('users').doc(uid).set({
       'location': {
         'latitude': lat,

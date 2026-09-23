@@ -16,7 +16,13 @@ class ListingImage {
     if (data is String) {
       return ListingImage(url: data);
     }
-    final map = Map<String, dynamic>.from(data as Map);
+    if (data is! Map) {
+      // A malformed entry (e.g. null) must not crash ListingModel.fromJson
+      // for the whole document — that would take down every stream reading
+      // this listing, including the ones the wishlist heart depends on.
+      return const ListingImage(url: '');
+    }
+    final map = Map<String, dynamic>.from(data);
     return ListingImage(
       url: map['url'] ?? '',
       isFromCamera: map['isCamera'] ?? false,
@@ -41,7 +47,6 @@ class ListingModel {
   final int estimatedCoins;
   final String thumbnailUrl;
   final List<ListingImage> images;
-  final List<String> likedBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -60,7 +65,6 @@ class ListingModel {
     required this.estimatedCoins,
     required this.thumbnailUrl,
     required this.images,
-    required this.likedBy,
     this.createdAt,
     this.updatedAt,
   });
@@ -75,20 +79,26 @@ class ListingModel {
       category: json['category'] ?? '',
       ownerId: metadata?['owner_id'] ?? json['owner_id'] ?? '',
       ownerName: metadata?['owner_name'] ?? json['owner_name'] ?? 'ผู้ใช้งาน',
-      ownerProfileImg: metadata?['owner_profile_img'] ?? json['owner_profile_img'] ?? '',
-      ownerRatingScores: (metadata?['owner_rating_scores'] ?? json['owner_rating_scores'] ?? 0.0).toDouble(),
+      ownerProfileImg:
+          metadata?['owner_profile_img'] ?? json['owner_profile_img'] ?? '',
+      ownerRatingScores: (metadata?['owner_rating_scores'] ??
+              json['owner_rating_scores'] ??
+              0.0)
+          .toDouble(),
       title: metadata?['title'] ?? json['title'] ?? 'ไม่มีชื่อสินค้า',
       description: json['description'] ?? '',
       condition: metadata?['condition'] ?? json['condition'] ?? '',
       estimatedCoins: json['estimated_coins'] ?? 0,
       thumbnailUrl: metadata?['thumbnail_url'] ?? json['thumbnail_url'] ?? '',
-      images: (json['images'] as List<dynamic>? ?? []).map((e) => ListingImage.fromMap(e)).toList(),
-      likedBy: List<String>.from(json['liked_by'] ?? []),
-      createdAt: json['created_at'] != null 
-          ? (json['created_at'] as Timestamp).toDate() 
+      images: (json['images'] as List<dynamic>? ?? [])
+          .map((e) => ListingImage.fromMap(e))
+          .toList(),
+      createdAt: json['created_at'] != null
+          ? (json['created_at'] as Timestamp).toDate()
           : null,
-      updatedAt: (metadata?['updated_at'] ?? json['updated_at']) != null 
-          ? ((metadata?['updated_at'] ?? json['updated_at']) as Timestamp).toDate() 
+      updatedAt: (metadata?['updated_at'] ?? json['updated_at']) != null
+          ? ((metadata?['updated_at'] ?? json['updated_at']) as Timestamp)
+              .toDate()
           : null,
     );
   }
@@ -108,7 +118,6 @@ class ListingModel {
       'estimated_coins': estimatedCoins,
       'thumbnail_url': thumbnailUrl,
       'images': images.map((img) => img.toMap()).toList(),
-      'liked_by': likedBy,
       if (createdAt != null) 'created_at': Timestamp.fromDate(createdAt!),
       if (updatedAt != null) 'updated_at': Timestamp.fromDate(updatedAt!),
     };
@@ -129,7 +138,6 @@ class ListingModel {
     int? estimatedCoins,
     String? thumbnailUrl,
     List<ListingImage>? images,
-    List<String>? likedBy,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -148,7 +156,6 @@ class ListingModel {
       estimatedCoins: estimatedCoins ?? this.estimatedCoins,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       images: images ?? this.images,
-      likedBy: likedBy ?? this.likedBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

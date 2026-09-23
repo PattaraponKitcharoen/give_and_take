@@ -10,7 +10,6 @@ class WalletHistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentUserId = context.read<AuthRepository>().currentUser?.uid;
-    const Color tealColor = Color(0xFF008080);
 
     return Scaffold(
       backgroundColor: Colors.white,

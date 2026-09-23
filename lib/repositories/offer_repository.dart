@@ -71,8 +71,6 @@ class OfferRepository {
     required String coinText,
   }) async {
     try {
-      WriteBatch batch = _firestore.batch();
-      
       DocumentReference offerRef = _firestore.collection('offers').doc();
       var offerData = offer.toJson();
       offerData['created_at'] = FieldValue.serverTimestamp();

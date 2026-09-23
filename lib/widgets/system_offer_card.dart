@@ -170,7 +170,7 @@ class SystemOfferCard extends StatelessWidget {
                       return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
                     }
                     if (txState is TransactionLoaded) {
-                      var codes = txState.currentTransaction.verificationCodes ?? {};
+                      var codes = txState.currentTransaction.verificationCodes;
                       String myCode = codes[currentUserId] ?? '------';
                       return Column(
                         children: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/listing_model.dart';
 import '../models/offer_model.dart';
+import '../models/user_model.dart';
 import '../repositories/listing_repository.dart';
 import '../repositories/offer_repository.dart';
 import '../repositories/auth_repository.dart';
@@ -53,6 +54,11 @@ class ItemDetailScreen extends StatefulWidget {
 class _ItemDetailScreenState extends State<ItemDetailScreen> {
   final PageController _pageController = PageController();
   int _currentImageIndex = 0;
+
+  // Optimistic override for the wishlist heart: set on tap so it flips
+  // instantly instead of waiting on the user-doc stream's round-trip, then
+  // cleared once that stream confirms it (or reverted on a failed write).
+  bool? _optimisticWishlisted;
 
   @override
   void dispose() {
@@ -376,7 +382,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   context.read<ListingRepository>().getListingStream(listingId),
               builder: (context, snapshot) {
                 bool isActive = false;
-                bool isLiked = false;
 
                 final currentUser = context.read<AuthRepository>().currentUser;
                 final currentUserId = currentUser?.uid ?? '';
@@ -386,168 +391,214 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   if (latestData.status == 'active') {
                     isActive = true;
                   }
-
-                  final List<String> likedBy = latestData.likedBy;
-                  isLiked = likedBy.contains(currentUserId);
                 }
 
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, -5))
-                    ],
-                  ),
-                  child: SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                      child: Row(
-                        children: [
-                          Container(
-                            height: 52,
-                            width: 52,
-                            decoration: BoxDecoration(
-                              color: isLiked ? Colors.red.shade50 : lightTeal,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                  color: isLiked
-                                      ? Colors.red.shade200
-                                      : tealColor.withOpacity(0.3)),
-                            ),
-                            child: IconButton(
-                              icon: Icon(
-                                isLiked
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
-                                color: isLiked ? Colors.red : tealColor,
-                              ),
-                              onPressed: () async {
-                                if (currentUserId.isEmpty) return;
+                // The wishlist now lives on the user doc, not the listing,
+                // so a second stream (scoped to the signed-in user) drives
+                // the heart instead of `latestData.likedBy`.
+                return StreamBuilder<UserModel>(
+                  stream: currentUserId.isEmpty
+                      ? const Stream<UserModel>.empty()
+                      : context
+                          .read<UserRepository>()
+                          .getUserStream(currentUserId),
+                  builder: (context, userSnapshot) {
+                    final actualIsWishlisted =
+                        userSnapshot.data?.wishlist.contains(listingId) ??
+                            false;
+                    final isLiked = _optimisticWishlisted ?? actualIsWishlisted;
 
-                                await context
-                                    .read<ListingRepository>()
-                                    .toggleLike(
-                                        listingId, currentUserId, isLiked);
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            // 🟢 เพิ่ม Container ห่อปุ่มไว้เพื่อทำเอฟเฟกต์เงาแบบเดียวกับหน้า Add Item
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: isActive
-                                    ? [
-                                        BoxShadow(
-                                          color: tealColor.withOpacity(0.3),
-                                          blurRadius: 15,
-                                          offset: const Offset(0, 5),
-                                        ),
-                                      ]
-                                    : [],
-                              ),
-                              child: ElevatedButton(
-                                  onPressed: isActive
-                                      ? () async {
-                                          bool isVerified = await context
-                                              .read<AuthRepository>()
-                                              .isEmailVerified();
-                                          if (!isVerified) {
-                                            if (context.mounted)
-                                              _showVerificationDialog(
-                                                  context, tealColor);
-                                            return;
-                                          }
-
-                                          if (currentUserId.isEmpty) return;
-
-                                          if (currentUserId == ownerId) {
-                                            if (context.mounted) {
-                                              showDialog(
-                                                context: context,
-                                                builder: (context) =>
-                                                    AlertDialog(
-                                                  shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              16)),
-                                                  title: const Text('แจ้งเตือน',
-                                                      style: TextStyle(
-                                                          color: tealColor,
-                                                          fontWeight:
-                                                              FontWeight.bold)),
-                                                  content: const Text(
-                                                      'คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
-                                                  actions: [
-                                                    TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                                context),
-                                                        child: const Text(
-                                                            'เข้าใจแล้ว',
-                                                            style: TextStyle(
-                                                                color:
-                                                                    tealColor,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold)))
-                                                  ],
-                                                ),
-                                              );
-                                            }
-                                            return;
-                                          }
-                                          if (context.mounted)
-                                            _showOfferBottomSheet(
-                                                context,
-                                                tealColor,
-                                                currentUserId,
-                                                listing);
-                                        }
-                                      : null,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: tealColor,
-                                    disabledBackgroundColor:
-                                        Colors.grey.shade400,
-                                    minimumSize:
-                                        const Size(double.infinity, 52),
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(16)),
-                                    elevation:
-                                        0, // ปิด elevation เดิมทิ้ง เพราะเราใช้ BoxShadow จาก Container แทนแล้ว
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.swap_horiz,
-                                          color: isActive
-                                              ? Colors.white
-                                              : Colors.white70),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                          isActive
-                                              ? 'Make an Offer'
-                                              : 'Item Unavailable',
-                                          style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: isActive
-                                                  ? Colors.white
-                                                  : Colors.white70)),
-                                    ],
-                                  )),
-                            ),
-                          ),
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, -5))
                         ],
                       ),
-                    ),
-                  ),
+                      child: SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                height: 52,
+                                width: 52,
+                                decoration: BoxDecoration(
+                                  color:
+                                      isLiked ? Colors.red.shade50 : lightTeal,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                      color: isLiked
+                                          ? Colors.red.shade200
+                                          : tealColor.withOpacity(0.3)),
+                                ),
+                                child: IconButton(
+                                  icon: Icon(
+                                    isLiked
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    color: isLiked ? Colors.red : tealColor,
+                                  ),
+                                  onPressed: () async {
+                                    if (currentUserId.isEmpty) return;
+
+                                    final wasLiked = isLiked;
+                                    setState(() =>
+                                        _optimisticWishlisted = !wasLiked);
+
+                                    try {
+                                      await context
+                                          .read<UserRepository>()
+                                          .toggleWishlist(currentUserId,
+                                              listingId, wasLiked);
+                                      if (mounted) {
+                                        setState(
+                                            () => _optimisticWishlisted = null);
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        setState(() =>
+                                            _optimisticWishlisted = wasLiked);
+                                      }
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                                'บันทึกรายการโปรดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
+                                            backgroundColor: Colors.red,
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                // 🟢 เพิ่ม Container ห่อปุ่มไว้เพื่อทำเอฟเฟกต์เงาแบบเดียวกับหน้า Add Item
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: isActive
+                                        ? [
+                                            BoxShadow(
+                                              color: tealColor.withOpacity(0.3),
+                                              blurRadius: 15,
+                                              offset: const Offset(0, 5),
+                                            ),
+                                          ]
+                                        : [],
+                                  ),
+                                  child: ElevatedButton(
+                                      onPressed: isActive
+                                          ? () async {
+                                              bool isVerified = await context
+                                                  .read<AuthRepository>()
+                                                  .isEmailVerified();
+                                              if (!isVerified) {
+                                                if (context.mounted)
+                                                  _showVerificationDialog(
+                                                      context, tealColor);
+                                                return;
+                                              }
+
+                                              if (currentUserId.isEmpty) return;
+
+                                              if (currentUserId == ownerId) {
+                                                if (context.mounted) {
+                                                  showDialog(
+                                                    context: context,
+                                                    builder: (context) =>
+                                                        AlertDialog(
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          16)),
+                                                      title: const Text(
+                                                          'แจ้งเตือน',
+                                                          style: TextStyle(
+                                                              color: tealColor,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold)),
+                                                      content: const Text(
+                                                          'คุณไม่สามารถยื่นข้อเสนอให้กับสิ่งของของตัวเองได้ครับ'),
+                                                      actions: [
+                                                        TextButton(
+                                                            onPressed: () =>
+                                                                Navigator.pop(
+                                                                    context),
+                                                            child: const Text(
+                                                                'เข้าใจแล้ว',
+                                                                style: TextStyle(
+                                                                    color:
+                                                                        tealColor,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold)))
+                                                      ],
+                                                    ),
+                                                  );
+                                                }
+                                                return;
+                                              }
+                                              if (context.mounted)
+                                                _showOfferBottomSheet(
+                                                    context,
+                                                    tealColor,
+                                                    currentUserId,
+                                                    listing);
+                                            }
+                                          : null,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: tealColor,
+                                        disabledBackgroundColor:
+                                            Colors.grey.shade400,
+                                        minimumSize:
+                                            const Size(double.infinity, 52),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(16)),
+                                        elevation:
+                                            0, // ปิด elevation เดิมทิ้ง เพราะเราใช้ BoxShadow จาก Container แทนแล้ว
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.swap_horiz,
+                                              color: isActive
+                                                  ? Colors.white
+                                                  : Colors.white70),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                              isActive
+                                                  ? 'Make an Offer'
+                                                  : 'Item Unavailable',
+                                              style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isActive
+                                                      ? Colors.white
+                                                      : Colors.white70)),
+                                        ],
+                                      )),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 );
               }),
     );
