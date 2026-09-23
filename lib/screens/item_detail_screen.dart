@@ -1273,10 +1273,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     bool isVerified = await context
                                         .read<AuthRepository>()
                                         .isEmailVerified();
+                                    if (!context.mounted) return;
+
                                     if (!isVerified) {
-                                      if (context.mounted)
-                                        _showVerificationDialog(
-                                            context, tealColor);
+                                      _showVerificationDialog(
+                                          context, tealColor);
                                       return;
                                     }
 

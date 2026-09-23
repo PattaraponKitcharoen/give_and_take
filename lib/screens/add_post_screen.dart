@@ -32,12 +32,12 @@ class _AddPostView extends StatefulWidget {
 
 class _AddPostViewState extends State<_AddPostView> {
   final Color primaryTeal = const Color(0xFF008080);
-  final Color bgColor = const Color(0xFFF8FAFC); 
+  final Color bgColor = const Color(0xFFF8FAFC);
 
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _coinsController = TextEditingController();
-  
+
   String _selectedCategory = 'อุปกรณ์ไอที & แก็ดเจ็ต';
   final List<Map<String, dynamic>> _categories = [
     {'name': 'อุปกรณ์ไอที & แก็ดเจ็ต', 'icon': Icons.devices_rounded},
@@ -53,11 +53,11 @@ class _AddPostViewState extends State<_AddPostView> {
     {'name': 'อื่นๆ (Miscellaneous)', 'icon': Icons.category_rounded},
   ];
 
-  String _selectedCondition = 'มือสองสภาพดี'; 
+  String _selectedCondition = 'มือสองสภาพดี';
   final List<String> _conditions = [
-    'มือหนึ่ง', 
-    'มือสองสภาพนางฟ้า', 
-    'มือสองสภาพดี', 
+    'มือหนึ่ง',
+    'มือสองสภาพนางฟ้า',
+    'มือสองสภาพดี',
     'มือสองเสียหายเล็กน้อย'
   ];
 
@@ -81,16 +81,24 @@ class _AddPostViewState extends State<_AddPostView> {
       builder: (context) {
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 40, height: 4, 
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 16),
-              const Text('เลือกหมวดหมู่', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+              const Text('เลือกหมวดหมู่',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87)),
               const SizedBox(height: 16),
               Expanded(
                 child: ListView.builder(
@@ -99,27 +107,34 @@ class _AddPostViewState extends State<_AddPostView> {
                     final cat = _categories[index];
                     final isSelected = _selectedCategory == cat['name'];
                     return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 4),
                       leading: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: isSelected ? primaryTeal : primaryTeal.withOpacity(0.05), 
-                          shape: BoxShape.circle
-                        ),
-                        child: Icon(cat['icon'], color: isSelected ? Colors.white : primaryTeal, size: 22),
+                            color: isSelected
+                                ? primaryTeal
+                                : primaryTeal.withOpacity(0.05),
+                            shape: BoxShape.circle),
+                        child: Icon(cat['icon'],
+                            color: isSelected ? Colors.white : primaryTeal,
+                            size: 22),
                       ),
                       title: Text(
                         cat['name'],
                         style: TextStyle(
                           fontSize: 15,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
                           color: isSelected ? primaryTeal : Colors.black87,
                         ),
                       ),
-                      trailing: isSelected ? Icon(Icons.check_circle, color: primaryTeal) : null,
+                      trailing: isSelected
+                          ? Icon(Icons.check_circle, color: primaryTeal)
+                          : null,
                       onTap: () {
                         setState(() => _selectedCategory = cat['name']);
-                        Navigator.pop(context); 
+                        Navigator.pop(context);
                       },
                     );
                   },
@@ -137,9 +152,13 @@ class _AddPostViewState extends State<_AddPostView> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('ยืนยันอีเมลของคุณ', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF008080))),
-          content: const Text('คุณต้องยืนยันอีเมลก่อนจึงจะสามารถลงประกาศสิ่งของได้ กรุณาตรวจสอบกล่องจดหมายของคุณ'),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('ยืนยันอีเมลของคุณ',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, color: Color(0xFF008080))),
+          content: const Text(
+              'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถลงประกาศสิ่งของได้ กรุณาตรวจสอบกล่องจดหมายของคุณ'),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
@@ -149,22 +168,32 @@ class _AddPostViewState extends State<_AddPostView> {
               onPressed: () async {
                 try {
                   await context.read<AuthRepository>().sendEmailVerification();
+                  // `context` here is this State's own context (the screen
+                  // behind the dialog), not `dialogContext` — guard each on
+                  // its own `mounted` instead of using dialogContext.mounted
+                  // as a stand-in for both.
                   if (dialogContext.mounted) {
                     Navigator.pop(dialogContext);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('ส่งอีเมลยืนยันใหม่อีกครั้งแล้ว'), backgroundColor: Color(0xFF008080), behavior: SnackBarBehavior.floating)
-                    );
+                  }
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('ส่งอีเมลยืนยันใหม่อีกครั้งแล้ว'),
+                        backgroundColor: Color(0xFF008080),
+                        behavior: SnackBarBehavior.floating));
                   }
                 } catch (e) {
-                  if (dialogContext.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating)
-                    );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(e.toString()),
+                        backgroundColor: Colors.red,
+                        behavior: SnackBarBehavior.floating));
                   }
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF008080)),
-              child: const Text('ส่งอีเมลอีกครั้ง', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF008080)),
+              child: const Text('ส่งอีเมลอีกครั้ง',
+                  style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -186,13 +215,19 @@ class _AddPostViewState extends State<_AddPostView> {
     final coinsText = _coinsController.text.trim();
 
     if (title.isEmpty || description.isEmpty || coinsText.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('กรุณากรอกข้อมูลให้ครบถ้วน'), backgroundColor: Colors.red.shade600, behavior: SnackBarBehavior.floating));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('กรุณากรอกข้อมูลให้ครบถ้วน'),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating));
       return;
     }
 
     final int? coins = int.tryParse(coinsText);
     if (coins == null || coins <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('กรุณากรอกราคาประเมินเป็นตัวเลข'), backgroundColor: Colors.red.shade600, behavior: SnackBarBehavior.floating));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('กรุณากรอกราคาประเมินเป็นตัวเลข'),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating));
       return;
     }
 
@@ -204,18 +239,19 @@ class _AddPostViewState extends State<_AddPostView> {
     // index 0 stays the cover photo.
     final imageInputs = _pickedImages
         .whereType<LocalPickedImage>()
-        .map<ListingImageInput>((entry) => NewListingImage(entry.file, isFromCamera: entry.isFromCamera))
+        .map<ListingImageInput>((entry) =>
+            NewListingImage(entry.file, isFromCamera: entry.isFromCamera))
         .toList();
 
     context.read<AddPostCubit>().submitPost(
-      ownerId: firebaseUser.uid,
-      category: _selectedCategory,
-      title: title,
-      description: description,
-      condition: _selectedCondition,
-      estimatedCoins: coins,
-      images: imageInputs,
-    );
+          ownerId: firebaseUser.uid,
+          category: _selectedCategory,
+          title: title,
+          description: description,
+          condition: _selectedCondition,
+          estimatedCoins: coins,
+          images: imageInputs,
+        );
   }
 
   void _resetForm() {
@@ -237,9 +273,15 @@ class _AddPostViewState extends State<_AddPostView> {
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: primaryTeal, width: 1.5)),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300)),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: primaryTeal, width: 1.5)),
     );
   }
 
@@ -248,7 +290,11 @@ class _AddPostViewState extends State<_AddPostView> {
       padding: const EdgeInsets.only(bottom: 12, top: 24),
       child: Text(
         title.toUpperCase(),
-        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.blueGrey.shade800, letterSpacing: 0.5),
+        style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+            color: Colors.blueGrey.shade800,
+            letterSpacing: 0.5),
       ),
     );
   }
@@ -272,10 +318,17 @@ class _AddPostViewState extends State<_AddPostView> {
             padding: const EdgeInsets.all(8.0),
             child: CircleAvatar(
               backgroundColor: Colors.white,
-              child: IconButton(icon: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.black87), onPressed: () => Navigator.pop(context)),
+              child: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new,
+                      size: 16, color: Colors.black87),
+                  onPressed: () => Navigator.pop(context)),
             ),
           ),
-          title: const Text('Add Item', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 18)),
+          title: const Text('Add Item',
+              style: TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18)),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
@@ -288,17 +341,24 @@ class _AddPostViewState extends State<_AddPostView> {
                 onChanged: (updated) => setState(() => _pickedImages = updated),
                 primaryColor: primaryTeal,
               ),
-
               _buildSectionTitle('Item Details'),
-              TextField(controller: _titleController, decoration: _buildInputDecoration('ชื่อสิ่งของ', Icons.edit_outlined)),
+              TextField(
+                  controller: _titleController,
+                  decoration: _buildInputDecoration(
+                      'ชื่อสิ่งของ', Icons.edit_outlined)),
               const SizedBox(height: 12),
-              TextField(controller: _descriptionController, maxLines: 4, decoration: _buildInputDecoration('อธิบายสิ่งของของคุณ เช่น แบรนด์, อายุการใช้งาน, ตำหนิ...', Icons.description_outlined)),
+              TextField(
+                  controller: _descriptionController,
+                  maxLines: 4,
+                  decoration: _buildInputDecoration(
+                      'อธิบายสิ่งของของคุณ เช่น แบรนด์, อายุการใช้งาน, ตำหนิ...',
+                      Icons.description_outlined)),
               const SizedBox(height: 12),
-              
               GestureDetector(
                 onTap: _showCategoryPicker,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
@@ -307,95 +367,141 @@ class _AddPostViewState extends State<_AddPostView> {
                   child: Row(
                     children: [
                       Icon(
-                        _categories.firstWhere((cat) => cat['name'] == _selectedCategory)['icon'], 
-                        color: primaryTeal, 
-                        size: 20
-                      ),
+                          _categories.firstWhere((cat) =>
+                              cat['name'] == _selectedCategory)['icon'],
+                          color: primaryTeal,
+                          size: 20),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          _selectedCategory, 
-                          style: const TextStyle(fontSize: 14, color: Colors.black87),
-                        )
-                      ),
-                      Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade400),
+                          child: Text(
+                        _selectedCategory,
+                        style: const TextStyle(
+                            fontSize: 14, color: Colors.black87),
+                      )),
+                      Icon(Icons.keyboard_arrow_down,
+                          color: Colors.grey.shade400),
                     ],
                   ),
                 ),
               ),
-
               _buildSectionTitle('Condition'),
               Wrap(
-                spacing: 8.0, runSpacing: 8.0,
+                spacing: 8.0,
+                runSpacing: 8.0,
                 children: _conditions.map((condition) {
                   bool isSelected = _selectedCondition == condition;
                   return ChoiceChip(
                     label: Text(condition), selected: isSelected,
-                    onSelected: (selected) { if (selected) setState(() => _selectedCondition = condition); },
+                    onSelected: (selected) {
+                      if (selected)
+                        setState(() => _selectedCondition = condition);
+                    },
                     selectedColor: primaryTeal, backgroundColor: Colors.white,
-                    labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade700, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 13),
-                    showCheckmark: false, 
+                    labelStyle: TextStyle(
+                        color: isSelected ? Colors.white : Colors.grey.shade700,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 13),
+                    showCheckmark: false,
                     // 🟢 2. เอา avatar: ที่วาดรูปติ๊กถูกออกไปแล้ว Layout จะได้ไม่ยืดหด
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? primaryTeal : Colors.grey.shade300)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(
+                            color: isSelected
+                                ? primaryTeal
+                                : Colors.grey.shade300)),
                   );
                 }).toList(),
               ),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: primaryTeal.withOpacity(0.05), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(
+                    color: primaryTeal.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8)),
                 child: Row(
                   children: [
                     Icon(Icons.info_outline, size: 16, color: primaryTeal),
                     const SizedBox(width: 8),
-                    Expanded(child: Text('การระบุสภาพตามจริงจะช่วยให้การแลกเปลี่ยนเป็นไปอย่างราบรื่น', style: TextStyle(color: primaryTeal, fontSize: 12))),
+                    Expanded(
+                        child: Text(
+                            'การระบุสภาพตามจริงจะช่วยให้การแลกเปลี่ยนเป็นไปอย่างราบรื่น',
+                            style:
+                                TextStyle(color: primaryTeal, fontSize: 12))),
                   ],
                 ),
               ),
-
               _buildSectionTitle('Estimated Value'),
               TextField(
-                controller: _coinsController, keyboardType: TextInputType.number,
-                decoration: _buildInputDecoration('ราคาประเมิน (Coins)', Icons.monetization_on_outlined),
+                controller: _coinsController,
+                keyboardType: TextInputType.number,
+                decoration: _buildInputDecoration(
+                    'ราคาประเมิน (Coins)', Icons.monetization_on_outlined),
               ),
               const Padding(
                 padding: EdgeInsets.only(top: 8, left: 4),
-                child: Text('ช่วยให้ผู้อื่นคำนวณการใช้เหรียญเพื่อชดเชยส่วนต่างได้', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                child: Text(
+                    'ช่วยให้ผู้อื่นคำนวณการใช้เหรียญเพื่อชดเชยส่วนต่างได้',
+                    style: TextStyle(fontSize: 11, color: Colors.grey)),
               ),
-
-              const SizedBox(height: 40), 
+              const SizedBox(height: 40),
             ],
           ),
         ),
         bottomNavigationBar: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.only(left: 20, right: 20, bottom: 16, top: 8),
+            padding:
+                const EdgeInsets.only(left: 20, right: 20, bottom: 16, top: 8),
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: primaryTeal.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))],
+                boxShadow: [
+                  BoxShadow(
+                      color: primaryTeal.withOpacity(0.3),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5))
+                ],
               ),
               child: BlocConsumer<AddPostCubit, AddPostState>(
                 listener: (context, state) {
                   if (state is AddPostSuccess) {
                     _resetForm();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('โพสต์สิ่งของสำเร็จ!'), backgroundColor: primaryTeal, behavior: SnackBarBehavior.floating));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: const Text('โพสต์สิ่งของสำเร็จ!'),
+                        backgroundColor: primaryTeal,
+                        behavior: SnackBarBehavior.floating));
                     Navigator.pop(context);
                   } else if (state is AddPostError) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message), backgroundColor: Colors.red.shade600, behavior: SnackBarBehavior.floating));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(state.message),
+                        backgroundColor: Colors.red.shade600,
+                        behavior: SnackBarBehavior.floating));
                   }
                 },
                 builder: (context, state) {
                   final isSubmitting = state is AddPostSubmitting;
                   return ElevatedButton.icon(
                     onPressed: isSubmitting ? null : _submitPost,
-                    icon: isSubmitting ? const SizedBox.shrink() : const Icon(Icons.send, color: Colors.white, size: 18),
+                    icon: isSubmitting
+                        ? const SizedBox.shrink()
+                        : const Icon(Icons.send, color: Colors.white, size: 18),
                     label: isSubmitting
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Post Item', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                        : const Text('Post Item',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryTeal, padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0,
+                      backgroundColor: primaryTeal,
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
                     ),
                   );
                 },
