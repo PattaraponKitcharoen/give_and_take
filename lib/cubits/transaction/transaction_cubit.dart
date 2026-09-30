@@ -10,7 +10,9 @@ class TransactionCubit extends Cubit<TransactionState> {
   StreamSubscription? _txSubscription;
   String? currentOfferId;
 
-  TransactionCubit({required TransactionRepository repository, required UserRepository userRepository})
+  TransactionCubit(
+      {required TransactionRepository repository,
+      required UserRepository userRepository})
       : _repository = repository,
         _userRepository = userRepository,
         super(TransactionInitial());
@@ -31,9 +33,20 @@ class TransactionCubit extends Cubit<TransactionState> {
   }
 
   void listenToTransactionByOfferId(String offerId) {
-    if (currentOfferId == offerId) return;
+    // Only skip when we're already actively subscribed AND successfully
+    // loaded for this exact offer — not just because this offerId has
+    // been seen before. This cubit is provided once at the app root and
+    // lives for the whole session (see main.dart), so a plain "seen it
+    // before" guard would let one interrupted or errored attempt for a
+    // given offerId permanently block ever retrying it, even after the
+    // underlying transaction document becomes available.
+    if (currentOfferId == offerId &&
+        _txSubscription != null &&
+        state is TransactionLoaded) {
+      return;
+    }
     currentOfferId = offerId;
-    
+
     emit(TransactionLoading());
     _txSubscription?.cancel();
     _txSubscription = _repository.getTransactionByOfferIdStream(offerId).listen(
@@ -50,35 +63,50 @@ class TransactionCubit extends Cubit<TransactionState> {
     );
   }
 
-  Future<void> confirmTransaction(String transactionId, String userId, String inputOtp) async {
+  Future<void> confirmTransaction(
+      String transactionId, String userId, String inputOtp) async {
     emit(TransactionSubmitting());
     try {
-      final result = await _repository.confirmTransaction(transactionId, userId, inputOtp);
+      final result =
+          await _repository.confirmTransaction(transactionId, userId, inputOtp);
       bool isCompleted = result['isCompleted'];
-      emit(TransactionSuccess(isCompleted ? 'ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์' : 'ยืนยันรหัสสำเร็จ รออีกฝ่ายยืนยัน', isCompleted: isCompleted));
+      emit(TransactionSuccess(
+          isCompleted
+              ? 'ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์'
+              : 'ยืนยันรหัสสำเร็จ รออีกฝ่ายยืนยัน',
+          isCompleted: isCompleted));
     } catch (e) {
       emit(TransactionError('เกิดข้อผิดพลาด: $e'));
     }
   }
 
-  Future<void> confirmTransactionByOfferId(String offerId, String userId, String inputOtp) async {
+  Future<void> confirmTransactionByOfferId(
+      String offerId, String userId, String inputOtp) async {
     emit(TransactionSubmitting());
     try {
-      final result = await _repository.confirmTransactionByOfferId(offerId, userId, inputOtp);
+      final result = await _repository.confirmTransactionByOfferId(
+          offerId, userId, inputOtp);
       bool isCompleted = result['isCompleted'];
-      emit(TransactionSuccess(isCompleted ? 'ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์' : 'ยืนยันรหัสสำเร็จ รออีกฝ่ายยืนยัน', isCompleted: isCompleted));
+      emit(TransactionSuccess(
+          isCompleted
+              ? 'ยืนยันรหัสสำเร็จ ดีลจบสมบูรณ์'
+              : 'ยืนยันรหัสสำเร็จ รออีกฝ่ายยืนยัน',
+          isCompleted: isCompleted));
     } catch (e) {
       emit(TransactionError('เกิดข้อผิดพลาด: $e'));
     }
   }
 
-  Future<void> cancelAcceptedDeal(String offerId, String reason, String currentUserId, String roomId) async {
+  Future<void> cancelAcceptedDeal(String offerId, String reason,
+      String currentUserId, String roomId) async {
     emit(TransactionSubmitting());
     try {
       final user = await _userRepository.getUser(currentUserId);
       final userName = user.name;
-      await _repository.cancelAcceptedDeal(offerId, reason, currentUserId, userName, roomId);
-      emit(const TransactionSuccess('ยกเลิกการแลกเปลี่ยนสำเร็จ', isCompleted: false));
+      await _repository.cancelAcceptedDeal(
+          offerId, reason, currentUserId, userName, roomId);
+      emit(const TransactionSuccess('ยกเลิกการแลกเปลี่ยนสำเร็จ',
+          isCompleted: false));
     } catch (e) {
       emit(TransactionError('เกิดข้อผิดพลาด: $e'));
     }

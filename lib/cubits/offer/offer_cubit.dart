@@ -12,19 +12,22 @@ class OfferCubit extends Cubit<OfferState> {
   StreamSubscription? _incomingSubscription;
   StreamSubscription? _outgoingSubscription;
 
-  OfferCubit({required OfferRepository offerRepository, required UserRepository userRepository}) 
-      : _offerRepository = offerRepository, 
+  OfferCubit(
+      {required OfferRepository offerRepository,
+      required UserRepository userRepository})
+      : _offerRepository = offerRepository,
         _userRepository = userRepository,
         super(OfferInitial());
 
   void loadUserOffers(String userId) {
     emit(OfferLoading());
-    
+
     List<OfferModel> incoming = [];
     List<OfferModel> outgoing = [];
 
     _incomingSubscription?.cancel();
-    _incomingSubscription = _offerRepository.getIncomingOffers(userId).listen((offers) {
+    _incomingSubscription =
+        _offerRepository.getIncomingOffers(userId).listen((offers) {
       incoming = offers;
       if (state is! OfferSubmitting) {
         emit(OfferLoaded(incomingOffers: incoming, outgoingOffers: outgoing));
@@ -34,7 +37,8 @@ class OfferCubit extends Cubit<OfferState> {
     });
 
     _outgoingSubscription?.cancel();
-    _outgoingSubscription = _offerRepository.getOutgoingOffers(userId).listen((offers) {
+    _outgoingSubscription =
+        _offerRepository.getOutgoingOffers(userId).listen((offers) {
       outgoing = offers;
       if (state is! OfferSubmitting) {
         emit(OfferLoaded(incomingOffers: incoming, outgoingOffers: outgoing));
@@ -53,60 +57,75 @@ class OfferCubit extends Cubit<OfferState> {
     emit(OfferSubmitting());
     try {
       String roomId = await _offerRepository.createOfferAndChatRoom(
-        offer: offer, 
-        targetItemData: targetItemData, 
-        offeredItemData: offeredItemData, 
+        offer: offer,
+        targetItemData: targetItemData,
+        offeredItemData: offeredItemData,
         coinText: coinText,
       );
-      emit(OfferSuccess(roomId)); 
+      emit(OfferSuccess(roomId));
     } catch (e) {
       debugPrint('Offer Error: $e');
       emit(OfferError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 
-  Future<void> cancelOffer(String offerId, String roomId, String currentUserId) async {
+  Future<void> cancelOffer(
+      String offerId, String roomId, String currentUserId) async {
     emit(OfferSubmitting());
     try {
       final user = await _userRepository.getUser(currentUserId);
       final userName = user.name;
-      await _offerRepository.cancelOffer(offerId, roomId, currentUserId, userName);
+      await _offerRepository.cancelOffer(
+          offerId, roomId, currentUserId, userName);
       emit(const OfferSuccess('ยกเลิกข้อเสนอเรียบร้อยแล้ว'));
     } catch (e) {
       emit(OfferError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 
-  Future<void> rejectOffer(String offerId, String roomId, String currentUserId) async {
+  Future<void> rejectOffer(
+      String offerId, String roomId, String currentUserId) async {
     emit(OfferSubmitting());
     try {
       final user = await _userRepository.getUser(currentUserId);
       final userName = user.name;
-      await _offerRepository.rejectOffer(offerId, roomId, currentUserId, userName);
+      await _offerRepository.rejectOffer(
+          offerId, roomId, currentUserId, userName);
       emit(const OfferSuccess('ปฏิเสธข้อเสนอเรียบร้อยแล้ว'));
     } catch (e) {
       emit(OfferError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 
-  Future<void> submitCounterOffer(String offerId, Map<String, dynamic> offerData, int amount, bool iWillPay, String roomId, String currentUserId) async {
+  Future<void> submitCounterOffer(
+      String offerId,
+      Map<String, dynamic> offerData,
+      int amount,
+      bool iWillPay,
+      String roomId,
+      String currentUserId) async {
     emit(OfferSubmitting());
     try {
       final user = await _userRepository.getUser(currentUserId);
       final userName = user.name;
-      await _offerRepository.submitCounterOffer(offerId, offerData, amount, iWillPay, roomId, currentUserId, userName);
+      await _offerRepository.submitCounterOffer(offerId, offerData, amount,
+          iWillPay, roomId, currentUserId, userName);
       emit(const OfferSuccess('ส่งข้อเสนอต่อรองเรียบร้อยแล้ว'));
     } catch (e) {
       emit(OfferError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 
-  Future<void> acceptOffer(String offerId, String roomId, String currentUserId) async {
+  // currentUserId is unused now — the Cloud Function reads the caller's
+  // identity (and display name, for the chat system message) from the
+  // authenticated request itself, so the extra _userRepository.getUser
+  // lookup this used to do just to pass a name through is gone. Kept in
+  // the signature to match this Cubit's existing call sites.
+  Future<void> acceptOffer(
+      String offerId, String roomId, String currentUserId) async {
     emit(OfferSubmitting());
     try {
-      final user = await _userRepository.getUser(currentUserId);
-      final userName = user.name;
-      await _offerRepository.acceptOffer(offerId, roomId, currentUserId, userName);
+      await _offerRepository.acceptOffer(offerId, roomId);
       emit(const OfferSuccess('ตกลงรับข้อเสนอเรียบร้อยแล้ว!'));
     } catch (e) {
       emit(OfferError('เกิดข้อผิดพลาดในการรับข้อเสนอ: $e'));

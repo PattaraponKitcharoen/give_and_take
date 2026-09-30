@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../repositories/auth_repository.dart';
+import '../../services/notification_service.dart';
 import 'auth_state.dart';
 
 class AuthCubit extends Cubit<AuthState> {
@@ -20,6 +21,15 @@ class AuthCubit extends Cubit<AuthState> {
       (User? user) {
         if (user != null) {
           emit(Authenticated(user));
+          // Fires on every transition into "logged in" — login, register
+          // (which signs the user in automatically), and a persisted
+          // session at cold start — so the FCM token saved by
+          // NotificationService.initNotification() at app startup (which
+          // runs before this stream has ever emitted, and so skips the
+          // save if no session was already persisted) still gets written
+          // once a session actually exists. Fire-and-forget: a failed
+          // token save shouldn't block auth state.
+          NotificationService().saveDeviceToken();
         } else {
           emit(Unauthenticated());
         }
