@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter_bloc/flutter_bloc.dart'; // 🟢 เพิ่ม BLoC
-import 'item_detail_screen.dart';
 import 'item_search_delegate.dart';
 import 'notification_screen.dart';
 import 'profile_screen.dart';
+import 'student_listings_screen.dart';
 import '../cubits/home/home_cubit.dart';
 import '../cubits/home/home_state.dart';
 import '../repositories/listing_repository.dart';
@@ -14,6 +14,7 @@ import '../repositories/auth_repository.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/chat_repository.dart';
 import '../models/user_model.dart';
+import '../widgets/listing_grid_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,6 +32,15 @@ class _HomeScreenState extends State<HomeScreen> {
   // 🟢 เพิ่มตัวแปรสำหรับระบบ Location
   String _currentLocation = 'หาดใหญ่, สงขลา';
   bool _isLoadingLocation = false;
+
+  final PageController _bannerPageController = PageController();
+  int _currentBannerPage = 0;
+
+  @override
+  void dispose() {
+    _bannerPageController.dispose();
+    super.dispose();
+  }
 
   final List<String> _allCategories = [
     'Wishlists',
@@ -441,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _buildSearchBar(context),
                     _buildLocationBar(),
-                    _buildHeroBanner(),
+                    _buildBannerCarousel(),
                     _buildSectionHeader('Categories', 'See all',
                         onTrailingTap: () => _showAllCategoriesPopup(context)),
                     _buildCategoryChips(context),
@@ -536,11 +546,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Banners live inside the carousel's own SizedBox(height: 160)/PageView
+  // now, so unlike before, they no longer set their own height or vertical
+  // margin — the carousel wrapper (_buildBannerCarousel) owns that.
   Widget _buildHeroBanner() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(24),
-      height: 160,
       decoration: BoxDecoration(
           gradient: LinearGradient(
               colors: [tealColor, const Color(0xFF20B2AA)],
@@ -569,6 +581,108 @@ class _HomeScreenState extends State<HomeScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   height: 1.2)),
+        ],
+      ),
+    );
+  }
+
+  // Purple/violet to read as clearly distinct from the teal "everyone"
+  // banner — this one filters down to student-owned listings only.
+  Widget _buildStudentBanner() {
+    const studentColor = Color(0xFF7C3AED);
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const StudentListingsScreen()));
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+            gradient: const LinearGradient(
+                colors: [studentColor, Color(0xFFA78BFA)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(20)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.school, color: Colors.white, size: 12),
+                  SizedBox(width: 4),
+                  Text('Student',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold))
+                ])),
+            const SizedBox(height: 12),
+            const Text('ตลาดนักศึกษา\nแลกเปลี่ยนกับเพื่อนนักศึกษาเท่านั้น',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    height: 1.2)),
+            const SizedBox(height: 8),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('ดูทั้งหมด',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(width: 4),
+              const Icon(Icons.arrow_forward, color: Colors.white, size: 14),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBannerCarousel() {
+    final banners = [
+      _buildStudentBanner(),
+      _buildHeroBanner(),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 160,
+            child: PageView.builder(
+              controller: _bannerPageController,
+              itemCount: banners.length,
+              onPageChanged: (index) =>
+                  setState(() => _currentBannerPage = index),
+              itemBuilder: (context, index) => banners[index],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(banners.length, (index) {
+              final isActive = index == _currentBannerPage;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: isActive ? 18 : 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: isActive ? tealColor : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              );
+            }),
+          ),
         ],
       ),
     );
@@ -741,209 +855,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 final item = filteredDocs[index];
                 final isWishlisted = state.wishlist.contains(item.listingId);
 
-                final title = item.title;
-                final coins = item.estimatedCoins;
-                final thumbnail = item.thumbnailUrl;
-
-                final ownerName = item.ownerName.trim().isEmpty
-                    ? 'ผู้ใช้งาน'
-                    : item.ownerName;
-                final profileImg = item.ownerProfileImg;
-                final ratingScore = item.ownerRatingScores;
-
-                return InkWell(
-                  onTap: () {
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) =>
-                                ItemDetailScreen(listing: item)));
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade200),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4))
-                        ]),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AspectRatio(
-                          aspectRatio: 1.0,
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: const BorderRadius.vertical(
-                                        top: Radius.circular(16))),
-                                child: thumbnail.isNotEmpty
-                                    ? ClipRRect(
-                                        borderRadius:
-                                            const BorderRadius.vertical(
-                                                top: Radius.circular(16)),
-                                        child: Image.network(thumbnail,
-                                            fit: BoxFit.cover))
-                                    : const Center(
-                                        child: Icon(Icons.image,
-                                            size: 40, color: Colors.black12)),
-                              ),
-                              Positioned(
-                                top: 8,
-                                left: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                      color: tealColor,
-                                      borderRadius: BorderRadius.circular(12)),
-                                  child: Row(children: [
-                                    const Icon(Icons.monetization_on,
-                                        color: Colors.white, size: 12),
-                                    const SizedBox(width: 4),
-                                    Text('$coins',
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold))
-                                  ]),
-                                ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: GestureDetector(
-                                  onTap: () async {
-                                    try {
-                                      await context
-                                          .read<HomeCubit>()
-                                          .toggleWishlist(item);
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                                'บันทึกรายการโปรดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
-                                            backgroundColor: Colors.red,
-                                            behavior: SnackBarBehavior.floating,
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
-                                  child: CircleAvatar(
-                                    radius: 14,
-                                    backgroundColor: Colors.white,
-                                    child: Icon(
-                                        isWishlisted
-                                            ? Icons.favorite
-                                            : Icons.favorite_border,
-                                        size: 16,
-                                        color: isWishlisted
-                                            ? Colors.red
-                                            : Colors.grey.shade400),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(title,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: Colors.black87),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        CircleAvatar(
-                                            radius: 8,
-                                            backgroundColor:
-                                                Colors.grey.shade300,
-                                            backgroundImage:
-                                                profileImg.isNotEmpty
-                                                    ? NetworkImage(profileImg)
-                                                    : null,
-                                            child: profileImg.isEmpty
-                                                ? const Icon(Icons.person,
-                                                    size: 10,
-                                                    color: Colors.white)
-                                                : null),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                            child: Text(ownerName,
-                                                maxLines: 1,
-                                                style: TextStyle(
-                                                    fontSize: 11,
-                                                    color:
-                                                        Colors.grey.shade700),
-                                                overflow:
-                                                    TextOverflow.ellipsis)),
-                                      ],
-                                    ),
-                                  ),
-                                  Row(children: [
-                                    const Icon(Icons.star,
-                                        size: 12, color: Colors.amber),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                        ratingScore > 0
-                                            ? ratingScore.toStringAsFixed(1)
-                                            : 'New',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.grey.shade800))
-                                  ]),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                width: double.infinity,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 6),
-                                decoration: BoxDecoration(
-                                    color: tealColor,
-                                    borderRadius: BorderRadius.circular(8)),
-                                child: const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.swap_horiz,
-                                          color: Colors.white, size: 14),
-                                      SizedBox(width: 4),
-                                      Text('Swap',
-                                          style: TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12))
-                                    ]),
-                              )
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                return ListingGridCard(
+                  item: item,
+                  isWishlisted: isWishlisted,
+                  accentColor: tealColor,
+                  onToggleWishlist: (item) =>
+                      context.read<HomeCubit>().toggleWishlist(item),
                 );
               },
             );

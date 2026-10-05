@@ -9,7 +9,8 @@ class StudentVerificationDialog extends StatefulWidget {
   const StudentVerificationDialog({super.key, required this.user});
 
   @override
-  State<StudentVerificationDialog> createState() => _StudentVerificationDialogState();
+  State<StudentVerificationDialog> createState() =>
+      _StudentVerificationDialogState();
 }
 
 class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
@@ -31,7 +32,15 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
     'อื่นๆ'
   ];
 
-  final List<String> _academicYears = const ['ปี 1', 'ปี 2', 'ปี 3', 'ปี 4', 'ปี 5+'];
+  final List<String> _academicYears = const [
+    'ชั้นปีที่ 1',
+    'ชั้นปีที่ 2',
+    'ชั้นปีที่ 3',
+    'ชั้นปีที่ 4',
+    'ชั้นปีที่ 5+',
+    'ปริญญาโท',
+    'ปริญญาเอก',
+  ];
 
   @override
   void initState() {
@@ -43,8 +52,10 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
   Future<void> _save() async {
     setState(() => _isLoading = true);
     try {
-      bool isStudent = (_selectedFaculty != null && _selectedFaculty!.isNotEmpty &&
-          _selectedAcademicYear != null && _selectedAcademicYear!.isNotEmpty);
+      bool isStudent = (_selectedFaculty != null &&
+          _selectedFaculty!.isNotEmpty &&
+          _selectedAcademicYear != null &&
+          _selectedAcademicYear!.isNotEmpty);
 
       final updatedUser = widget.user.copyWith(
         faculty: _selectedFaculty,
@@ -81,7 +92,11 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 0.5),
+          style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.blueGrey,
+              letterSpacing: 0.5),
         ),
         const SizedBox(height: 8),
         Container(
@@ -90,7 +105,10 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.withOpacity(0.3)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4)),
             ],
           ),
           child: DropdownButtonFormField<String>(
@@ -101,7 +119,8 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
               hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
               prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
             ),
             items: items.map((item) {
               return DropdownMenuItem(
@@ -114,7 +133,8 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
               );
             }).toList(),
             onChanged: onChanged,
-            icon: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey.shade400),
+            icon: Icon(Icons.keyboard_arrow_down_rounded,
+                color: Colors.grey.shade400),
             dropdownColor: Colors.white,
           ),
         ),
@@ -158,9 +178,9 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
               onChanged: (val) => setState(() => _selectedFaculty = val),
             ),
             _buildDropdownField(
-              label: 'ACADEMIC YEAR',
+              label: 'ACADEMIC LEVEL',
               value: _selectedAcademicYear,
-              hintText: 'Select your academic year',
+              hintText: 'Select your year or degree level',
               icon: Icons.calendar_today_outlined,
               items: _academicYears,
               onChanged: (val) => setState(() => _selectedAcademicYear = val),
@@ -181,10 +201,15 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
           style: ElevatedButton.styleFrom(
             backgroundColor: tealColor,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: _isLoading 
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2))
               : const Text('Save'),
         ),
       ],
