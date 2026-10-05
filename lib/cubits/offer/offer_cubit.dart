@@ -128,7 +128,7 @@ class OfferCubit extends Cubit<OfferState> {
       await _offerRepository.acceptOffer(offerId, roomId);
       emit(const OfferSuccess('ตกลงรับข้อเสนอเรียบร้อยแล้ว!'));
     } catch (e) {
-      emit(OfferError('เกิดข้อผิดพลาดในการรับข้อเสนอ: $e'));
+      emit(OfferError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 

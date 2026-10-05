@@ -65,7 +65,6 @@ class GiveAndTakeApp extends StatelessWidget {
           BlocProvider(
             create: (context) => TransactionCubit(
               repository: context.read<TransactionRepository>(),
-              userRepository: context.read<UserRepository>(),
             ),
           ),
           BlocProvider(
@@ -83,7 +82,8 @@ class GiveAndTakeApp extends StatelessWidget {
           title: 'Give & Take',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF008080)),
+            colorScheme:
+                ColorScheme.fromSeed(seedColor: const Color(0xFF008080)),
             useMaterial3: true,
           ),
           home: BlocBuilder<AuthCubit, AuthState>(
@@ -95,12 +95,12 @@ class GiveAndTakeApp extends StatelessWidget {
                   ),
                 );
               }
-              
+
               if (state is Authenticated) {
                 return const MainLayout();
               }
-              
-              return const LoginScreen(); 
+
+              return const LoginScreen();
             },
           ),
         ),

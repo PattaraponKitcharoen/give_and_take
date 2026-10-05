@@ -1,11 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import '../constants/firebase_config.dart';
 import '../models/transaction_model.dart';
 
 class TransactionRepository {
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
 
-  TransactionRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  TransactionRepository({
+    FirebaseFirestore? firestore,
+    FirebaseFunctions? functions,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _functions = functions ?? appFunctions();
 
   Stream<TransactionModel> getTransactionStream(String transactionId) {
     return _firestore
@@ -20,10 +26,22 @@ class TransactionRepository {
     });
   }
 
-  Stream<TransactionModel?> getTransactionByOfferIdStream(String offerId) {
+  Stream<TransactionModel?> getTransactionByOfferIdStream(
+      String offerId, String userId) {
+    // Firestore security rules can only validate a *query* (as opposed to a
+    // single-document get) by checking the query's own filters against the
+    // rule — they can't inspect each matched document's fields ahead of
+    // time. A rule like "members contains request.auth.uid" is satisfied by
+    // any single transaction doc, but a query that filters only on offer_id
+    // gives Firestore no way to prove every possible match would pass that
+    // rule, so the whole query gets rejected with permission-denied. Filtering
+    // on `members` here too (matching confirmTransactionByOfferId/
+    // cancelAcceptedDeal below) lets the rule validate against the query
+    // itself.
     return _firestore
         .collection('transactions')
         .where('offer_id', isEqualTo: offerId)
+        .where('members', arrayContains: userId)
         .limit(1)
         .snapshots()
         .map((snapshot) {
@@ -96,7 +114,11 @@ class TransactionRepository {
           int escrowCoins = txData['escrow_coins'] ?? 0;
 
           DocumentReference? receiverRef;
-          int newBalance = 0;
+          // UserModel.coinsBalance is a Dart double (see user_model.dart),
+          // so Firestore stores coins_balance as a double — reading it into
+          // an int here throws "type 'double' is not a subtype of type
+          // 'int'" at runtime.
+          double newBalance = 0;
           String? receiverId;
 
           if (escrowCoins > 0) {
@@ -110,9 +132,10 @@ class TransactionRepository {
             DocumentSnapshot receiverSnap = await transaction.get(receiverRef);
             if (!receiverSnap.exists) throw Exception("ไม่พบบัญชีผู้รับเหรียญ");
 
-            int currentBalance = (receiverSnap.data()
-                    as Map<String, dynamic>)['coins_balance'] ??
-                0;
+            double currentBalance = ((receiverSnap.data()
+                        as Map<String, dynamic>)['coins_balance'] ??
+                    0)
+                .toDouble();
             newBalance = currentBalance + escrowCoins;
           }
 
@@ -163,122 +186,52 @@ class TransactionRepository {
     }
   }
 
+  // Confirming an OTP means completing the deal, which can require updating
+  // a listing and crediting a coins_balance that belong to the OTHER party
+  // — no Firestore security rule can grant that narrowly without opening a
+  // much bigger hole, so this now runs server-side (see
+  // functions/index.js#confirmHandoverOtp) via the Admin SDK, which bypasses
+  // rules entirely and enforces membership/OTP-correctness in code instead.
   Future<Map<String, dynamic>> confirmTransactionByOfferId(
       String offerId, String userId, String inputOtp) async {
     try {
-      final txQuery = await _firestore
-          .collection('transactions')
-          .where('members', arrayContains: userId)
-          .where('offer_id', isEqualTo: offerId)
-          .limit(1)
-          .get();
-      if (txQuery.docs.isEmpty) throw Exception("ไม่พบข้อมูลสัญญากองกลาง");
-      return await confirmTransaction(txQuery.docs.first.id, userId, inputOtp);
+      final callable = _functions.httpsCallable('confirmHandoverOtp');
+      final result = await callable.call(<String, dynamic>{
+        'offerId': offerId,
+        'inputOtp': inputOtp,
+      });
+      final data = Map<String, dynamic>.from(result.data as Map);
+      return {
+        'isCompleted': data['isCompleted'] ?? false,
+        'partnerId': data['partnerId'] ?? '',
+      };
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(
+          e.message ?? 'ไม่สามารถยืนยันรหัสได้ กรุณาลองใหม่อีกครั้ง');
     } catch (e) {
-      throw Exception(e.toString().replaceAll('Exception: ', ''));
+      throw Exception('เกิดข้อผิดพลาดในการยืนยันรหัส กรุณาลองใหม่อีกครั้ง');
     }
   }
 
+  // Same reasoning as confirmTransactionByOfferId above — cancelling also
+  // writes listings/coins belonging to the other party, so it runs
+  // server-side (functions/index.js#cancelAcceptedTrade), which resolves the
+  // caller's display name itself instead of trusting one passed in.
   Future<void> cancelAcceptedDeal(String offerId, String reason,
-      String currentUserId, String userName, String roomId) async {
+      String currentUserId, String roomId) async {
     try {
-      final txQuery = await _firestore
-          .collection('transactions')
-          .where('members', arrayContains: currentUserId)
-          .where('offer_id', isEqualTo: offerId)
-          .limit(1)
-          .get();
-      if (txQuery.docs.isEmpty) throw Exception("ไม่พบข้อมูลสัญญากองกลาง");
-      DocumentReference mainTxRef = txQuery.docs.first.reference;
-
-      await _firestore.runTransaction((transaction) async {
-        DocumentSnapshot txSnap = await transaction.get(mainTxRef);
-        if (!txSnap.exists) throw Exception("ไม่พบข้อมูลสัญญากองกลาง");
-        Map<String, dynamic> txData = txSnap.data() as Map<String, dynamic>;
-        if (txData['status'] != 'in_progress')
-          throw Exception("สถานะไม่ใช่กำลังดำเนินการ");
-
-        DocumentReference offerRef =
-            _firestore.collection('offers').doc(offerId);
-        DocumentSnapshot offerSnap = await transaction.get(offerRef);
-        if (!offerSnap.exists)
-          throw Exception("ไม่พบข้อมูลข้อเสนอที่เกี่ยวข้อง");
-        Map<String, dynamic> offerData =
-            offerSnap.data() as Map<String, dynamic>;
-
-        String targetItemId = offerData['target_listing_id'];
-        String offeredItemId = offerData['offered_listing_id'];
-        int escrowCoins = txData['escrow_coins'] ?? 0;
-        String? payerId;
-        DocumentSnapshot? payerSnap;
-        DocumentReference? payerRef;
-        int newBalance = 0;
-
-        if (escrowCoins > 0) {
-          int coinOffset = offerData['coin_offset'] ?? 0;
-          String senderId = offerData['sender_id'];
-          String targetUserId =
-              offerData['target_user_id'] ?? offerData['target_owner_id'];
-          payerId = coinOffset > 0 ? senderId : targetUserId;
-          payerRef = _firestore.collection('users').doc(payerId);
-          payerSnap = await transaction.get(payerRef);
-          if (!payerSnap.exists) throw Exception("ไม่พบบัญชีผู้จ่ายเหรียญ");
-          int currentBalance =
-              (payerSnap.data() as Map<String, dynamic>)['coins_balance'] ?? 0;
-          newBalance = currentBalance + escrowCoins;
-        }
-
-        transaction.update(_firestore.collection('listings').doc(targetItemId),
-            {'status': 'active'});
-        transaction.update(_firestore.collection('listings').doc(offeredItemId),
-            {'status': 'active'});
-
-        if (payerRef != null && escrowCoins > 0 && payerId != null) {
-          transaction.update(payerRef, {'coins_balance': newBalance});
-          DocumentReference walletTxRef =
-              _firestore.collection('wallet_transactions').doc();
-          transaction.set(walletTxRef, {
-            'log_id': walletTxRef.id,
-            'user_id': payerId,
-            'amount': escrowCoins,
-            'balance_after': newBalance,
-            'type': 'refund',
-            'status': 'success',
-            'reference_id': mainTxRef.id,
-            'description': 'คืนเหรียญจากระบบกองกลาง (ยกเลิกการแลกเปลี่ยน)',
-            'created_at': FieldValue.serverTimestamp(),
-          });
-        }
-
-        transaction.update(mainTxRef, {
-          'status': 'cancelled',
-          'cancel_reason': reason,
-          'updated_at': FieldValue.serverTimestamp()
-        });
-        transaction.update(offerRef, {'status': 'cancelled'});
-
-        DocumentReference roomRef =
-            _firestore.collection('chat_rooms').doc(roomId);
-        transaction.update(roomRef, {
-          'last_message_type': 'system_cancel',
-          'updated_at': FieldValue.serverTimestamp()
-        });
-
-        DocumentReference msgRef = roomRef.collection('messages').doc();
-        transaction.set(msgRef, {
-          'sender_id': 'system',
-          'content':
-              '$userName ได้ยกเลิกการแลกเปลี่ยน ระบบได้ทำการคืนสิ่งของและเหรียญเรียบร้อยแล้ว',
-          'timestamp': FieldValue.serverTimestamp(),
-          'type': 'system_cancel',
-        });
+      final callable = _functions.httpsCallable('cancelAcceptedTrade');
+      await callable.call(<String, dynamic>{
+        'offerId': offerId,
+        'reason': reason,
+        'roomId': roomId,
       });
-    } on FirebaseException catch (e) {
-      if (e.code == 'permission-denied')
-        throw Exception('ไม่มีสิทธิ์เข้าถึงข้อมูล');
-      throw Exception('เกิดข้อผิดพลาดจากระบบ: ${e.message}');
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(
+          e.message ?? 'ไม่สามารถยกเลิกการแลกเปลี่ยนได้ กรุณาลองใหม่อีกครั้ง');
     } catch (e) {
-      throw Exception(e.toString().replaceAll('Exception: ', ''));
+      throw Exception(
+          'เกิดข้อผิดพลาดในการยกเลิกการแลกเปลี่ยน กรุณาลองใหม่อีกครั้ง');
     }
   }
 }

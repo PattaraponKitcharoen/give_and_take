@@ -50,3 +50,6 @@ GoogleService-Info.plist
 
 # FVM Version Cache
 .fvm/
+# Non-code: report, slides and session notes
+/docs/
+.session-summary.md

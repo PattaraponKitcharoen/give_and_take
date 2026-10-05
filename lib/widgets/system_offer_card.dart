@@ -3,9 +3,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubits/transaction/transaction_cubit.dart';
 import '../cubits/transaction/transaction_state.dart';
 import '../repositories/offer_repository.dart';
+import '../repositories/review_repository.dart';
 import '../models/listing_model.dart';
 import '../models/message_model.dart';
 import '../models/offer_model.dart';
+import '../models/review_model.dart';
 import '../screens/item_detail_screen.dart';
 
 class SystemOfferCard extends StatelessWidget {
@@ -251,7 +253,8 @@ class SystemOfferCard extends StatelessWidget {
                     if (activeOfferId != null && activeOfferId!.isNotEmpty) {
                       context
                           .read<TransactionCubit>()
-                          .listenToTransactionByOfferId(activeOfferId!);
+                          .listenToTransactionByOfferId(
+                              activeOfferId!, currentUserId);
                     }
                     return const Center(
                         child: Padding(
@@ -319,7 +322,7 @@ class SystemOfferCard extends StatelessWidget {
                                 context
                                     .read<TransactionCubit>()
                                     .listenToTransactionByOfferId(
-                                        activeOfferId!);
+                                        activeOfferId!, currentUserId);
                               }
                             },
                             style: OutlinedButton.styleFrom(
@@ -361,6 +364,27 @@ class SystemOfferCard extends StatelessWidget {
                 if (offerStatus == 'completed') ...[
                   BlocBuilder<TransactionCubit, TransactionState>(
                       builder: (context, txState) {
+                    if (txState is TransactionInitial ||
+                        txState is TransactionLoading) {
+                      // If this device's offerStatus stream landed on
+                      // 'completed' before the offer ever passed through the
+                      // 'accepted'/'in_progress' branch above (e.g. the chat
+                      // was reopened after the deal already finished), the
+                      // subscription that branch normally starts on first
+                      // build never ran — leaving this cubit stuck on its
+                      // initial state forever and the rating button never
+                      // appearing. Starting it here too covers that case.
+                      if (activeOfferId != null && activeOfferId!.isNotEmpty) {
+                        context
+                            .read<TransactionCubit>()
+                            .listenToTransactionByOfferId(
+                                activeOfferId!, currentUserId);
+                      }
+                      return const Center(
+                          child: Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: CircularProgressIndicator()));
+                    }
                     if (txState is TransactionLoaded) {
                       final tx = txState.currentTransaction;
                       String transactionId = tx.transactionId;
@@ -368,23 +392,54 @@ class SystemOfferCard extends StatelessWidget {
                           (id) => id != currentUserId,
                           orElse: () => '');
 
-                      return Column(
-                        children: [
-                          const SizedBox(height: 12),
-                          SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                  onPressed: () =>
-                                      onOpenRating(partnerId, transactionId),
-                                  icon: const Icon(Icons.star,
-                                      color: Colors.white, size: 20),
-                                  label: const Text('จัดการคะแนน/รีวิว',
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold)),
-                                  style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.amber.shade700))),
-                        ],
+                      return StreamBuilder<List<ReviewModel>>(
+                        // The button has no way to know a review was already
+                        // sent otherwise — without this it just keeps
+                        // showing "จัดการคะแนน/รีวิว" forever, even right
+                        // after a successful submit, since nothing here ever
+                        // re-checked that state.
+                        stream: context
+                            .read<ReviewRepository>()
+                            .getReviewsForTransaction(
+                                transactionId, currentUserId),
+                        builder: (context, reviewSnap) {
+                          final alreadyReviewed =
+                              (reviewSnap.data ?? []).isNotEmpty;
+                          return Column(
+                            children: [
+                              const SizedBox(height: 12),
+                              if (alreadyReviewed)
+                                Container(
+                                  width: double.infinity,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                      color: Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8)),
+                                  child: const Center(
+                                      child: Text('คุณได้รีวิวดีลนี้แล้ว',
+                                          style: TextStyle(
+                                              color: Colors.black54,
+                                              fontWeight: FontWeight.bold))),
+                                )
+                              else
+                                SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                        onPressed: () => onOpenRating(
+                                            partnerId, transactionId),
+                                        icon: const Icon(Icons.star,
+                                            color: Colors.white, size: 20),
+                                        label: const Text('จัดการคะแนน/รีวิว',
+                                            style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold)),
+                                        style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Colors.amber.shade700))),
+                            ],
+                          );
+                        },
                       );
                     }
                     return const SizedBox();

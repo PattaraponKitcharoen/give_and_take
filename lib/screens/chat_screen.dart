@@ -7,8 +7,11 @@ import '../models/chat_room_model.dart';
 import '../repositories/chat_repository.dart';
 import '../cubits/chat/chat_cubit.dart';
 import '../cubits/offer/offer_cubit.dart';
+import '../cubits/offer/offer_state.dart';
 import '../cubits/transaction/transaction_cubit.dart';
+import '../cubits/transaction/transaction_state.dart';
 import '../cubits/review/review_cubit.dart';
+import '../cubits/review/review_state.dart';
 
 import '../widgets/system_offer_card.dart';
 import '../widgets/counter_offer_dialog.dart';
@@ -197,251 +200,330 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return ScaffoldMessenger(
       key: _scaffoldMessengerKey,
-      child: StreamBuilder<ChatRoomModel?>(
-          stream:
-              context.read<ChatRepository>().getChatRoomStream(widget.roomId),
-          builder: (context, roomSnap) {
-            if (!roomSnap.hasData || roomSnap.data == null)
-              return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()));
+      child: MultiBlocListener(
+        listeners: [
+          // Confirming a handover OTP or cancelling an accepted deal never
+          // showed any feedback — success or failure — so from the user's
+          // side pressing "ยืนยัน" looked like nothing happened, even when it
+          // actually succeeded (just waiting on the other party) or failed
+          // for a real, specific reason.
+          BlocListener<TransactionCubit, TransactionState>(
+            listener: (context, state) {
+              if (state is TransactionSuccess) {
+                _scaffoldMessengerKey.currentState?.showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: const Color(0xFF008080),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              } else if (state is TransactionError) {
+                _scaffoldMessengerKey.currentState?.showSnackBar(
+                  SnackBar(
+                    content: Text(state.error),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
+          // Accept / reject / counter / withdraw on the offer card had no
+          // listener at all, so a failed call (permission, insufficient coins,
+          // unreachable function) left the user with a button that simply did
+          // nothing. Success needs no snackbar — the card itself changes.
+          BlocListener<OfferCubit, OfferState>(
+            listener: (context, state) {
+              if (state is OfferError) {
+                _scaffoldMessengerKey.currentState?.showSnackBar(
+                  SnackBar(
+                    content: Text(state.error),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
+          // Same gap for submitting a rating/review — the dialog closes
+          // itself immediately on submit regardless of outcome, so without
+          // this, a failed submit (e.g. permission/validation error) looked
+          // exactly like a successful one.
+          BlocListener<ReviewCubit, ReviewState>(
+            listener: (context, state) {
+              if (state is ReviewSuccess) {
+                _scaffoldMessengerKey.currentState?.showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: const Color(0xFF008080),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              } else if (state is ReviewError) {
+                _scaffoldMessengerKey.currentState?.showSnackBar(
+                  SnackBar(
+                    content: Text(state.error),
+                    backgroundColor: Colors.red,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+        child: StreamBuilder<ChatRoomModel?>(
+            stream:
+                context.read<ChatRepository>().getChatRoomStream(widget.roomId),
+            builder: (context, roomSnap) {
+              if (!roomSnap.hasData || roomSnap.data == null)
+                return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()));
 
-            final roomData = roomSnap.data!;
-            final String? activeOfferId = roomData.activeOfferId;
+              final roomData = roomSnap.data!;
+              final String? activeOfferId = roomData.activeOfferId;
 
-            Map<String, dynamic> readTimestamps = roomData.readTimestamps;
-            Timestamp? otherUserReadTime;
-            readTimestamps.forEach((key, value) {
-              if (key != currentUserId && value is Timestamp)
-                otherUserReadTime = value;
-            });
+              Map<String, dynamic> readTimestamps = roomData.readTimestamps;
+              Timestamp? otherUserReadTime;
+              readTimestamps.forEach((key, value) {
+                if (key != currentUserId && value is Timestamp)
+                  otherUserReadTime = value;
+              });
 
-            final List<String> readBy = roomData.readBy;
-            final bool isReadByOther = readBy.any((id) => id != currentUserId);
+              final List<String> readBy = roomData.readBy;
+              final bool isReadByOther =
+                  readBy.any((id) => id != currentUserId);
 
-            return Scaffold(
-              backgroundColor: Colors.white,
-              appBar: AppBar(
+              return Scaffold(
                 backgroundColor: Colors.white,
-                elevation: 0.5,
-                iconTheme: const IconThemeData(color: Colors.black87),
-                title: FutureBuilder<Map<String, dynamic>>(
-                    future: _targetItemInfoFor(activeOfferId),
-                    builder: (context, itemSnap) {
-                      if (!itemSnap.hasData || itemSnap.data!.isEmpty) {
-                        return const Text('เจรจาแลกเปลี่ยน',
-                            style:
-                                TextStyle(color: Colors.black87, fontSize: 16));
-                      }
-                      return Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              color: Colors.grey.shade100,
-                              child: itemSnap.data!['thumbnail_url'] != null &&
-                                      itemSnap.data!['thumbnail_url'] != ''
-                                  ? Image.network(
-                                      itemSnap.data!['thumbnail_url'],
-                                      fit: BoxFit.cover)
-                                  : const Icon(Icons.image,
-                                      size: 20, color: Colors.grey),
+                appBar: AppBar(
+                  backgroundColor: Colors.white,
+                  elevation: 0.5,
+                  iconTheme: const IconThemeData(color: Colors.black87),
+                  title: FutureBuilder<Map<String, dynamic>>(
+                      future: _targetItemInfoFor(activeOfferId),
+                      builder: (context, itemSnap) {
+                        if (!itemSnap.hasData || itemSnap.data!.isEmpty) {
+                          return const Text('เจรจาแลกเปลี่ยน',
+                              style: TextStyle(
+                                  color: Colors.black87, fontSize: 16));
+                        }
+                        return Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                color: Colors.grey.shade100,
+                                child: itemSnap.data!['thumbnail_url'] !=
+                                            null &&
+                                        itemSnap.data!['thumbnail_url'] != ''
+                                    ? Image.network(
+                                        itemSnap.data!['thumbnail_url'],
+                                        fit: BoxFit.cover)
+                                    : const Icon(Icons.image,
+                                        size: 20, color: Colors.grey),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                    itemSnap.data!['title'] ??
-                                        'สิ่งของแลกเปลี่ยน',
-                                    style: const TextStyle(
-                                        color: Colors.black87,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                                const Text('รายละเอียดเพิ่มเติมกดดูที่ข้อเสนอ',
-                                    style: TextStyle(
-                                        color: Colors.grey, fontSize: 10)),
-                              ],
-                            ),
-                          )
-                        ],
-                      );
-                    }),
-              ),
-              body: Column(
-                children: [
-                  Expanded(
-                    child: StreamBuilder<List<MessageModel>>(
-                      stream: context
-                          .read<ChatRepository>()
-                          .getMessagesStream(widget.roomId),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData)
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        final messages = snapshot.data!;
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                      itemSnap.data!['title'] ??
+                                          'สิ่งของแลกเปลี่ยน',
+                                      style: const TextStyle(
+                                          color: Colors.black87,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis),
+                                  const Text(
+                                      'รายละเอียดเพิ่มเติมกดดูที่ข้อเสนอ',
+                                      style: TextStyle(
+                                          color: Colors.grey, fontSize: 10)),
+                                ],
+                              ),
+                            )
+                          ],
+                        );
+                      }),
+                ),
+                body: Column(
+                  children: [
+                    Expanded(
+                      child: StreamBuilder<List<MessageModel>>(
+                        stream: context
+                            .read<ChatRepository>()
+                            .getMessagesStream(widget.roomId),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData)
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          final messages = snapshot.data!;
 
-                        int latestReadIndex = -1;
-                        if (otherUserReadTime != null) {
-                          for (int i = 0; i < messages.length; i++) {
-                            var msgData = messages[i];
-                            if (msgData.senderId == currentUserId) {
-                              Timestamp? msgTime = msgData.timestamp != null
-                                  ? Timestamp.fromDate(msgData.timestamp!)
-                                  : null;
-                              if (msgTime != null &&
-                                  msgTime.compareTo(otherUserReadTime!) <= 0) {
+                          int latestReadIndex = -1;
+                          if (otherUserReadTime != null) {
+                            for (int i = 0; i < messages.length; i++) {
+                              var msgData = messages[i];
+                              if (msgData.senderId == currentUserId) {
+                                Timestamp? msgTime = msgData.timestamp != null
+                                    ? Timestamp.fromDate(msgData.timestamp!)
+                                    : null;
+                                if (msgTime != null &&
+                                    msgTime.compareTo(otherUserReadTime!) <=
+                                        0) {
+                                  latestReadIndex = i;
+                                  break;
+                                }
+                              }
+                            }
+                          } else if (isReadByOther) {
+                            for (int i = 0; i < messages.length; i++) {
+                              var msgData = messages[i];
+                              if (msgData.senderId == currentUserId) {
                                 latestReadIndex = i;
                                 break;
                               }
                             }
                           }
-                        } else if (isReadByOther) {
-                          for (int i = 0; i < messages.length; i++) {
-                            var msgData = messages[i];
-                            if (msgData.senderId == currentUserId) {
-                              latestReadIndex = i;
-                              break;
-                            }
-                          }
-                        }
 
-                        return ListView.builder(
-                          padding: const EdgeInsets.only(top: 16, bottom: 8),
-                          reverse: true,
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final msg = messages[index];
-                            bool isMe = msg.senderId == currentUserId;
-                            String type = msg.type;
-                            String timeStr = msg.timestamp != null
-                                ? _formatTime(
-                                    Timestamp.fromDate(msg.timestamp!))
-                                : '';
+                          return ListView.builder(
+                            padding: const EdgeInsets.only(top: 16, bottom: 8),
+                            reverse: true,
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final msg = messages[index];
+                              bool isMe = msg.senderId == currentUserId;
+                              String type = msg.type;
+                              String timeStr = msg.timestamp != null
+                                  ? _formatTime(
+                                      Timestamp.fromDate(msg.timestamp!))
+                                  : '';
 
-                            if (msg.senderId == 'system' &&
-                                type != 'system_offer') {
-                              return Center(
-                                child: Container(
-                                  margin:
-                                      const EdgeInsets.symmetric(vertical: 12),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 8),
-                                  decoration: BoxDecoration(
-                                      color: Colors.grey.shade100,
-                                      borderRadius: BorderRadius.circular(20)),
-                                  child: Text(msg.content,
-                                      style: const TextStyle(
-                                          color: Colors.black54,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold)),
-                                ),
-                              );
-                            }
+                              if (msg.senderId == 'system' &&
+                                  type != 'system_offer') {
+                                return Center(
+                                  child: Container(
+                                    margin: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 8),
+                                    decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius:
+                                            BorderRadius.circular(20)),
+                                    child: Text(msg.content,
+                                        style: const TextStyle(
+                                            color: Colors.black54,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold)),
+                                  ),
+                                );
+                              }
 
-                            if (type == 'system_offer') {
-                              return SystemOfferCard(
-                                msg: msg,
-                                activeOfferId: activeOfferId,
-                                currentUserId: currentUserId,
-                                onCancel: () => _cancelOffer(activeOfferId!),
-                                onReject: () => _rejectOffer(activeOfferId!),
-                                onAccept: () =>
-                                    _acceptOffer(context, activeOfferId!),
-                                onCounter: (offerData) =>
-                                    _showCounterOfferDialog(
-                                        context, activeOfferId!, offerData),
-                                onVerifyOtp: () =>
-                                    _showOtpDialog(context, activeOfferId!),
-                                onCancelDeal: () => _cancelAcceptedDeal(
-                                    activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว'),
-                                onOpenRating: (partnerId, txId) =>
-                                    _showRatingDialog(context, partnerId, txId),
-                              );
-                            }
+                              if (type == 'system_offer') {
+                                return SystemOfferCard(
+                                  msg: msg,
+                                  activeOfferId: activeOfferId,
+                                  currentUserId: currentUserId,
+                                  onCancel: () => _cancelOffer(activeOfferId!),
+                                  onReject: () => _rejectOffer(activeOfferId!),
+                                  onAccept: () =>
+                                      _acceptOffer(context, activeOfferId!),
+                                  onCounter: (offerData) =>
+                                      _showCounterOfferDialog(
+                                          context, activeOfferId!, offerData),
+                                  onVerifyOtp: () =>
+                                      _showOtpDialog(context, activeOfferId!),
+                                  onCancelDeal: () => _cancelAcceptedDeal(
+                                      activeOfferId!, 'เปลี่ยนใจไม่แลกแล้ว'),
+                                  onOpenRating: (partnerId, txId) =>
+                                      _showRatingDialog(
+                                          context, partnerId, txId),
+                                );
+                              }
 
-                            bool showTimeByDefault = true;
-                            bool showAvatar = true;
-                            if (index > 0) {
-                              final newerMsg = messages[index - 1];
-                              final newerTime = newerMsg.timestamp;
-                              final currentTime = msg.timestamp;
-                              if (newerMsg.senderId == msg.senderId &&
-                                  newerTime != null &&
-                                  currentTime != null) {
-                                if (newerTime
-                                        .difference(currentTime)
-                                        .inMinutes
-                                        .abs() <
-                                    3) {
-                                  showTimeByDefault = false;
-                                  showAvatar = false;
+                              bool showTimeByDefault = true;
+                              bool showAvatar = true;
+                              if (index > 0) {
+                                final newerMsg = messages[index - 1];
+                                final newerTime = newerMsg.timestamp;
+                                final currentTime = msg.timestamp;
+                                if (newerMsg.senderId == msg.senderId &&
+                                    newerTime != null &&
+                                    currentTime != null) {
+                                  if (newerTime
+                                          .difference(currentTime)
+                                          .inMinutes
+                                          .abs() <
+                                      3) {
+                                    showTimeByDefault = false;
+                                    showAvatar = false;
+                                  }
                                 }
                               }
-                            }
 
-                            return ChatBubbleWidget(
-                              msg: msg,
-                              isMe: isMe,
-                              timeStr: timeStr,
-                              showTimeByDefault: showTimeByDefault,
-                              showAvatar: showAvatar,
-                              isLatestRead: index == latestReadIndex,
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white, boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, -5))
-                    ]),
-                    child: SafeArea(
-                      bottom: true,
-                      top: false,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _messageController,
-                              decoration: InputDecoration(
-                                  hintText: 'พิมพ์ข้อความ...',
-                                  filled: true,
-                                  fillColor: Colors.grey.shade100,
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(25),
-                                      borderSide: BorderSide.none),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 20, vertical: 10)),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          CircleAvatar(
-                            backgroundColor: const Color(0xFF008080),
-                            child: IconButton(
-                                icon: const Icon(Icons.send,
-                                    color: Colors.white, size: 20),
-                                onPressed: _sendMessage),
-                          ),
-                        ],
+                              return ChatBubbleWidget(
+                                msg: msg,
+                                isMe: isMe,
+                                timeStr: timeStr,
+                                showTimeByDefault: showTimeByDefault,
+                                showAvatar: showAvatar,
+                                isLatestRead: index == latestReadIndex,
+                              );
+                            },
+                          );
+                        },
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          }),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration:
+                          BoxDecoration(color: Colors.white, boxShadow: [
+                        BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, -5))
+                      ]),
+                      child: SafeArea(
+                        bottom: true,
+                        top: false,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _messageController,
+                                decoration: InputDecoration(
+                                    hintText: 'พิมพ์ข้อความ...',
+                                    filled: true,
+                                    fillColor: Colors.grey.shade100,
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(25),
+                                        borderSide: BorderSide.none),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 20, vertical: 10)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            CircleAvatar(
+                              backgroundColor: const Color(0xFF008080),
+                              child: IconButton(
+                                  icon: const Icon(Icons.send,
+                                      color: Colors.white, size: 20),
+                                  onPressed: _sendMessage),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import '../constants/firebase_config.dart';
 import 'package:flutter/foundation.dart';
 import '../models/offer_model.dart';
 
@@ -9,7 +10,7 @@ class OfferRepository {
 
   OfferRepository({FirebaseFirestore? firestore, FirebaseFunctions? functions})
       : _firestore = firestore ?? FirebaseFirestore.instance,
-        _functions = functions ?? FirebaseFunctions.instance;
+        _functions = functions ?? appFunctions();
 
   Stream<OfferModel> getOfferStream(String offerId) {
     return _firestore
@@ -60,20 +61,20 @@ class OfferRepository {
   }
 
   Future<int> getSuccessfulTradesCount(String userId) async {
+    // Counted from the user's own listings rather than from offers: every
+    // completed deal flips exactly one listing of each party to 'completed',
+    // and listings are readable by any signed-in user — offers (and
+    // transactions) are readable only by the two parties, so the old
+    // offers-based count silently came back as 0 for anyone viewing someone
+    // else's profile.
     try {
-      final sentSnap = await _firestore
-          .collection('offers')
-          .where('sender_id', isEqualTo: userId)
+      final snap = await _firestore
+          .collection('listings')
+          .where('owner_id', isEqualTo: userId)
           .where('status', isEqualTo: 'completed')
           .count()
           .get();
-      final receivedSnap = await _firestore
-          .collection('offers')
-          .where('target_user_id', isEqualTo: userId)
-          .where('status', isEqualTo: 'completed')
-          .count()
-          .get();
-      return (sentSnap.count ?? 0) + (receivedSnap.count ?? 0);
+      return snap.count ?? 0;
     } catch (e) {
       return 0;
     }

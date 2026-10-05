@@ -1,17 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import '../constants/firebase_config.dart';
 import '../models/review_model.dart';
 
 class ReviewRepository {
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
 
-  ReviewRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  ReviewRepository({FirebaseFirestore? firestore, FirebaseFunctions? functions})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _functions = functions ?? appFunctions();
 
-  String generateReviewId() {
-    return _firestore.collection('reviews').doc().id;
-  }
-
-  Stream<List<ReviewModel>> getReviewsForTransaction(String transactionId, String reviewerId) {
+  Stream<List<ReviewModel>> getReviewsForTransaction(
+      String transactionId, String reviewerId) {
     return _firestore
         .collection('reviews')
         .where('transaction_id', isEqualTo: transactionId)
@@ -21,39 +22,39 @@ class ReviewRepository {
             .map((doc) => ReviewModel.fromJson(doc.data(), doc.id))
             .toList());
   }
-  
+
   Future<void> addReview(ReviewModel review) async {
-    await _firestore.collection('reviews').doc(review.reviewId).set(review.toJson());
+    await _firestore
+        .collection('reviews')
+        .doc(review.reviewId)
+        .set(review.toJson());
   }
 
-  Future<void> submitReview(ReviewModel review) async {
-    final txRef = _firestore.collection('reviews').doc(review.reviewId);
-    final userRef = _firestore.collection('users').doc(review.revieweeId);
-
-    final existingReview = await _firestore.collection('reviews')
-        .where('transaction_id', isEqualTo: review.transactionId)
-        .where('reviewer_id', isEqualTo: review.reviewerId)
-        .get();
-        
-    if (existingReview.docs.isNotEmpty) {
-      throw Exception('คุณได้ให้คะแนนดีลนี้ไปแล้ว');
-    }
-
-    await _firestore.runTransaction((transaction) async {
-      final userSnap = await transaction.get(userRef);
-      if (!userSnap.exists) throw Exception("ไม่พบผู้ใช้งานเป้าหมาย");
-      final userData = userSnap.data() as Map<String, dynamic>;
-      
-      double currentScores = (userData['owner_rating_scores'] ?? 0.0).toDouble();
-      int currentCount = userData['owner_rating_count'] ?? 0;
-      
-      double newScores = ((currentScores * currentCount) + review.rating) / (currentCount + 1);
-      
-      transaction.set(txRef, review.toJson());
-      transaction.update(userRef, {
-        'owner_rating_scores': newScores,
-        'owner_rating_count': currentCount + 1,
+  // Submitting a review updates the REVIEWEE's own rating aggregate fields
+  // (owner_rating_scores/owner_rating_count) — a different user's document
+  // than the caller's — the same class of cross-user write that
+  // confirmHandoverOtp/cancelAcceptedTrade had to move server-side for. This
+  // also closes a gap the old client-side version had: it never checked that
+  // the reviewer/reviewee were actually both members of a real, completed
+  // transaction before writing, which the Cloud Function now verifies.
+  Future<void> submitReview({
+    required String revieweeId,
+    required String transactionId,
+    required double rating,
+    required String comment,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('submitTradeReview');
+      await callable.call(<String, dynamic>{
+        'revieweeId': revieweeId,
+        'transactionId': transactionId,
+        'rating': rating,
+        'comment': comment,
       });
-    });
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? 'ไม่สามารถส่งรีวิวได้ กรุณาลองใหม่อีกครั้ง');
+    } catch (e) {
+      throw Exception('เกิดข้อผิดพลาดในการส่งรีวิว กรุณาลองใหม่อีกครั้ง');
+    }
   }
 }

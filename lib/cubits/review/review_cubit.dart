@@ -1,6 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../repositories/review_repository.dart';
-import '../../models/review_model.dart';
 import 'review_state.dart';
 
 class ReviewCubit extends Cubit<ReviewState> {
@@ -19,20 +18,19 @@ class ReviewCubit extends Cubit<ReviewState> {
   }) async {
     emit(ReviewSubmitting());
     try {
-      final String newId = _repository.generateReviewId();
-      final review = ReviewModel(
-        reviewId: newId,
-        reviewerId: currentUserId,
+      // The Cloud Function resolves the reviewer from the auth token and
+      // generates the review doc's id itself now, so currentUserId is no
+      // longer needed here — kept in the signature so chat_screen.dart's
+      // call site doesn't need to change.
+      await _repository.submitReview(
         revieweeId: targetUserId,
         transactionId: transactionId,
         rating: rating,
         comment: comment,
-        createdAt: DateTime.now(),
       );
-      await _repository.submitReview(review);
       emit(const ReviewSuccess('ส่งรีวิวสำเร็จ ขอบคุณสำหรับความคิดเห็นของคุณ'));
     } catch (e) {
-      emit(ReviewError('เกิดข้อผิดพลาดในการส่งรีวิว: $e'));
+      emit(ReviewError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 }
