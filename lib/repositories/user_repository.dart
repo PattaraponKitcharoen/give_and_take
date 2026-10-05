@@ -30,6 +30,20 @@ class UserRepository {
     });
   }
 
+  // Not denormalized onto listings (unlike ownerName/ownerProfileImg) — a
+  // listing's owner can become a verified student well after posting, and
+  // fanning that write out to every one of their existing listings just to
+  // support this one filter isn't worth the extra write complexity. Screens
+  // that need "listings from student owners" combine this with the active
+  // listings stream client-side instead (see StudentListingsCubit).
+  Stream<Set<String>> getStudentUserIdsStream() {
+    return _firestore
+        .collection('users')
+        .where('is_student', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => doc.id).toSet());
+  }
+
   Future<UserModel> getUser(String uid) async {
     final snapshot = await _firestore.collection('users').doc(uid).get();
     if (snapshot.exists && snapshot.data() != null) {
@@ -38,8 +52,29 @@ class UserRepository {
     throw Exception('User not found');
   }
 
+  // Only the fields a user edits about themselves. This used to write
+  // user.toJson() wholesale, which also carried coins_balance, status, role
+  // and wishlist from whatever (possibly stale) UserModel the screen was
+  // opened with — saving a profile could roll the coin balance back to its
+  // value from before a trade that completed in the meantime. Those fields
+  // are server-owned and the security rules now reject client writes to them.
+  static const _profileFields = [
+    'name',
+    'tel',
+    'bio',
+    'profile_img_url',
+    'faculty',
+    'academic_year',
+    'is_student',
+  ];
+
   Future<void> updateUser(UserModel user) async {
-    await _firestore.collection('users').doc(user.uid).update(user.toJson());
+    final json = user.toJson();
+    await _firestore.collection('users').doc(user.uid).update({
+      for (final field in _profileFields)
+        if (json.containsKey(field)) field: json[field],
+      'updated_at': FieldValue.serverTimestamp(),
+    });
   }
 
   /// Adds or removes [listingId] from [uid]'s `wishlist` array, depending
@@ -69,20 +104,20 @@ class UserRepository {
   }
 
   Future<int> getTradeCount(String userId) async {
+    // Counted from the user's own listings rather than from offers: every
+    // completed deal flips exactly one listing of each party to 'completed',
+    // and listings are readable by any signed-in user — offers (and
+    // transactions) are readable only by the two parties, so the old
+    // offers-based count silently came back as 0 for anyone viewing someone
+    // else's profile.
     try {
-      final sentSnap = await _firestore
-          .collection('offers')
-          .where('sender_id', isEqualTo: userId)
+      final snap = await _firestore
+          .collection('listings')
+          .where('owner_id', isEqualTo: userId)
           .where('status', isEqualTo: 'completed')
+          .count()
           .get();
-
-      final receivedSnap = await _firestore
-          .collection('offers')
-          .where('target_user_id', isEqualTo: userId)
-          .where('status', isEqualTo: 'completed')
-          .get();
-
-      return sentSnap.docs.length + receivedSnap.docs.length;
+      return snap.count ?? 0;
     } catch (e) {
       return 0;
     }
@@ -92,7 +127,7 @@ class UserRepository {
     try {
       final reviewSnap = await _firestore
           .collection('reviews')
-          .where('target_id', isEqualTo: userId)
+          .where('reviewee_id', isEqualTo: userId)
           .get();
 
       final docs = reviewSnap.docs;
@@ -126,52 +161,75 @@ class UserRepository {
           }
         }
 
-        if (transactionId.isNotEmpty) {
-          final txDoc = await _firestore
-              .collection('transactions')
-              .doc(transactionId)
-              .get();
-          if (txDoc.exists) {
-            final offerId = txDoc.data()?['offer_id'];
-            if (offerId != null && offerId.toString().isNotEmpty) {
-              final offerDoc =
-                  await _firestore.collection('offers').doc(offerId).get();
-              if (offerDoc.exists) {
-                final offerData = offerDoc.data()!;
-                String myItemId = '';
-                String theirItemId = '';
+        // Reviews written by submitTradeReview (and older ones backfilled)
+        // carry a snapshot of both traded items, so anyone can see them.
+        final revieweeItem = data['reviewee_item'];
+        final reviewerItem = data['reviewer_item'];
+        if (revieweeItem is Map || reviewerItem is Map) {
+          // On a profile, the reviewee is the profile owner ("my" item).
+          myItemData = revieweeItem is Map
+              ? Map<String, dynamic>.from(revieweeItem)
+              : null;
+          theirItemData = reviewerItem is Map
+              ? Map<String, dynamic>.from(reviewerItem)
+              : null;
+        }
+        // Fallback for reviews without the snapshot: the deal's
+        // transaction/offer, which only the two parties may read. Anyone else
+        // still gets the review (name, stars, comment) — just without the
+        // item thumbnails — instead of the whole list failing on the first
+        // unreadable deal.
+        else if (transactionId.isNotEmpty) {
+          try {
+            final txDoc = await _firestore
+                .collection('transactions')
+                .doc(transactionId)
+                .get();
+            if (txDoc.exists) {
+              final offerId = txDoc.data()?['offer_id'];
+              if (offerId != null && offerId.toString().isNotEmpty) {
+                final offerDoc =
+                    await _firestore.collection('offers').doc(offerId).get();
+                if (offerDoc.exists) {
+                  final offerData = offerDoc.data()!;
+                  String myItemId = '';
+                  String theirItemId = '';
 
-                if (offerData['target_user_id'] == userId) {
-                  myItemId = offerData['target_listing_id'] ?? '';
-                  theirItemId = offerData['offered_listing_id'] ?? '';
-                } else {
-                  myItemId = offerData['offered_listing_id'] ?? '';
-                  theirItemId = offerData['target_listing_id'] ?? '';
-                }
-
-                if (myItemId.isNotEmpty) {
-                  final myDoc = await _firestore
-                      .collection('listings')
-                      .doc(myItemId)
-                      .get();
-                  if (myDoc.exists) {
-                    myItemData = myDoc.data();
-                    myItemData!['listing_id'] = myDoc.id;
+                  if (offerData['target_user_id'] == userId) {
+                    myItemId = offerData['target_listing_id'] ?? '';
+                    theirItemId = offerData['offered_listing_id'] ?? '';
+                  } else {
+                    myItemId = offerData['offered_listing_id'] ?? '';
+                    theirItemId = offerData['target_listing_id'] ?? '';
                   }
-                }
 
-                if (theirItemId.isNotEmpty) {
-                  final theirDoc = await _firestore
-                      .collection('listings')
-                      .doc(theirItemId)
-                      .get();
-                  if (theirDoc.exists) {
-                    theirItemData = theirDoc.data();
-                    theirItemData!['listing_id'] = theirDoc.id;
+                  if (myItemId.isNotEmpty) {
+                    final myDoc = await _firestore
+                        .collection('listings')
+                        .doc(myItemId)
+                        .get();
+                    if (myDoc.exists) {
+                      myItemData = myDoc.data();
+                      myItemData!['listing_id'] = myDoc.id;
+                    }
+                  }
+
+                  if (theirItemId.isNotEmpty) {
+                    final theirDoc = await _firestore
+                        .collection('listings')
+                        .doc(theirItemId)
+                        .get();
+                    if (theirDoc.exists) {
+                      theirItemData = theirDoc.data();
+                      theirItemData!['listing_id'] = theirDoc.id;
+                    }
                   }
                 }
               }
             }
+          } catch (_) {
+            myItemData = null;
+            theirItemData = null;
           }
         }
 

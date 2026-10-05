@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/star_rating.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart'; // 🟢 เพิ่ม BLoC
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Timestamp in reviews
@@ -25,7 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color bgColor = const Color(0xFFF8FAFC);
   User? get currentUser => context.read<AuthRepository>().currentUser;
 
-  String _selectedTab = 'Active Items';
+  String _selectedTab = 'Active';
 
   Future<void> _logout() async {
     await context.read<AuthRepository>().signOut();
@@ -65,7 +66,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(state.verificationMessage!),
-                backgroundColor: state.isVerificationError ? Colors.red : tealColor,
+                backgroundColor:
+                    state.isVerificationError ? Colors.red : tealColor,
                 duration: const Duration(seconds: 4),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -80,7 +82,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               appBar: AppBar(
                 backgroundColor: Colors.white,
                 elevation: 0,
-                title: const Text('โปรไฟล์ของฉัน', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
+                title: const Text('โปรไฟล์ของฉัน',
+                    style: TextStyle(
+                        color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
                 centerTitle: true,
               ),
               body: Center(child: CircularProgressIndicator(color: tealColor)),
@@ -110,15 +114,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               appBar: AppBar(
                 backgroundColor: Colors.white,
                 elevation: 0,
-                title: const Text('โปรไฟล์ของฉัน', style: TextStyle(color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
+                title: const Text('โปรไฟล์ของฉัน',
+                    style: TextStyle(
+                        color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
                 centerTitle: true,
                 actions: [
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert, color: Colors.black87),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                     onSelected: (value) {
                       if (value == 'edit') {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => EditProfileScreen(currentUser: user)));
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    EditProfileScreen(currentUser: user)));
                       } else if (value == 'logout') {
                         _logout();
                       }
@@ -136,7 +147,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Row(children: [
                             Icon(Icons.logout, color: Colors.red, size: 20),
                             SizedBox(width: 8),
-                            Text('ออกจากระบบ', style: TextStyle(color: Colors.red))
+                            Text('ออกจากระบบ',
+                                style: TextStyle(color: Colors.red))
                           ])),
                     ],
                   ),
@@ -152,43 +164,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Column(
                           children: [
                             const SizedBox(height: 16),
-                            Stack(
-                              alignment: Alignment.bottomRight,
-                              children: [
-                                Container(
-                                  width: 100,
-                                  height: 100,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(24),
-                                    color: Colors.grey.shade200,
-                                    image: profileImg.isNotEmpty
-                                        ? DecorationImage(
-                                            image: NetworkImage(profileImg),
-                                            fit: BoxFit.cover)
-                                        : null,
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: tealColor.withOpacity(0.2),
-                                          blurRadius: 20,
-                                          offset: const Offset(0, 10))
-                                    ],
-                                  ),
-                                  child: profileImg.isEmpty
-                                      ? const Icon(Icons.person,
-                                          size: 50, color: Colors.white)
-                                      : null,
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: Colors.white, width: 2)),
-                                  child: Icon(Icons.verified,
-                                      color: Colors.green.shade400, size: 16),
-                                )
-                              ],
+                            Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(24),
+                                color: Colors.grey.shade200,
+                                image: profileImg.isNotEmpty
+                                    ? DecorationImage(
+                                        image: NetworkImage(profileImg),
+                                        fit: BoxFit.cover)
+                                    : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: tealColor.withOpacity(0.2),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 10))
+                                ],
+                              ),
+                              child: profileImg.isEmpty
+                                  ? const Icon(Icons.person,
+                                      size: 50, color: Colors.white)
+                                  : null,
                             ),
                             const SizedBox(height: 16),
                             Row(
@@ -200,31 +197,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         fontSize: 22,
                                         fontWeight: FontWeight.bold,
                                         color: Color(0xFF004D40))),
-                                const SizedBox(width: 8),
-                                if (isEmailVerified)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                        color: Colors.blue.shade50,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                            color: Colors.blue.shade200)),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.mark_email_read,
-                                            size: 12,
-                                            color: Colors.blue.shade700),
-                                        const SizedBox(width: 4),
-                                        Text('Email Verified',
-                                            style: TextStyle(
-                                                color: Colors.blue.shade700,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                  )
+                                if (isEmailVerified) ...[
+                                  const SizedBox(width: 6),
+                                  Icon(Icons.verified,
+                                      color: Colors.green.shade400, size: 20),
+                                ]
                               ],
                             ),
                             if (!isEmailVerified)
@@ -233,7 +210,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: GestureDetector(
                                   onTap: isSendingEmail
                                       ? null
-                                      : () => context.read<ProfileCubit>().sendVerificationEmail(),
+                                      : () => context
+                                          .read<ProfileCubit>()
+                                          .sendVerificationEmail(),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 6),
@@ -250,10 +229,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             ? SizedBox(
                                                 width: 12,
                                                 height: 12,
-                                                child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color:
-                                                        Colors.orange.shade700))
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors
+                                                            .orange.shade700))
                                             : Icon(Icons.warning_amber_rounded,
                                                 size: 14,
                                                 color: Colors.orange.shade700),
@@ -274,7 +254,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             const SizedBox(height: 8),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 32),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 32),
                               child: Text(bio,
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
@@ -286,9 +267,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                _buildStatPill(Icons.inventory_2_outlined, '${state.userListings.length} Items'),
+                                _buildStatPill(Icons.inventory_2_outlined,
+                                    '${state.userListings.length} Items'),
                                 const SizedBox(width: 8),
-                                _buildStatPill(Icons.swap_horiz, '${state.tradeCount} Trades'),
+                                _buildStatPill(Icons.swap_horiz,
+                                    '${state.tradeCount} Trades'),
                                 const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: () => Navigator.push(
@@ -307,14 +290,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             _buildRatingCard(rating),
                             const SizedBox(height: 20),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 20),
                               child: Row(
                                 children: [
-                                  Expanded(
-                                      child: _buildTabButton('Active Items')),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                      child: _buildTabButton('Peer Reviews')),
+                                  Expanded(child: _buildTabButton('Active')),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: _buildTabButton('Reviews')),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: _buildTabButton('Traded')),
                                 ],
                               ),
                             ),
@@ -324,9 +308,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     )
                   ];
                 },
-                body: _selectedTab == 'Active Items'
-                    ? _buildActiveItemsGrid(context, state)
-                    : _buildReviewsList(context, state),
+                body: switch (_selectedTab) {
+                  'Active' => _buildActiveItemsGrid(context, state),
+                  'Reviews' => _buildReviewsList(context, state),
+                  _ => _buildTradeHistoryGrid(context, state),
+                },
               ),
             );
           }
@@ -388,16 +374,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF004D40))),
                     const SizedBox(width: 8),
-                    Row(
-                      children: List.generate(
-                          5,
-                          (index) => Icon(
-                              index < rating.floor()
-                                  ? Icons.star
-                                  : Icons.star_border,
-                              color: Colors.orange,
-                              size: 14)),
-                    )
+                    StarRating(rating: rating),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -455,17 +432,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-                title == 'Active Items'
-                    ? Icons.inventory_2
-                    : Icons.chat_bubble_outline,
+                switch (title) {
+                  'Active' => Icons.inventory_2,
+                  'Reviews' => Icons.chat_bubble_outline,
+                  _ => Icons.history,
+                },
                 size: 16,
                 color: isSelected ? Colors.white : Colors.grey.shade600),
-            const SizedBox(width: 8),
-            Text(title,
-                style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.grey.shade700,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13)),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey.shade700,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+            ),
           ],
         ),
       ),
@@ -473,11 +456,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildActiveItemsGrid(BuildContext context, ProfileLoaded state) {
-    final listings = state.userListings;
+    // Previously showed every listing regardless of status — now that
+    // "already traded" items have their own tab (_buildTradeHistoryGrid),
+    // this one should actually only show what's still active.
+    final listings =
+        state.userListings.where((item) => item.status == 'active').toList();
 
     if (listings.isEmpty) {
       return Center(
-          child: Text('คุณยังไม่มีสิ่งของ',
+          child: Text('คุณยังไม่มีสิ่งของที่กำลังลงประกาศอยู่',
               style: TextStyle(color: Colors.grey.shade500)));
     }
 
@@ -495,8 +482,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (context) =>
-                      ItemDetailScreen(listing: item))),
+                  builder: (context) => ItemDetailScreen(listing: item))),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -516,8 +502,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
-                      borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(16)),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
                       image: item.thumbnailUrl.isNotEmpty
                           ? DecorationImage(
                               image: NetworkImage(item.thumbnailUrl),
@@ -556,6 +542,141 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Text('${item.estimatedCoins}',
                                 style: TextStyle(
                                     color: Colors.green.shade700,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTradeHistoryGrid(BuildContext context, ProfileLoaded state) {
+    // "Not active" covers both an in-progress handover (locked mid-trade)
+    // and a fully completed one — either way, the listing is no longer
+    // something you could offer on.
+    final listings =
+        state.userListings.where((item) => item.status != 'active').toList();
+
+    if (listings.isEmpty) {
+      return Center(
+          child: Text('คุณยังไม่มีประวัติการแลกเปลี่ยน',
+              style: TextStyle(color: Colors.grey.shade500)));
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 0.75),
+      itemCount: listings.length,
+      itemBuilder: (context, index) {
+        final item = listings[index];
+        final isCompleted = item.status == 'completed';
+        final statusLabel = isCompleted ? 'แลกไปแล้ว' : 'กำลังแลกเปลี่ยน';
+
+        return InkWell(
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => ItemDetailScreen(listing: item))),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4))
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(16)),
+                          image: item.thumbnailUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(item.thumbnailUrl),
+                                  fit: BoxFit.cover,
+                                  // Greyed out so it visually reads as no
+                                  // longer available, without needing a
+                                  // separate "sold" placeholder image.
+                                  colorFilter: ColorFilter.mode(
+                                      Colors.black.withOpacity(0.35),
+                                      BlendMode.darken))
+                              : null,
+                        ),
+                        child: item.thumbnailUrl.isEmpty
+                            ? const Center(
+                                child: Icon(Icons.image, color: Colors.grey))
+                            : null,
+                      ),
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                              color: isCompleted
+                                  ? Colors.black.withOpacity(0.6)
+                                  : Colors.orange.shade700,
+                              borderRadius: BorderRadius.circular(8)),
+                          child: Text(statusLabel,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.title,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.monetization_on,
+                                color: Colors.grey.shade600, size: 10),
+                            const SizedBox(width: 4),
+                            Text('${item.estimatedCoins}',
+                                style: TextStyle(
+                                    color: Colors.grey.shade600,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold)),
                           ],
@@ -692,7 +813,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final reviewerImg = data['img'] ?? '';
         final myItem = data['myItem'];
         final theirItem = data['theirItem'];
-        
+
         final double rating = (reviewData['rating'] ?? 0).toDouble();
         final String comment = reviewData['comment'] ?? '';
         final Timestamp? time = reviewData['created_at'];
@@ -750,8 +871,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     overflow: TextOverflow.ellipsis)),
                             Text(timeText,
                                 style: TextStyle(
-                                    color: Colors.grey.shade400,
-                                    fontSize: 11)),
+                                    color: Colors.grey.shade400, fontSize: 11)),
                           ],
                         ),
                         const SizedBox(height: 4),

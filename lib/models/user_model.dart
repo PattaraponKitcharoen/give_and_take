@@ -54,7 +54,13 @@ class UserModel {
       status: json['status'] ?? 'active',
       profileImgUrl: json['profile_img_url'] ?? '',
       coinsBalance: (json['coins_balance'] ?? 0).toDouble(),
-      rating: (json['rating'] ?? json['rating_scores'] ?? 0).toDouble(),
+      // submitTradeReview keeps the running average in owner_rating_scores;
+      // the plain `rating` field is only the 0 written at sign-up.
+      rating: (json['owner_rating_scores'] ??
+              json['rating'] ??
+              json['rating_scores'] ??
+              0)
+          .toDouble(),
       location: json['location'] ?? {},
       isEmailVerified: json['is_email_verified'] ?? false,
       isPhoneVerified: json['is_phone_verified'] ?? false,

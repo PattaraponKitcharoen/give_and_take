@@ -36,7 +36,7 @@ class AddPostCubit extends Cubit<AddPostState> {
         ownerId: owner.uid,
         ownerName: owner.name,
         ownerProfileImg: owner.profileImgUrl,
-        ownerRatingScores: 0.0,
+        ownerRatingScores: owner.rating,
         title: title,
         description: description,
         condition: condition,

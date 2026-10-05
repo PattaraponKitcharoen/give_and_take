@@ -35,6 +35,16 @@ class ProfileCubit extends Cubit<ProfileState> {
   void _initStreams() {
     emit(ProfileLoading());
 
+    // Firebase Auth's own `emailVerified` flag flips as soon as the user
+    // taps the link in their inbox, but Firestore's `is_email_verified`
+    // (what the UI actually reads) only gets synced to match it as a side
+    // effect of this call. Nothing else in the app calls it proactively, so
+    // without this the profile badge stays stuck on "unverified" until the
+    // user happens to open the add-post or make-offer flow. Fire-and-forget:
+    // if verified, it writes to Firestore, and the already-subscribed user
+    // stream below picks up that write on its own.
+    _authRepository.isEmailVerified();
+
     _userSubscription = _userRepository.getUserStream(userId).listen(
       (UserModel user) {
         if (_hasError) return;
@@ -71,8 +81,9 @@ class ProfileCubit extends Cubit<ProfileState> {
         emit(ProfileLoading());
         try {
           int tradeCount = await _fetchTradeCount();
-          List<Map<String, dynamic>> enrichedReviews = await _fetchEnrichedReviews();
-          
+          List<Map<String, dynamic>> enrichedReviews =
+              await _fetchEnrichedReviews();
+
           emit(ProfileLoaded(
             user: _latestUser!,
             userListings: _latestListings!,
@@ -97,37 +108,36 @@ class ProfileCubit extends Cubit<ProfileState> {
   Future<void> sendVerificationEmail() async {
     if (state is! ProfileLoaded) return;
     final currentState = state as ProfileLoaded;
-    
+
     emit(currentState.copyWith(
-      isSendingVerification: true, 
-      verificationMessage: null,
-      isVerificationError: false
-    ));
-    
+        isSendingVerification: true,
+        verificationMessage: null,
+        isVerificationError: false));
+
     try {
       if (_authRepository.currentUser != null) {
         await _authRepository.sendEmailVerification();
         emit(currentState.copyWith(
-          isSendingVerification: false,
-          verificationMessage: 'ส่งลิงก์ไปยัง ${_authRepository.currentUser!.email} แล้ว กรุณาเช็กอีเมลของคุณ',
-          isVerificationError: false
-        ));
+            isSendingVerification: false,
+            verificationMessage:
+                'ส่งลิงก์ไปยัง ${_authRepository.currentUser!.email} แล้ว กรุณาเช็กอีเมลของคุณ',
+            isVerificationError: false));
       } else {
         throw Exception("User not logged in");
       }
     } catch (e) {
       String message = 'เกิดข้อผิดพลาดในการส่งอีเมล';
-      if (e.toString().contains('too-many-requests') || e.toString().contains('ส่งอีเมลบ่อยเกินไป')) {
+      if (e.toString().contains('too-many-requests') ||
+          e.toString().contains('ส่งอีเมลบ่อยเกินไป')) {
         message = 'ส่งอีเมลถี่เกินไป กรุณารอสักครู่';
       }
       emit(currentState.copyWith(
-        isSendingVerification: false,
-        verificationMessage: message,
-        isVerificationError: true
-      ));
+          isSendingVerification: false,
+          verificationMessage: message,
+          isVerificationError: true));
     }
   }
-  
+
   void clearVerificationMessage() {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;

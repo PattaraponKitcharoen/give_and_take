@@ -174,10 +174,10 @@ class ListingRepository {
       }
     }
 
-    await _firestore
-        .collection('listings')
-        .doc(listing.listingId)
-        .update(listingToSave.toJson());
+    // owner_rating_scores is kept current by submitTradeReview; writing back
+    // the copy this screen loaded could undo a review that landed meanwhile.
+    final data = listingToSave.toJson()..remove('owner_rating_scores');
+    await _firestore.collection('listings').doc(listing.listingId).update(data);
   }
 
   Future<void> deleteListingAndRelatedData(String listingId) async {

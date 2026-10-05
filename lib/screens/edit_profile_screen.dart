@@ -483,11 +483,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
 
                     _buildDropdownField(
-                      label: 'ACADEMIC YEAR',
+                      label: 'ACADEMIC LEVEL',
                       value: _selectedAcademicYear,
-                      hintText: 'Select your academic year',
+                      hintText: 'Select your year or degree level',
                       icon: Icons.calendar_today_outlined,
-                      items: const ['ปี 1', 'ปี 2', 'ปี 3', 'ปี 4', 'ปี 5+'],
+                      items: const [
+                        'ชั้นปีที่ 1',
+                        'ชั้นปีที่ 2',
+                        'ชั้นปีที่ 3',
+                        'ชั้นปีที่ 4',
+                        'ชั้นปีที่ 5+',
+                        'ปริญญาโท',
+                        'ปริญญาเอก',
+                      ],
                       onChanged: (val) =>
                           setState(() => _selectedAcademicYear = val),
                     ),

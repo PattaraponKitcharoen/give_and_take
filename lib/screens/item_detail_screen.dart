@@ -659,8 +659,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     String ownerName =
         listing.ownerName.trim().isEmpty ? 'ผู้ใช้งาน' : listing.ownerName;
-    double ratingScore = listing.ownerRatingScores;
-    String profileImg = listing.ownerProfileImg;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -677,76 +675,93 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       ),
       child: Column(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(12),
-                  image: profileImg.isNotEmpty
-                      ? DecorationImage(
-                          image: NetworkImage(profileImg), fit: BoxFit.cover)
-                      : null,
-                ),
-                child: profileImg.isEmpty
-                    ? const Icon(Icons.person, color: Colors.grey)
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(ownerName,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    FutureBuilder<int>(
-                        future: context
-                            .read<OfferRepository>()
-                            .getSuccessfulTradesCount(listing.ownerId),
-                        builder: (context, tradeSnap) {
-                          int tradeCount = tradeSnap.data ?? 0;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('$tradeCount successful trades',
-                                  style: TextStyle(
-                                      color: Colors.grey.shade500,
-                                      fontSize: 11,
-                                      height: 1.2)),
-                            ],
-                          );
-                        }),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.star, color: Colors.orange, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                        ratingScore > 0
-                            ? ratingScore.toStringAsFixed(1)
-                            : 'New',
-                        style: const TextStyle(
-                            color: Colors.orange,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13)),
-                  ],
-                ),
-              )
-            ],
+          StreamBuilder<UserModel>(
+            stream:
+                context.read<UserRepository>().getUserStream(listing.ownerId),
+            builder: (context, ownerSnapshot) {
+              // Falls back to the listing's own (possibly stale, snapshotted
+              // at creation time) owner_profile_img / owner_rating_scores
+              // until the live user doc loads, so this reflects the owner's
+              // current profile picture and rating rather than the ones they
+              // had when they posted the listing.
+              final profileImg =
+                  ownerSnapshot.data?.profileImgUrl ?? listing.ownerProfileImg;
+              final ratingScore =
+                  ownerSnapshot.data?.rating ?? listing.ownerRatingScores;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(12),
+                      image: profileImg.isNotEmpty
+                          ? DecorationImage(
+                              image: NetworkImage(profileImg),
+                              fit: BoxFit.cover)
+                          : null,
+                    ),
+                    child: profileImg.isEmpty
+                        ? const Icon(Icons.person, color: Colors.grey)
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(ownerName,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        FutureBuilder<int>(
+                            future: context
+                                .read<OfferRepository>()
+                                .getSuccessfulTradesCount(listing.ownerId),
+                            builder: (context, tradeSnap) {
+                              int tradeCount = tradeSnap.data ?? 0;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('$tradeCount successful trades',
+                                      style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontSize: 11,
+                                          height: 1.2)),
+                                ],
+                              );
+                            }),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.star, color: Colors.orange, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                            ratingScore > 0
+                                ? ratingScore.toStringAsFixed(1)
+                                : 'New',
+                            style: const TextStyle(
+                                color: Colors.orange,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13)),
+                      ],
+                    ),
+                  )
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           SizedBox(
