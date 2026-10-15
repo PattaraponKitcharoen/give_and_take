@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../models/listing_model.dart';
+import '../../models/place_location.dart';
 import '../../models/user_model.dart';
 import '../../repositories/listing_repository.dart';
 import '../../repositories/user_repository.dart';
@@ -18,6 +19,8 @@ class HomeCubit extends Cubit<HomeState> {
   // pattern).
   List<ListingModel>? _latestItems;
   List<String>? _latestWishlist;
+  // The viewer's coarse position, for the 'nearest' sort and card distances.
+  PlaceLocation? _userLocation;
 
   HomeCubit({
     required ListingRepository listingRepository,
@@ -91,6 +94,7 @@ class HomeCubit extends Cubit<HomeState> {
         allItems: items,
         filteredItems: initialFiltered,
         wishlist: wishlist,
+        userLocation: _userLocation,
       ));
     }
   }
@@ -125,6 +129,21 @@ class HomeCubit extends Cubit<HomeState> {
     emit(currentState.copyWith(
       selectedCategories: newCategories,
       filteredItems: newFiltered,
+    ));
+  }
+
+  void setUserLocation(PlaceLocation? location) {
+    _userLocation = location;
+    if (state is! HomeLoaded) return;
+    final current = state as HomeLoaded;
+    emit(current.copyWith(
+      userLocation: location,
+      filteredItems: _applyCurrentFilters(
+        items: current.allItems,
+        wishlist: current.wishlist,
+        categories: current.selectedCategories,
+        sortBy: current.sortBy,
+      ),
     ));
   }
 
@@ -208,8 +227,17 @@ class HomeCubit extends Cubit<HomeState> {
       return true;
     }).toList();
 
+    final here = _userLocation;
     filtered.sort((a, b) {
-      if (sortBy == 'coins_asc') {
+      if (sortBy == 'nearest' && here != null) {
+        // Listings without a pickup point go last.
+        final da = a.location?.distanceKmTo(here) ?? double.infinity;
+        final db = b.location?.distanceKmTo(here) ?? double.infinity;
+        if (da != db) return da.compareTo(db);
+        final ta = a.createdAt ?? DateTime.now();
+        final tb = b.createdAt ?? DateTime.now();
+        return tb.compareTo(ta);
+      } else if (sortBy == 'coins_asc') {
         return a.estimatedCoins.compareTo(b.estimatedCoins);
       } else if (sortBy == 'coins_desc') {
         return b.estimatedCoins.compareTo(a.estimatedCoins);

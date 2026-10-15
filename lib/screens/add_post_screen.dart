@@ -1,24 +1,42 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubits/location/location_cubit.dart';
+import '../widgets/pickup_location_tile.dart';
 import '../cubits/add_post/add_post_cubit.dart';
 import '../cubits/add_post/add_post_state.dart';
+import '../cubits/listing_estimate/listing_estimate_cubit.dart';
+import '../cubits/listing_estimate/listing_estimate_state.dart';
+import '../models/listing_estimate.dart';
+import '../repositories/ai_repository.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/listing_repository.dart';
 import '../widgets/multi_image_picker.dart';
 import '../widgets/email_verification_dialog.dart';
+import '../widgets/ui/primary_button.dart';
+import '../theme/app_theme.dart';
 
 class AddPostScreen extends StatelessWidget {
   const AddPostScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => AddPostCubit(
-        listingRepository: context.read<ListingRepository>(),
-        userRepository: context.read<UserRepository>(),
-      ),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (context) => AddPostCubit(
+            listingRepository: context.read<ListingRepository>(),
+            userRepository: context.read<UserRepository>(),
+          ),
+        ),
+        BlocProvider(
+          create: (context) => ListingEstimateCubit(
+            aiRepository: context.read<AiRepository>(),
+          ),
+        ),
+      ],
       child: const _AddPostView(),
     );
   }
@@ -32,8 +50,8 @@ class _AddPostView extends StatefulWidget {
 }
 
 class _AddPostViewState extends State<_AddPostView> {
-  final Color primaryTeal = const Color(0xFF008080);
-  final Color bgColor = const Color(0xFFF8FAFC);
+  final Color primaryTeal = AppColors.primary;
+  final Color bgColor = AppColors.background;
 
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -75,10 +93,6 @@ class _AddPostViewState extends State<_AddPostView> {
   void _showCategoryPicker() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (context) {
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -91,15 +105,11 @@ class _AddPostViewState extends State<_AddPostView> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: AppColors.hairline,
                     borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 16),
-              const Text('เลือกหมวดหมู่',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87)),
+              const Text('เลือกหมวดหมู่', style: AppText.title),
               const SizedBox(height: 16),
               Expanded(
                 child: ListView.builder(
@@ -113,9 +123,8 @@ class _AddPostViewState extends State<_AddPostView> {
                       leading: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                            color: isSelected
-                                ? primaryTeal
-                                : primaryTeal.withOpacity(0.05),
+                            gradient: isSelected ? AppGradients.primary : null,
+                            color: isSelected ? null : AppColors.primarySoft,
                             shape: BoxShape.circle),
                         child: Icon(cat['icon'],
                             color: isSelected ? Colors.white : primaryTeal,
@@ -123,15 +132,14 @@ class _AddPostViewState extends State<_AddPostView> {
                       ),
                       title: Text(
                         cat['name'],
-                        style: TextStyle(
-                          fontSize: 15,
+                        style: AppText.body.copyWith(
                           fontWeight:
-                              isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? primaryTeal : Colors.black87,
+                              isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: isSelected ? primaryTeal : AppColors.ink,
                         ),
                       ),
                       trailing: isSelected
-                          ? Icon(Icons.check_circle, color: primaryTeal)
+                          ? Icon(Icons.check_circle_rounded, color: primaryTeal)
                           : null,
                       onTap: () {
                         setState(() => _selectedCategory = cat['name']);
@@ -169,7 +177,7 @@ class _AddPostViewState extends State<_AddPostView> {
     if (title.isEmpty || description.isEmpty || coinsText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: const Text('กรุณากรอกข้อมูลให้ครบถ้วน'),
-          backgroundColor: Colors.red.shade600,
+          backgroundColor: AppColors.danger,
           behavior: SnackBarBehavior.floating));
       return;
     }
@@ -178,7 +186,7 @@ class _AddPostViewState extends State<_AddPostView> {
     if (coins == null || coins <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: const Text('กรุณากรอกราคาประเมินเป็นตัวเลข'),
-          backgroundColor: Colors.red.shade600,
+          backgroundColor: AppColors.danger,
           behavior: SnackBarBehavior.floating));
       return;
     }
@@ -203,7 +211,188 @@ class _AddPostViewState extends State<_AddPostView> {
           condition: _selectedCondition,
           estimatedCoins: coins,
           images: imageInputs,
+          // Pickup point = where the user is now (already ~1 km coarse).
+          location: context.read<LocationCubit>().state.location,
         );
+  }
+
+  List<File> get _localImageFiles => _pickedImages
+      .whereType<LocalPickedImage>()
+      .map((entry) => entry.file)
+      .toList();
+
+  void _requestEstimate() {
+    FocusScope.of(context).unfocus();
+    // Whatever the owner already typed (brand, age, defects) helps the AI.
+    final hint = [
+      _titleController.text.trim(),
+      _descriptionController.text.trim()
+    ].where((t) => t.isNotEmpty).join(' — ');
+    context.read<ListingEstimateCubit>().estimate(_localImageFiles, hint: hint);
+  }
+
+  /// Fill the form from the AI suggestion. Text the owner already typed is
+  /// kept; everything stays editable before posting.
+  void _applyEstimate(ListingEstimate estimate) {
+    if (_titleController.text.trim().isEmpty && estimate.title.isNotEmpty) {
+      _titleController.text = estimate.title;
+    }
+    if (_descriptionController.text.trim().isEmpty &&
+        estimate.description.isNotEmpty) {
+      _descriptionController.text = estimate.description;
+    }
+    if (estimate.hasPrice) {
+      _coinsController.text = estimate.coinsSuggested.toString();
+    }
+    setState(() {
+      if (_categories.any((cat) => cat['name'] == estimate.category)) {
+        _selectedCategory = estimate.category;
+      }
+      if (_conditions.contains(estimate.condition)) {
+        _selectedCondition = estimate.condition;
+      }
+    });
+  }
+
+  Widget _buildAiAssist() {
+    return BlocConsumer<ListingEstimateCubit, ListingEstimateState>(
+      listener: (context, state) {
+        if (state is ListingEstimateSuccess) {
+          _applyEstimate(state.estimate);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: const Text(
+                  'AI กรอกข้อมูลให้แล้ว ตรวจสอบและแก้ไขได้ก่อนโพสต์'),
+              backgroundColor: primaryTeal,
+              behavior: SnackBarBehavior.floating));
+        } else if (state is ListingEstimateError) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.danger,
+              behavior: SnackBarBehavior.floating));
+        }
+      },
+      builder: (context, state) {
+        const aiColor = AppColors.student;
+        final aiDecoration = BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFF3F0FB), Color(0xFFE9F5F3)],
+          ),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: Colors.white),
+          boxShadow: AppShadows.raised,
+        );
+        if (state is ListingEstimateLoading) {
+          return Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: aiDecoration,
+            child: const Row(children: [
+              SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: aiColor)),
+              SizedBox(width: 12),
+              Expanded(
+                  child: Text(
+                      'AI กำลังดูรูปและประเมินมูลค่า… อาจใช้เวลาสักครู่',
+                      style: TextStyle(
+                          color: aiColor,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500))),
+            ]),
+          );
+        }
+        if (state is ListingEstimateSuccess) {
+          final e = state.estimate;
+          final confidence = switch (e.confidence) {
+            'high' => 'มั่นใจสูง',
+            'medium' => 'มั่นใจปานกลาง',
+            _ => 'มั่นใจต่ำ ควรตรวจสอบ',
+          };
+          return Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: aiDecoration,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      gradient: AppGradients.of(aiColor),
+                      shape: BoxShape.circle,
+                      boxShadow: AppShadows.glow(aiColor),
+                    ),
+                    child: const Icon(Icons.auto_awesome,
+                        color: Colors.white, size: 14),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                        e.hasPrice
+                            ? 'AI แนะนำ ${e.coinsSuggested} เหรียญ (ช่วง ${e.coinsMin}–${e.coinsMax})'
+                            : 'AI ประเมินมูลค่าไม่ได้',
+                        style: AppText.label
+                            .copyWith(color: aiColor, fontSize: 14.5)),
+                  ),
+                ]),
+                if (e.reason.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(e.reason,
+                      style: AppText.caption.copyWith(
+                          color: AppColors.inkSecondary, fontSize: 12.5)),
+                ],
+                const SizedBox(height: 8),
+                Row(children: [
+                  Text(confidence,
+                      style: AppText.caption.copyWith(
+                          color: AppColors.inkTertiary, fontSize: 11.5)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _requestEstimate,
+                    icon: const Icon(Icons.refresh, size: 16, color: aiColor),
+                    label: const Text('ประเมินใหม่',
+                        style: TextStyle(color: aiColor, fontSize: 12)),
+                    style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 32)),
+                  ),
+                ]),
+              ],
+            ),
+          );
+        }
+        final hasImages = _localImageFiles.isNotEmpty;
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: OutlinedButton.icon(
+            onPressed: hasImages ? _requestEstimate : null,
+            icon: Icon(Icons.auto_awesome,
+                size: 18, color: hasImages ? aiColor : AppColors.inkTertiary),
+            label: Text(
+                hasImages
+                    ? 'ให้ AI ช่วยกรอกข้อมูลและประเมินมูลค่า'
+                    : 'เพิ่มรูปเพื่อให้ AI ช่วยกรอกข้อมูล',
+                style: AppText.label.copyWith(
+                    fontSize: 14,
+                    color: hasImages ? aiColor : AppColors.inkTertiary)),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              backgroundColor:
+                  hasImages ? AppColors.studentSoft : AppColors.surface,
+              side: BorderSide(
+                  color: hasImages
+                      ? aiColor.withOpacity(0.35)
+                      : AppColors.hairline),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _resetForm() {
@@ -215,25 +404,13 @@ class _AddPostViewState extends State<_AddPostView> {
       _selectedCondition = 'มือสองสภาพดี';
       _pickedImages = [];
     });
+    context.read<ListingEstimateCubit>().reset();
   }
 
   InputDecoration _buildInputDecoration(String hintText, IconData icon) {
     return InputDecoration(
       hintText: hintText,
-      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-      prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
-      filled: true,
-      fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300)),
-      enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300)),
-      focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: primaryTeal, width: 1.5)),
+      prefixIcon: Icon(icon, color: AppColors.inkSecondary, size: 20),
     );
   }
 
@@ -242,11 +419,7 @@ class _AddPostViewState extends State<_AddPostView> {
       padding: const EdgeInsets.only(bottom: 12, top: 24),
       child: Text(
         title.toUpperCase(),
-        style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 13,
-            color: Colors.blueGrey.shade800,
-            letterSpacing: 0.5),
+        style: AppText.overline,
       ),
     );
   }
@@ -263,24 +436,22 @@ class _AddPostViewState extends State<_AddPostView> {
       child: Scaffold(
         backgroundColor: bgColor,
         appBar: AppBar(
-          backgroundColor: bgColor,
-          elevation: 0,
           centerTitle: true,
           leading: Padding(
             padding: const EdgeInsets.all(8.0),
-            child: CircleAvatar(
-              backgroundColor: Colors.white,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.hairline),
+              ),
               child: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new,
-                      size: 16, color: Colors.black87),
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                      size: 16, color: AppColors.ink),
                   onPressed: () => Navigator.pop(context)),
             ),
           ),
-          title: const Text('Add Item',
-              style: TextStyle(
-                  color: Colors.black87,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18)),
+          title: const Text('Add Item', style: AppText.subtitle),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
@@ -290,9 +461,13 @@ class _AddPostViewState extends State<_AddPostView> {
               _buildSectionTitle('Photos'),
               MultiImagePickerWidget(
                 images: _pickedImages,
-                onChanged: (updated) => setState(() => _pickedImages = updated),
+                onChanged: (updated) {
+                  setState(() => _pickedImages = updated);
+                  context.read<ListingEstimateCubit>().reset();
+                },
                 primaryColor: primaryTeal,
               ),
+              _buildAiAssist(),
               _buildSectionTitle('Item Details'),
               TextField(
                   controller: _titleController,
@@ -312,9 +487,9 @@ class _AddPostViewState extends State<_AddPostView> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(color: AppColors.hairline),
                   ),
                   child: Row(
                     children: [
@@ -327,11 +502,10 @@ class _AddPostViewState extends State<_AddPostView> {
                       Expanded(
                           child: Text(
                         _selectedCategory,
-                        style: const TextStyle(
-                            fontSize: 14, color: Colors.black87),
+                        style: AppText.body,
                       )),
-                      Icon(Icons.keyboard_arrow_down,
-                          color: Colors.grey.shade400),
+                      const Icon(Icons.keyboard_arrow_down_rounded,
+                          color: AppColors.inkTertiary),
                     ],
                   ),
                 ),
@@ -348,20 +522,20 @@ class _AddPostViewState extends State<_AddPostView> {
                       if (selected)
                         setState(() => _selectedCondition = condition);
                     },
-                    selectedColor: primaryTeal, backgroundColor: Colors.white,
-                    labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : Colors.grey.shade700,
+                    selectedColor: AppColors.ink,
+                    backgroundColor: AppColors.surface,
+                    labelStyle: AppText.label.copyWith(
+                        color:
+                            isSelected ? Colors.white : AppColors.inkSecondary,
                         fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 13),
+                            isSelected ? FontWeight.w600 : FontWeight.w500),
                     showCheckmark: false,
                     // 🟢 2. เอา avatar: ที่วาดรูปติ๊กถูกออกไปแล้ว Layout จะได้ไม่ยืดหด
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                    shape: StadiumBorder(
                         side: BorderSide(
                             color: isSelected
-                                ? primaryTeal
-                                : Colors.grey.shade300)),
+                                ? AppColors.ink
+                                : AppColors.hairline)),
                   );
                 }).toList(),
               ),
@@ -369,17 +543,18 @@ class _AddPostViewState extends State<_AddPostView> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                    color: primaryTeal.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(8)),
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(AppRadius.sm)),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 16, color: primaryTeal),
+                    Icon(Icons.info_outline_rounded,
+                        size: 16, color: primaryTeal),
                     const SizedBox(width: 8),
                     Expanded(
                         child: Text(
                             'การระบุสภาพตามจริงจะช่วยให้การแลกเปลี่ยนเป็นไปอย่างราบรื่น',
-                            style:
-                                TextStyle(color: primaryTeal, fontSize: 12))),
+                            style: AppText.caption
+                                .copyWith(color: AppColors.primaryDark))),
                   ],
                 ),
               ),
@@ -394,7 +569,18 @@ class _AddPostViewState extends State<_AddPostView> {
                 padding: EdgeInsets.only(top: 8, left: 4),
                 child: Text(
                     'ช่วยให้ผู้อื่นคำนวณการใช้เหรียญเพื่อชดเชยส่วนต่างได้',
-                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    style: AppText.caption),
+              ),
+              _buildSectionTitle('Pickup Location'),
+              BlocBuilder<LocationCubit, LocationState>(
+                builder: (context, loc) => PickupLocationTile(
+                  location: loc.location,
+                  loading: loc.loading,
+                  actionLabel: loc.location == null ? 'ใช้ตำแหน่ง' : 'อัปเดต',
+                  onUseCurrent: () => context
+                      .read<LocationCubit>()
+                      .refresh(askPermission: true),
+                ),
               ),
               const SizedBox(height: 40),
             ],
@@ -404,60 +590,32 @@ class _AddPostViewState extends State<_AddPostView> {
           child: Padding(
             padding:
                 const EdgeInsets.only(left: 20, right: 20, bottom: 16, top: 8),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                      color: primaryTeal.withOpacity(0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5))
-                ],
-              ),
-              child: BlocConsumer<AddPostCubit, AddPostState>(
-                listener: (context, state) {
-                  if (state is AddPostSuccess) {
-                    _resetForm();
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: const Text('โพสต์สิ่งของสำเร็จ!'),
-                        backgroundColor: primaryTeal,
-                        behavior: SnackBarBehavior.floating));
-                    Navigator.pop(context);
-                  } else if (state is AddPostError) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(state.message),
-                        backgroundColor: Colors.red.shade600,
-                        behavior: SnackBarBehavior.floating));
-                  }
-                },
-                builder: (context, state) {
-                  final isSubmitting = state is AddPostSubmitting;
-                  return ElevatedButton.icon(
-                    onPressed: isSubmitting ? null : _submitPost,
-                    icon: isSubmitting
-                        ? const SizedBox.shrink()
-                        : const Icon(Icons.send, color: Colors.white, size: 18),
-                    label: isSubmitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2))
-                        : const Text('Post Item',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
+            child: BlocConsumer<AddPostCubit, AddPostState>(
+              listener: (context, state) {
+                if (state is AddPostSuccess) {
+                  _resetForm();
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: const Text('โพสต์สิ่งของสำเร็จ!'),
                       backgroundColor: primaryTeal,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
-                    ),
-                  );
-                },
-              ),
+                      behavior: SnackBarBehavior.floating));
+                  Navigator.pop(context);
+                } else if (state is AddPostError) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: AppColors.danger,
+                      behavior: SnackBarBehavior.floating));
+                }
+              },
+              builder: (context, state) {
+                final isSubmitting = state is AddPostSubmitting;
+                return PrimaryButton(
+                  onPressed: _submitPost,
+                  isLoading: isSubmitting,
+                  icon: Icons.send_rounded,
+                  height: 56,
+                  child: const Text('Post Item'),
+                );
+              },
             ),
           ),
         ),

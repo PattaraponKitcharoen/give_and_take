@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../models/place_location.dart';
 import '../models/user_model.dart';
 
 class UserRepository {
@@ -91,6 +92,11 @@ class UserRepository {
         'wishlist': FieldValue.arrayUnion([listingId])
       });
     }
+  }
+
+  Future<bool> userExists(String uid) async {
+    final snapshot = await _firestore.collection('users').doc(uid).get();
+    return snapshot.exists;
   }
 
   Future<void> createUser(UserModel user) async {
@@ -247,16 +253,11 @@ class UserRepository {
     }
   }
 
-  Future<void> updateUserLocation(String uid, double lat, double lng,
-      String district, String province) async {
+  /// Saves the user's coarse (~1 km) position. Other signed-in users can
+  /// read user docs, so an exact fix must never be written here.
+  Future<void> updateUserLocation(String uid, PlaceLocation location) async {
     await _firestore.collection('users').doc(uid).set({
-      'location': {
-        'latitude': lat,
-        'longitude': lng,
-        'district': district,
-        'province': province,
-        'display_name': '$district, $province',
-      },
+      'location': location.toMap(),
       'updated_at': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import '../../models/listing_model.dart';
+import '../../models/place_location.dart';
 
 abstract class HomeState extends Equatable {
   const HomeState();
@@ -14,8 +15,9 @@ class HomeLoaded extends HomeState {
   final List<ListingModel> allItems; // Original list from stream
   final List<ListingModel> filteredItems; // Items shown to user
   final List<String> selectedCategories;
-  final String sortBy; // 'newest', 'coins_asc', 'coins_desc'
+  final String sortBy; // 'newest', 'nearest', 'coins_asc', 'coins_desc'
   final List<String> wishlist; // listingIds in the current user's wishlist
+  final PlaceLocation? userLocation; // viewer's ~1 km position, if known
 
   const HomeLoaded({
     required this.allItems,
@@ -23,6 +25,7 @@ class HomeLoaded extends HomeState {
     this.selectedCategories = const ['All'],
     this.sortBy = 'newest',
     this.wishlist = const [],
+    this.userLocation,
   });
 
   HomeLoaded copyWith({
@@ -31,6 +34,7 @@ class HomeLoaded extends HomeState {
     List<String>? selectedCategories,
     String? sortBy,
     List<String>? wishlist,
+    PlaceLocation? userLocation,
   }) {
     return HomeLoaded(
       allItems: allItems ?? this.allItems,
@@ -38,6 +42,7 @@ class HomeLoaded extends HomeState {
       selectedCategories: selectedCategories ?? this.selectedCategories,
       sortBy: sortBy ?? this.sortBy,
       wishlist: wishlist ?? this.wishlist,
+      userLocation: userLocation ?? this.userLocation,
     );
   }
 
@@ -48,6 +53,7 @@ class HomeLoaded extends HomeState {
         selectedCategories,
         sortBy,
         wishlist,
+        userLocation,
       ];
 }
 

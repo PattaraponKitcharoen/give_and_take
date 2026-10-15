@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../models/place_location.dart';
 import '../../models/listing_model.dart';
 import '../../repositories/listing_repository.dart';
 import '../../repositories/user_repository.dart';
@@ -23,6 +24,7 @@ class AddPostCubit extends Cubit<AddPostState> {
     required String condition,
     required int estimatedCoins,
     List<ListingImageInput> images = const [],
+    PlaceLocation? location,
   }) async {
     emit(AddPostSubmitting());
     try {
@@ -45,6 +47,7 @@ class AddPostCubit extends Cubit<AddPostState> {
         images: const [],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
+        location: location,
       );
 
       await _listingRepository.createListing(listing, images: images);

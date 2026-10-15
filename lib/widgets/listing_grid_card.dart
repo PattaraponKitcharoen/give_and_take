@@ -4,6 +4,8 @@ import '../models/user_model.dart';
 import '../repositories/user_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../screens/item_detail_screen.dart';
+import '../theme/app_theme.dart';
+import 'ui/glass.dart';
 
 /// The item card used by both the main feed grid (home_screen.dart) and the
 /// student-only listings screen — pulled out once both needed the exact same
@@ -13,13 +15,16 @@ class ListingGridCard extends StatelessWidget {
   final bool isWishlisted;
   final Future<void> Function(ListingModel item) onToggleWishlist;
   final Color accentColor;
+  // "~1.2 กม." from the viewer; shown on the photo when given.
+  final String? distanceLabel;
 
   const ListingGridCard({
     super.key,
     required this.item,
     required this.isWishlisted,
     required this.onToggleWishlist,
-    this.accentColor = const Color(0xFF008080),
+    this.accentColor = AppColors.primary,
+    this.distanceLabel,
   });
 
   Future<void> _handleToggleWishlist(BuildContext context) async {
@@ -30,7 +35,7 @@ class ListingGridCard extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('บันทึกรายการโปรดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -48,183 +53,219 @@ class ListingGridCard extends StatelessWidget {
         item.ownerName.trim().isEmpty ? 'ผู้ใช้งาน' : item.ownerName;
     final ratingScore = item.ownerRatingScores;
 
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => ItemDetailScreen(listing: item)));
-      },
-      child: Container(
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4))
-            ]),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AspectRatio(
-              aspectRatio: 1.0,
-              child: Stack(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(16))),
-                    child: thumbnail.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(16)),
-                            child: Image.network(thumbnail, fit: BoxFit.cover))
-                        : const Center(
-                            child: Icon(Icons.image,
-                                size: 40, color: Colors.black12)),
-                  ),
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: accentColor,
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Row(children: [
-                        const Icon(Icons.monetization_on,
-                            color: Colors.white, size: 12),
-                        const SizedBox(width: 4),
-                        Text('$coins',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold))
-                      ]),
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: GestureDetector(
-                      onTap: () => _handleToggleWishlist(context),
-                      child: CircleAvatar(
-                        radius: 14,
-                        backgroundColor: Colors.white,
-                        child: Icon(
-                            isWishlisted
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            size: 16,
-                            color: isWishlisted
-                                ? Colors.red
-                                : Colors.grey.shade400),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadows.raised,
+      ),
+      child: Material(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => ItemDetailScreen(listing: item)));
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: AppColors.hairline.withOpacity(0.6)),
             ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Colors.black87),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            StreamBuilder<UserModel>(
-                              stream: context
-                                  .read<UserRepository>()
-                                  .getUserStream(item.ownerId),
-                              builder: (context, ownerSnapshot) {
-                                // Falls back to the listing's own (possibly
-                                // stale, snapshotted at creation time)
-                                // owner_profile_img until the live user doc
-                                // loads, so the avatar always reflects the
-                                // owner's current profile picture rather
-                                // than the one they had when they posted.
-                                final profileImg =
-                                    ownerSnapshot.data?.profileImgUrl ??
-                                        item.ownerProfileImg;
-                                return CircleAvatar(
-                                    radius: 8,
-                                    backgroundColor: Colors.grey.shade300,
-                                    backgroundImage: profileImg.isNotEmpty
-                                        ? NetworkImage(profileImg)
-                                        : null,
-                                    child: profileImg.isEmpty
-                                        ? const Icon(Icons.person,
-                                            size: 10, color: Colors.white)
-                                        : null);
-                              },
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                                child: Text(ownerName,
-                                    maxLines: 1,
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade700),
-                                    overflow: TextOverflow.ellipsis)),
-                          ],
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Fills whatever height the grid cell leaves after the text
+                // block, so the card never overflows on narrow/wide screens.
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Container(
+                          color: AppColors.surfaceMuted,
+                          child: thumbnail.isNotEmpty
+                              ? Image.network(thumbnail, fit: BoxFit.cover)
+                              : const Center(
+                                  child: Icon(Icons.image_outlined,
+                                      size: 36, color: AppColors.inkTertiary)),
                         ),
+                        Positioned(
+                          left: 8,
+                          bottom: 8,
+                          child: Glass(
+                            tint: AppColors.ink,
+                            opacity: 0.42,
+                            blur: 12,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.toll_rounded,
+                                  color: Colors.white, size: 12),
+                              const SizedBox(width: 4),
+                              Text('$coins',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.2))
+                            ]),
+                          ),
+                        ),
+                        if (distanceLabel != null)
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            child: Glass(
+                              tint: AppColors.ink,
+                              opacity: 0.42,
+                              blur: 12,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 4),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.near_me_rounded,
+                                        color: Colors.white, size: 11),
+                                    const SizedBox(width: 3),
+                                    Text(distanceLabel!,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600)),
+                                  ]),
+                            ),
+                          ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: () => _handleToggleWishlist(context),
+                            child: Glass(
+                              blur: 12,
+                              opacity: 0.7,
+                              child: SizedBox(
+                                width: 30,
+                                height: 30,
+                                child: Icon(
+                                    isWishlisted
+                                        ? Icons.favorite_rounded
+                                        : Icons.favorite_border_rounded,
+                                    size: 16,
+                                    color: isWishlisted
+                                        ? AppColors.danger
+                                        : AppColors.ink),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 10, 6, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: AppText.label.copyWith(fontSize: 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                StreamBuilder<UserModel>(
+                                  stream: context
+                                      .read<UserRepository>()
+                                      .getUserStream(item.ownerId),
+                                  builder: (context, ownerSnapshot) {
+                                    // Falls back to the listing's own (possibly
+                                    // stale, snapshotted at creation time)
+                                    // owner_profile_img until the live user doc
+                                    // loads, so the avatar always reflects the
+                                    // owner's current profile picture rather
+                                    // than the one they had when they posted.
+                                    final profileImg =
+                                        ownerSnapshot.data?.profileImgUrl ??
+                                            item.ownerProfileImg;
+                                    return CircleAvatar(
+                                        radius: 8,
+                                        backgroundColor: AppColors.surfaceMuted,
+                                        backgroundImage: profileImg.isNotEmpty
+                                            ? NetworkImage(profileImg)
+                                            : null,
+                                        child: profileImg.isEmpty
+                                            ? const Icon(Icons.person,
+                                                size: 10,
+                                                color: AppColors.inkTertiary)
+                                            : null);
+                                  },
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                    child: Text(ownerName,
+                                        maxLines: 1,
+                                        style: AppText.caption
+                                            .copyWith(fontSize: 11),
+                                        overflow: TextOverflow.ellipsis)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.star_rounded,
+                              size: 13, color: AppColors.gold),
+                          const SizedBox(width: 2),
+                          Text(
+                              ratingScore > 0
+                                  ? ratingScore.toStringAsFixed(1)
+                                  : 'New',
+                              style: AppText.caption.copyWith(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.ink)),
+                        ],
                       ),
-                      Row(children: [
-                        const Icon(Icons.star, size: 12, color: Colors.amber),
-                        const SizedBox(width: 2),
-                        Text(
-                            ratingScore > 0
-                                ? ratingScore.toStringAsFixed(1)
-                                : 'New',
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey.shade800))
-                      ]),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        height: 32,
+                        decoration: BoxDecoration(
+                            gradient: AppGradients.of(accentColor),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: accentColor.withOpacity(0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3))
+                            ]),
+                        child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.swap_horiz_rounded,
+                                  color: Colors.white, size: 15),
+                              SizedBox(width: 6),
+                              Text('Swap',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12.5,
+                                      letterSpacing: 0.2))
+                            ]),
+                      )
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    decoration: BoxDecoration(
-                        color: accentColor,
-                        borderRadius: BorderRadius.circular(8)),
-                    child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.swap_horiz, color: Colors.white, size: 14),
-                          SizedBox(width: 4),
-                          Text('Swap',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12))
-                        ]),
-                  )
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

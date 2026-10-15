@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:flutter_bloc/flutter_bloc.dart'; // 🟢 เพิ่ม BLoC
 import 'item_search_delegate.dart';
 import 'notification_screen.dart';
 import 'profile_screen.dart';
 import 'student_listings_screen.dart';
+import 'match_screen.dart';
+import '../cubits/match/match_badge_cubit.dart';
+import '../repositories/match_repository.dart';
 import '../cubits/home/home_cubit.dart';
+import '../cubits/location/location_cubit.dart';
+import '../models/place_location.dart';
+import '../repositories/location_repository.dart';
 import '../cubits/home/home_state.dart';
 import '../repositories/listing_repository.dart';
 import '../repositories/auth_repository.dart';
@@ -15,6 +20,7 @@ import '../repositories/user_repository.dart';
 import '../repositories/chat_repository.dart';
 import '../models/user_model.dart';
 import '../widgets/listing_grid_card.dart';
+import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,20 +30,40 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final Color tealColor = const Color(0xFF008080);
-  final Color bgColor = const Color(0xFFF4F6F8);
+  final Color tealColor = AppColors.primary;
+  final Color bgColor = AppColors.background;
 
   String? get currentUserId => context.read<AuthRepository>().currentUser?.uid;
 
-  // 🟢 เพิ่มตัวแปรสำหรับระบบ Location
-  String _currentLocation = 'หาดใหญ่, สงขลา';
-  bool _isLoadingLocation = false;
 
   final PageController _bannerPageController = PageController();
   int _currentBannerPage = 0;
+  static const int _bannerCount = 2;
+  // Auto-advances the banner carousel; restarted whenever the page changes
+  // so a manual swipe gets a full 5 s before the next automatic move.
+  Timer? _bannerTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _restartBannerTimer();
+  }
+
+  void _restartBannerTimer() {
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_bannerPageController.hasClients) return;
+      _bannerPageController.animateToPage(
+        (_currentBannerPage + 1) % _bannerCount,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
 
   @override
   void dispose() {
+    _bannerTimer?.cancel();
     _bannerPageController.dispose();
     super.dispose();
   }
@@ -57,84 +83,22 @@ class _HomeScreenState extends State<HomeScreen> {
     'อื่นๆ (Miscellaneous)'
   ];
 
-  // 🟢 ฟังก์ชันหลักสำหรับขอสิทธิ์และดึงตำแหน่ง
-  Future<void> _updateLocation() async {
-    setState(() => _isLoadingLocation = true);
-
-    try {
-      bool serviceEnabled;
-      LocationPermission permission;
-
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _showSnackBar('กรุณาเปิดบริการตำแหน่ง (GPS) ในเครื่องของคุณ');
-        setState(() => _isLoadingLocation = false);
-        return;
-      }
-
-      permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          _showSnackBar(
-              'ไม่สามารถอัปเดตได้เนื่องจากคุณปฏิเสธการเข้าถึงตำแหน่ง');
-          setState(() => _isLoadingLocation = false);
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        _showSnackBar(
-            'การเข้าถึงตำแหน่งถูกปฏิเสธถาวร กรุณาไปเปิดในการตั้งค่าของเครื่อง');
-        setState(() => _isLoadingLocation = false);
-        return;
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-          locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.high));
-
-      List<Placemark> placemarks =
-          await placemarkFromCoordinates(position.latitude, position.longitude);
-
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks.first;
-
-        String district = place.subAdministrativeArea ?? '';
-        String province = place.administrativeArea ?? '';
-
-        district =
-            district.replaceAll('อำเภอ', '').replaceAll('เขต', '').trim();
-        province = province.replaceAll('จังหวัด', '').trim();
-
-        String newLocationInfo = '$district, $province';
-
-        if (!mounted) return;
-        setState(() {
-          _currentLocation = newLocationInfo;
-          _isLoadingLocation = false;
-        });
-
-        await _saveLocationToDatabase(
-            position.latitude, position.longitude, district, province);
-
-        _showSnackBar('อัปเดตตำแหน่งของคุณเป็น $newLocationInfo เรียบร้อยแล้ว');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoadingLocation = false);
-      _showSnackBar('เกิดข้อผิดพลาดในการค้นหาตำแหน่ง: $e');
-    }
-  }
-
-  Future<void> _saveLocationToDatabase(
-      double lat, double lng, String district, String province) async {
-    final uid = currentUserId;
-    if (uid != null) {
-      await context
-          .read<UserRepository>()
-          .updateUserLocation(uid, lat, lng, district, province);
-    }
+  /// Tapping the location bar: ask again (shows the system prompt if the
+  /// user hasn't decided yet) and explain what's wrong if it still fails.
+  Future<void> _refreshLocation() async {
+    final cubit = context.read<LocationCubit>();
+    await cubit.refresh(askPermission: true);
+    if (!mounted) return;
+    final issue = cubit.state.issue;
+    if (issue == null) return;
+    _showSnackBar(switch (issue) {
+      LocationIssue.serviceOff => 'กรุณาเปิดบริการตำแหน่ง (GPS) ในเครื่องของคุณ',
+      LocationIssue.denied =>
+        'ไม่สามารถอัปเดตได้เนื่องจากคุณปฏิเสธการเข้าถึงตำแหน่ง',
+      LocationIssue.deniedForever =>
+        'การเข้าถึงตำแหน่งถูกปฏิเสธถาวร กรุณาไปเปิดในการตั้งค่าของเครื่อง',
+      LocationIssue.failed => 'หาตำแหน่งไม่สำเร็จ ลองใหม่อีกครั้ง',
+    });
   }
 
   void _showSnackBar(String message) {
@@ -180,6 +144,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: () {
                       cubit.updateSort('newest');
                       Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.near_me_outlined),
+                    title: const Text('ใกล้ฉันที่สุด'),
+                    subtitle: state is HomeLoaded && state.userLocation == null
+                        ? const Text('ต้องเปิดตำแหน่งก่อน')
+                        : null,
+                    trailing: sortBy == 'nearest'
+                        ? Icon(Icons.check, color: tealColor)
+                        : null,
+                    onTap: () {
+                      cubit.updateSort('nearest');
+                      Navigator.pop(context);
+                      if (context.read<LocationCubit>().state.location ==
+                          null) {
+                        _refreshLocation();
+                      }
                     },
                   ),
                   ListTile(
@@ -240,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
+                            color: AppColors.hairline,
                             borderRadius: BorderRadius.circular(2)),
                       ),
                     ),
@@ -252,10 +234,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.black87)),
+                                color: AppColors.ink)),
                         GestureDetector(
                           onTap: () => Navigator.pop(context),
-                          child: Icon(Icons.close, color: Colors.grey.shade600),
+                          child: Icon(Icons.close, color: AppColors.inkSecondary),
                         )
                       ],
                     ),
@@ -281,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               backgroundColor: Colors.white,
                               labelStyle: TextStyle(
                                   color:
-                                      isActive ? Colors.white : Colors.black87,
+                                      isActive ? Colors.white : AppColors.ink,
                                   fontWeight: isActive
                                       ? FontWeight.bold
                                       : FontWeight.normal,
@@ -291,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   side: BorderSide(
                                       color: isActive
                                           ? tealColor
-                                          : Colors.grey.shade300)),
+                                          : AppColors.hairline)),
                               showCheckmark: false,
                             );
                           }).toList(),
@@ -326,28 +308,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => HomeCubit(
-        listingRepository: context.read<ListingRepository>(),
-        userRepository: context.read<UserRepository>(),
-        currentUserId: currentUserId ?? '',
-      )..fetchItems(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (context) => HomeCubit(
+            listingRepository: context.read<ListingRepository>(),
+            userRepository: context.read<UserRepository>(),
+            currentUserId: currentUserId ?? '',
+          )
+            ..setUserLocation(context.read<LocationCubit>().state.location)
+            ..fetchItems(),
+        ),
+        BlocProvider(
+          create: (context) => MatchBadgeCubit(
+            matchRepository: context.read<MatchRepository>(),
+            userId: currentUserId ?? '',
+          ),
+        ),
+      ],
       child: Builder(builder: (context) {
-        return Scaffold(
+        return BlocListener<LocationCubit, LocationState>(
+          listenWhen: (a, b) => a.location != b.location,
+          listener: (context, loc) =>
+              context.read<HomeCubit>().setUserLocation(loc.location),
+          child: Scaffold(
           backgroundColor: bgColor,
           appBar: AppBar(
             backgroundColor: bgColor,
             elevation: 0,
+            titleSpacing: AppSpace.page,
             title: Row(
               children: [
                 Image.asset('assets/logo.png',
-                    width: 40, height: 40, fit: BoxFit.contain),
-                const SizedBox(width: 4),
-                Text('Give & Take',
+                    width: 34, height: 34, fit: BoxFit.contain),
+                const SizedBox(width: 8),
+                const Text('Give & Take',
                     style: TextStyle(
-                        color: tealColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 22)),
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.5,
+                        fontSize: 21)),
               ],
             ),
             actions: [
@@ -361,13 +361,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   bool hasUnreadNoti = snapshot.data ?? false;
 
                   return Container(
-                    margin: const EdgeInsets.only(right: 12),
-                    width: 40,
-                    height: 40,
+                    margin: const EdgeInsets.only(right: 10),
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white,
-                        border: Border.all(color: Colors.grey.shade300)),
+                        color: AppColors.surface,
+                        border: Border.all(color: AppColors.hairline)),
                     child: Stack(
                       alignment: Alignment.center,
                       clipBehavior: Clip.none,
@@ -375,8 +375,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         IconButton(
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
-                          icon: const Icon(Icons.notifications_none,
-                              color: Colors.black87, size: 22),
+                          icon: const Icon(Icons.notifications_none_rounded,
+                              color: AppColors.ink, size: 22),
                           onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -385,16 +385,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         if (hasUnreadNoti)
                           Positioned(
-                              right: 0,
-                              top: 0,
+                              right: 9,
+                              top: 9,
                               child: Container(
-                                  width: 10,
-                                  height: 10,
+                                  width: 9,
+                                  height: 9,
                                   decoration: BoxDecoration(
-                                      color: Colors.red,
+                                      color: AppColors.danger,
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                          color: Colors.white, width: 2)))),
+                                          color: Colors.white, width: 1.5)))),
                       ],
                     ),
                   );
@@ -417,18 +417,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         MaterialPageRoute(
                             builder: (context) => const ProfileScreen())),
                     child: Container(
-                      margin: const EdgeInsets.only(right: 16),
-                      width: 40,
-                      height: 40,
+                      margin: const EdgeInsets.only(right: AppSpace.page),
+                      width: 42,
+                      height: 42,
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.hairline)),
                       child: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.grey.shade300,
+                        backgroundColor: AppColors.surfaceMuted,
                         backgroundImage: profileImg.isNotEmpty
                             ? NetworkImage(profileImg)
                             : null,
                         child: profileImg.isEmpty
                             ? const Icon(Icons.person,
-                                color: Colors.white, size: 20)
+                                color: AppColors.inkTertiary, size: 20)
                             : null,
                       ),
                     ),
@@ -461,8 +464,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               _buildProductGrid(context),
-              const SliverToBoxAdapter(child: SizedBox(height: 30)),
+              // 30 + room for the floating glass nav bar.
+              SliverToBoxAdapter(
+                  child: SizedBox(
+                      height: 30 + MediaQuery.paddingOf(context).bottom)),
             ],
+          ),
           ),
         );
       }),
@@ -471,7 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSearchBar(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(AppSpace.page, 8, AppSpace.page, 4),
       child: Row(
         children: [
           Expanded(
@@ -479,32 +486,34 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () =>
                   showSearch(context: context, delegate: ItemSearchDelegate()),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                height: 50,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.grey.shade300)),
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(color: AppColors.hairline)),
                 child: Row(children: [
-                  Icon(Icons.search, color: Colors.grey.shade500, size: 20),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.search_rounded,
+                      color: AppColors.inkSecondary, size: 21),
+                  const SizedBox(width: 10),
                   Text('ค้นหาสิ่งของ...',
-                      style:
-                          TextStyle(color: Colors.grey.shade500, fontSize: 14))
+                      style: AppText.bodySecondary
+                          .copyWith(color: AppColors.inkTertiary))
                 ]),
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           GestureDetector(
             onTap: () => _showSortOptions(context),
             child: Container(
-                padding: const EdgeInsets.all(12),
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300)),
-                child: const Icon(Icons.tune, color: Colors.black87, size: 20)),
+                    color: AppColors.ink,
+                    borderRadius: BorderRadius.circular(AppRadius.md)),
+                child: const Icon(Icons.tune_rounded,
+                    color: Colors.white, size: 21)),
           )
         ],
       ),
@@ -513,83 +522,186 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildLocationBar() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(AppSpace.page, 12, AppSpace.page, 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          GestureDetector(
-            onTap: _isLoadingLocation ? null : _updateLocation,
-            child: Row(
+          BlocBuilder<LocationCubit, LocationState>(
+            builder: (context, loc) {
+              final name = loc.location?.displayName ?? '';
+              return GestureDetector(
+                onTap: loc.loading ? null : _refreshLocation,
+                child: Row(
+                  children: [
+                    const Icon(Icons.place_outlined,
+                        color: AppColors.primary, size: 18),
+                    const SizedBox(width: 6),
+                    loc.loading && loc.location == null
+                        ? const SizedBox(
+                            height: 14,
+                            width: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : Text(
+                            name.isNotEmpty
+                                ? name
+                                : (loc.location != null
+                                    ? 'ตำแหน่งปัจจุบัน'
+                                    : 'แตะเพื่อใช้ตำแหน่งของคุณ'),
+                            style: AppText.label),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.inkSecondary, size: 18)
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Shared look for both carousel banners: solid deep colour, a fine
+  // highlight in the corner, small overline chip and a large headline.
+  Widget _bannerShell(
+      {required Color color,
+      required IconData chipIcon,
+      required String chip,
+      required String headline,
+      Widget? footer}) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(color, Colors.white, 0.16)!,
+            color,
+            Color.lerp(color, Colors.black, 0.12)!
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        boxShadow: [
+          BoxShadow(
+              color: color.withOpacity(0.22),
+              blurRadius: 16,
+              offset: const Offset(0, 6)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: DecoratedBox(
+                decoration: BoxDecoration(gradient: AppGradients.gloss)),
+          ),
+          Positioned(
+            right: -40,
+            top: -50,
+            child: Container(
+              width: 170,
+              height: 170,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Colors.white.withOpacity(0.10), width: 22),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSpace.xxl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.location_on, color: tealColor, size: 18),
-                const SizedBox(width: 4),
-                _isLoadingLocation
-                    ? const SizedBox(
-                        height: 14,
-                        width: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text(_currentLocation,
-                        style: const TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14)),
-                const SizedBox(width: 4),
-                const Icon(Icons.keyboard_arrow_down,
-                    color: Colors.grey, size: 18)
+                Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(chipIcon, color: Colors.white, size: 12),
+                      const SizedBox(width: 5),
+                      Text(chip,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.4))
+                    ])),
+                const SizedBox(height: 12),
+                Text(headline,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        height: 1.25)),
+                if (footer != null) ...[const SizedBox(height: 10), footer],
               ],
             ),
           ),
-          Text('ใกล้ฉัน',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
         ],
       ),
     );
   }
 
-  // Banners live inside the carousel's own SizedBox(height: 160)/PageView
-  // now, so unlike before, they no longer set their own height or vertical
-  // margin — the carousel wrapper (_buildBannerCarousel) owns that.
-  Widget _buildHeroBanner() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-          gradient: LinearGradient(
-              colors: [tealColor, const Color(0xFF20B2AA)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight),
-          borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8)),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 12),
-                SizedBox(width: 4),
-                Text('Verified Traders Only',
-                    style: TextStyle(color: Colors.white, fontSize: 10))
-              ])),
-          const SizedBox(height: 12),
-          const Text('Trade what you have.\nGet what you need.',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  height: 1.2)),
-        ],
+  // Entry to "แลกตามความต้องการ" (want-based matching). Shows how many
+  // matches the user hasn't opened yet.
+  Widget _buildMatchBanner() {
+    return GestureDetector(
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (context) => const MatchScreen())),
+      child: BlocBuilder<MatchBadgeCubit, int>(
+        builder: (context, unseen) => Stack(
+          children: [
+            Positioned.fill(
+              child: _bannerShell(
+                color: AppColors.primary,
+                chipIcon: Icons.sync_alt_rounded,
+                chip: 'Match',
+                headline: 'แลกตามความต้องการ\nบอกสิ่งที่อยากได้ เราหาคู่แลกให้',
+                footer: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(unseen > 0 ? 'ดูแมตช์' : 'เริ่มเลย',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white, size: 15),
+                ]),
+              ),
+            ),
+            if (unseen > 0)
+              Positioned(
+                top: 14,
+                right: AppSpace.page + 14,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    boxShadow: AppShadows.glow(AppColors.danger),
+                  ),
+                  child: Text('$unseen แมตช์ใหม่',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  // Purple/violet to read as clearly distinct from the teal "everyone"
+  // Muted plum to read as clearly distinct from the brand-teal "everyone"
   // banner — this one filters down to student-owned listings only.
   Widget _buildStudentBanner() {
-    const studentColor = Color(0xFF7C3AED);
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -597,76 +709,50 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute(
                 builder: (context) => const StudentListingsScreen()));
       },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-            gradient: const LinearGradient(
-                colors: [studentColor, Color(0xFFA78BFA)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(20)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8)),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.school, color: Colors.white, size: 12),
-                  SizedBox(width: 4),
-                  Text('Student',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold))
-                ])),
-            const SizedBox(height: 12),
-            const Text('ตลาดนักศึกษา\nแลกเปลี่ยนกับเพื่อนนักศึกษาเท่านั้น',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    height: 1.2)),
-            const SizedBox(height: 8),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('ดูทั้งหมด',
-                  style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(width: 4),
-              const Icon(Icons.arrow_forward, color: Colors.white, size: 14),
-            ]),
-          ],
-        ),
+      child: _bannerShell(
+        color: AppColors.student,
+        chipIcon: Icons.school_rounded,
+        chip: 'Student',
+        headline: 'ตลาดนักศึกษา\nแลกเปลี่ยนกับเพื่อนนักศึกษาเท่านั้น',
+        footer: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('ดูทั้งหมด',
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(width: 4),
+          const Icon(Icons.arrow_forward_rounded,
+              color: Colors.white, size: 15),
+        ]),
       ),
     );
   }
 
   Widget _buildBannerCarousel() {
     final banners = [
+      _buildMatchBanner(),
       _buildStudentBanner(),
-      _buildHeroBanner(),
     ];
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(top: 4),
       child: Column(
         children: [
+          // 168 banner + room above/below so its glow shadow isn't cut off
+          // by the PageView's clip.
           SizedBox(
-            height: 160,
+            height: 208,
             child: PageView.builder(
               controller: _bannerPageController,
               itemCount: banners.length,
-              onPageChanged: (index) =>
-                  setState(() => _currentBannerPage = index),
-              itemBuilder: (context, index) => banners[index],
+              onPageChanged: (index) {
+                setState(() => _currentBannerPage = index);
+                _restartBannerTimer();
+              },
+              itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 10, 0, 30),
+                  child: banners[index]),
             ),
           ),
-          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(banners.length, (index) {
@@ -674,10 +760,10 @@ class _HomeScreenState extends State<HomeScreen> {
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: isActive ? 18 : 6,
+                width: isActive ? 20 : 6,
                 height: 6,
                 decoration: BoxDecoration(
-                  color: isActive ? tealColor : Colors.grey.shade300,
+                  color: isActive ? AppColors.ink : AppColors.hairline,
                   borderRadius: BorderRadius.circular(3),
                 ),
               );
@@ -691,30 +777,33 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSectionHeader(String title, String trailing,
       {bool isTrailingGreen = false, VoidCallback? onTrailingTap}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      padding: const EdgeInsets.fromLTRB(AppSpace.page, 28, AppSpace.page, 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87)),
+          Text(title, style: AppText.title),
           GestureDetector(
             onTap: onTrailingTap,
             child: Row(
               children: [
                 if (isTrailingGreen)
-                  Icon(Icons.add_circle, color: tealColor, size: 14),
-                if (isTrailingGreen) const SizedBox(width: 4),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: const BoxDecoration(
+                        color: AppColors.success, shape: BoxShape.circle),
+                  ),
                 Text(trailing,
-                    style: TextStyle(
-                        color:
-                            isTrailingGreen ? tealColor : Colors.grey.shade600,
-                        fontSize: 13,
-                        fontWeight: isTrailingGreen
-                            ? FontWeight.bold
-                            : FontWeight.normal)),
+                    style: AppText.caption.copyWith(
+                        color: isTrailingGreen
+                            ? AppColors.success
+                            : AppColors.inkSecondary,
+                        fontWeight: FontWeight.w600)),
+                if (!isTrailingGreen && onTrailingTap != null)
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 18, color: AppColors.inkSecondary),
               ],
             ),
           )
@@ -731,21 +820,22 @@ class _HomeScreenState extends State<HomeScreen> {
             state is HomeLoaded ? state.selectedCategories : ['All'];
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
           child: Row(
             children: displayCategories.map((cat) {
               bool isActive = selectedCategories.contains(cat);
               return GestureDetector(
                 onTap: () => context.read<HomeCubit>().toggleCategory(cat),
-                child: Container(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  margin: const EdgeInsets.only(right: 12),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  margin: const EdgeInsets.only(right: 8),
                   decoration: BoxDecoration(
-                    color: isActive ? tealColor : Colors.white,
+                    color: isActive ? AppColors.ink : AppColors.surface,
                     border: Border.all(
-                        color: isActive ? tealColor : Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(12),
+                        color: isActive ? AppColors.ink : AppColors.hairline),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                   child: Row(
                     children: [
@@ -753,14 +843,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           cat == 'All'
                               ? Icons.grid_view_rounded
                               : _getCategoryIcon(cat),
-                          size: 16,
-                          color: isActive ? Colors.white : tealColor),
-                      const SizedBox(width: 8),
+                          size: 15,
+                          color: isActive ? Colors.white : AppColors.ink),
+                      const SizedBox(width: 7),
                       Text(cat,
-                          style: TextStyle(
-                              color: isActive ? Colors.white : Colors.black87,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13)),
+                          style: AppText.label.copyWith(
+                              color: isActive ? Colors.white : AppColors.ink,
+                              fontWeight: isActive
+                                  ? FontWeight.w600
+                                  : FontWeight.w500)),
                     ],
                   ),
                 ),
@@ -810,7 +901,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // `shrinkWrap: true` forced when this lived inside a boxed Column).
   Widget _buildProductGrid(BuildContext context) {
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
       sliver: BlocBuilder<HomeCubit, HomeState>(
         builder: (context, state) {
           if (state is HomeLoading) {
@@ -833,7 +924,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Padding(
                           padding: EdgeInsets.all(20),
                           child: Text('ยังไม่มีสิ่งของให้แลกเปลี่ยนในขณะนี้',
-                              style: TextStyle(color: Colors.grey)))));
+                              style: TextStyle(color: AppColors.inkTertiary)))));
             }
             if (filteredDocs.isEmpty) {
               return const SliverToBoxAdapter(
@@ -841,24 +932,29 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Padding(
                           padding: EdgeInsets.all(40.0),
                           child: Text('ไม่พบสิ่งของในหมวดหมู่นี้',
-                              style: TextStyle(color: Colors.grey)))));
+                              style: TextStyle(color: AppColors.inkTertiary)))));
             }
 
             return SliverGrid.builder(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 0.62),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.64),
               itemCount: filteredDocs.length,
               itemBuilder: (context, index) {
                 final item = filteredDocs[index];
                 final isWishlisted = state.wishlist.contains(item.listingId);
 
+                final here = state.userLocation;
+                final there = item.location;
                 return ListingGridCard(
                   item: item,
                   isWishlisted: isWishlisted,
                   accentColor: tealColor,
+                  distanceLabel: here != null && there != null
+                      ? PlaceLocation.formatDistance(there.distanceKmTo(here))
+                      : null,
                   onToggleWishlist: (item) =>
                       context.read<HomeCubit>().toggleWishlist(item),
                 );

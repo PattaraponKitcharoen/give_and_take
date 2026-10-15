@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../models/place_location.dart';
 import '../../models/listing_model.dart';
 import '../../repositories/listing_repository.dart';
 import 'edit_listing_state.dart';
@@ -18,6 +19,7 @@ class EditListingCubit extends Cubit<EditListingState> {
     required String condition,
     required int estimatedCoins,
     required List<ListingImageInput> images,
+    PlaceLocation? location,
   }) async {
     emit(EditListingSubmitting());
     try {
@@ -28,6 +30,7 @@ class EditListingCubit extends Cubit<EditListingState> {
         condition: condition,
         estimatedCoins: estimatedCoins,
         updatedAt: DateTime.now(),
+        location: location,
       );
 
       await _listingRepository.updateListing(updated, images: images);
