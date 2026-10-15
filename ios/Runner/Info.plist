@@ -72,5 +72,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Google Sign-In: lets the Google account picker hand control back to
+	     the app (REVERSED_CLIENT_ID from GoogleService-Info.plist). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.341419249481-jl01t5db170dp8qpsegleogasa5p2n6g</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

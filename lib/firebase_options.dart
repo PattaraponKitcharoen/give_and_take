@@ -65,10 +65,12 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCquzjIaAO2c-yBVZEo487rhPzwXj0lyvg',
-    appId: '1:341419249481:ios:9beaeda136cf20e0445498',
+    appId: '1:341419249481:ios:4e4eca0a7ef1fc6b445498',
     messagingSenderId: '341419249481',
     projectId: 'give-and-take-4d7d2',
     storageBucket: 'give-and-take-4d7d2.firebasestorage.app',
-    iosBundleId: 'com.example.giveAndTake',
+    iosClientId:
+        '341419249481-jl01t5db170dp8qpsegleogasa5p2n6g.apps.googleusercontent.com',
+    iosBundleId: 'com.pattarapon.giveAndTake',
   );
 }
