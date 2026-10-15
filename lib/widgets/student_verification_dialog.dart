@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/user_model.dart';
 import '../repositories/user_repository.dart';
+import '../theme/app_theme.dart';
+import 'ui/dialog_header.dart';
 
 class StudentVerificationDialog extends StatefulWidget {
   final UserModel user;
@@ -14,7 +16,7 @@ class StudentVerificationDialog extends StatefulWidget {
 }
 
 class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
-  final Color tealColor = const Color(0xFF10B981);
+  final Color tealColor = AppColors.primary;
   String? _selectedFaculty;
   String? _selectedAcademicYear;
   bool _isLoading = false;
@@ -90,35 +92,27 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueGrey,
-              letterSpacing: 0.5),
+        Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: Text(label, style: AppText.overline),
         ),
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.withOpacity(0.3)),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4)),
-            ],
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.hairline),
           ),
           child: DropdownButtonFormField<String>(
             isExpanded: true,
             value: (value != null && items.contains(value)) ? value : null,
             decoration: InputDecoration(
               hintText: hintText,
-              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-              prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
+              prefixIcon: Icon(icon, color: AppColors.inkSecondary, size: 20),
+              filled: false,
               border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
               contentPadding:
                   const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
             ),
@@ -127,15 +121,16 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
                 value: item,
                 child: Text(
                   item,
-                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  style: AppText.body,
                   overflow: TextOverflow.ellipsis,
                 ),
               );
             }).toList(),
             onChanged: onChanged,
             icon: Icon(Icons.keyboard_arrow_down_rounded,
-                color: Colors.grey.shade400),
-            dropdownColor: Colors.white,
+                color: AppColors.inkTertiary),
+            dropdownColor: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
         ),
         const SizedBox(height: 20),
@@ -146,22 +141,17 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Column(
+      title: const Column(
         children: [
-          Icon(Icons.school, size: 48, color: tealColor),
-          const SizedBox(height: 16),
-          const Text(
-            'Student Verification',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-          ),
-          const SizedBox(height: 8),
-          const Text(
+          DialogHeader(
+              icon: Icons.school_rounded,
+              title: 'Student Verification',
+              color: AppColors.student),
+          SizedBox(height: 8),
+          Text(
             'Tell us more about your studies to unlock student features!',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: Colors.blueGrey),
+            style: AppText.bodySecondary,
           ),
         ],
       ),
@@ -192,18 +182,13 @@ class _StudentVerificationDialogState extends State<StudentVerificationDialog> {
         TextButton(
           onPressed: _isLoading ? null : () => Navigator.pop(context, false),
           style: TextButton.styleFrom(
-            foregroundColor: Colors.grey.shade600,
+            foregroundColor: AppColors.inkSecondary,
           ),
           child: const Text('Skip for now'),
         ),
         ElevatedButton(
           onPressed: _isLoading ? null : _save,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: tealColor,
-            foregroundColor: Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+          style: ElevatedButton.styleFrom(minimumSize: const Size(96, 46)),
           child: _isLoading
               ? const SizedBox(
                   width: 20,

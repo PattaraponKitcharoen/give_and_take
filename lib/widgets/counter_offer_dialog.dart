@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
+import 'ui/primary_button.dart';
 
 class CounterOfferDialog extends StatefulWidget {
   final String offerId;
@@ -41,29 +43,23 @@ class _CounterOfferDialogState extends State<CounterOfferDialog> {
           offerType = value;
           if (value == 'none') amountController.clear();
         }),
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-              color: isSelected ? Colors.white : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2))
-                    ]
-                  : []),
+              color: isSelected ? AppColors.surface : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              boxShadow: isSelected ? AppShadows.raised : null),
           child: Column(children: [
             Icon(icon,
                 size: 20,
-                color: isSelected ? activeColor : Colors.grey.shade400),
+                color: isSelected ? activeColor : AppColors.inkTertiary),
             const SizedBox(height: 6),
             Text(text,
                 style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? activeColor : Colors.grey.shade500))
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? activeColor : AppColors.inkTertiary))
           ]),
         ),
       ),
@@ -73,23 +69,22 @@ class _CounterOfferDialogState extends State<CounterOfferDialog> {
   // 🟢 อัปเดตฟังก์ชันปุ่ม Quick Add ให้เปลี่ยนสีตามโหมด
   Widget _buildQuickAddButton(String text, int amount) {
     Color btnColor =
-        offerType == 'give' ? const Color(0xFF008080) : Colors.orange;
+        offerType == 'give' ? AppColors.primary : AppColors.warning;
 
     return Expanded(
       child: OutlinedButton(
         onPressed: () => setState(() => addCoins(amount)),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 0),
-          side: BorderSide(color: btnColor.withOpacity(0.4), width: 1.5),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          backgroundColor: AppColors.surface,
+          side: BorderSide(color: btnColor.withOpacity(0.3)),
         ),
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Text(text,
-                style: TextStyle(fontWeight: FontWeight.bold, color: btnColor)),
+                style: AppText.label.copyWith(color: btnColor, fontSize: 14)),
           ),
         ),
       ),
@@ -100,17 +95,15 @@ class _CounterOfferDialogState extends State<CounterOfferDialog> {
   Widget build(BuildContext context) {
     // 🟢 กำหนดสีหลักของช่องกรอกตามโหมดที่เลือก
     Color activeThemeColor =
-        offerType == 'give' ? const Color(0xFF008080) : Colors.orange;
+        offerType == 'give' ? AppColors.primary : AppColors.warning;
     Color activeBgColor = offerType == 'give'
-        ? const Color(0xFF008080).withOpacity(0.05)
-        : Colors.orange.shade50.withOpacity(0.3);
+        ? AppColors.primary.withOpacity(0.05)
+        : AppColors.warningSoft.withOpacity(0.3);
     Color activeBorderColor = offerType == 'give'
-        ? const Color(0xFF008080).withOpacity(0.3)
-        : Colors.orange.shade200;
+        ? AppColors.primary.withOpacity(0.3)
+        : AppColors.warningSoft;
 
     return Dialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.all(20),
       child: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
@@ -128,38 +121,35 @@ class _CounterOfferDialogState extends State<CounterOfferDialog> {
                     const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Counter Offer',
-                              style: TextStyle(
-                                  fontSize: 26, fontWeight: FontWeight.w900)),
+                          Text('Counter Offer', style: AppText.display),
                           SizedBox(height: 4),
                           Text('ปรับเปลี่ยนข้อเสนอของคุณ',
-                              style: TextStyle(
-                                  fontSize: 14, color: Colors.blueGrey))
+                              style: AppText.bodySecondary)
                         ]),
                     IconButton(
                         onPressed: () => Navigator.pop(context),
                         icon: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
+                                color: AppColors.surfaceMuted,
                                 shape: BoxShape.circle),
-                            child: const Icon(Icons.close,
-                                size: 16, color: Colors.black54)))
+                            child: const Icon(Icons.close_rounded,
+                                size: 16, color: AppColors.inkSecondary)))
                   ],
                 ),
                 const SizedBox(height: 28),
                 Container(
                   decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(16)),
-                  padding: const EdgeInsets.all(6),
+                      color: AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(AppRadius.lg)),
+                  padding: const EdgeInsets.all(5),
                   child: Row(children: [
                     buildSegmentButton('Give Coins', Icons.payments_outlined,
-                        'give', const Color(0xFF008080)),
+                        'give', AppColors.primary),
                     buildSegmentButton('Trade Only', Icons.handshake_outlined,
-                        'none', Colors.blueGrey),
+                        'none', AppColors.inkSecondary),
                     buildSegmentButton('Ask Coins', Icons.request_page_outlined,
-                        'ask', Colors.orange)
+                        'ask', AppColors.warning)
                   ]),
                 ),
                 const SizedBox(height: 28),
@@ -170,15 +160,16 @@ class _CounterOfferDialogState extends State<CounterOfferDialog> {
                         horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                         color: activeBgColor,
-                        borderRadius: BorderRadius.circular(20),
-                        border:
-                            Border.all(color: activeBorderColor, width: 1.5)),
+                        borderRadius: BorderRadius.circular(AppRadius.xl),
+                        border: Border.all(color: activeBorderColor)),
                     child: Row(children: [
                       Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                              color: activeThemeColor, shape: BoxShape.circle),
-                          child: const Icon(Icons.attach_money,
+                              gradient: AppGradients.of(activeThemeColor),
+                              boxShadow: AppShadows.glow(activeThemeColor),
+                              shape: BoxShape.circle),
+                          child: const Icon(Icons.toll_rounded,
                               color: Colors.white)),
                       const SizedBox(width: 16),
                       Expanded(
@@ -186,16 +177,22 @@ class _CounterOfferDialogState extends State<CounterOfferDialog> {
                               controller: amountController,
                               keyboardType: TextInputType.number,
                               style: const TextStyle(
-                                  fontSize: 36, fontWeight: FontWeight.w900),
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.ink),
                               decoration: InputDecoration(
                                   hintText: '0',
-                                  hintStyle:
-                                      TextStyle(color: Colors.grey.shade300),
-                                  border: InputBorder.none))),
+                                  hintStyle: const TextStyle(
+                                      color: AppColors.hairline),
+                                  filled: false,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none))),
                       Text('COINS',
                           style: TextStyle(
                               fontSize: 14,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
                               color: activeThemeColor))
                     ]),
                   ),
@@ -216,42 +213,31 @@ class _CounterOfferDialogState extends State<CounterOfferDialog> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 32),
                       decoration: BoxDecoration(
-                          color: const Color(0xFF008080).withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: const Color(0xFF008080).withOpacity(0.2))),
+                          color: AppColors.primarySoft,
+                          borderRadius: BorderRadius.circular(AppRadius.xl)),
                       child: const Column(children: [
-                        Icon(Icons.sync_alt,
-                            size: 40, color: Color(0xFF008080)),
+                        Icon(Icons.swap_horiz_rounded,
+                            size: 40, color: AppColors.primary),
                         SizedBox(height: 12),
                         Text('แลกของต่อของ',
                             style: TextStyle(
                                 fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF008080))),
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primaryDark)),
                         Text('ไม่มีการใช้เหรียญในข้อเสนอนี้',
-                            style: TextStyle(color: Colors.blueGrey))
+                            style: TextStyle(color: AppColors.inkSecondary))
                       ])),
                 const SizedBox(height: 32),
-                SizedBox(
-                    width: double.infinity,
+                PrimaryButton(
                     height: 56,
-                    child: ElevatedButton(
-                        onPressed: () {
-                          int amount = offerType != 'none'
-                              ? (int.tryParse(amountController.text) ?? 0)
-                              : 0;
-                          Navigator.pop(context);
-                          widget.onSubmit(amount, offerType == 'give');
-                        },
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF4CAF50),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16))),
-                        child: const Text('Send Counter Offer',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)))),
+                    onPressed: () {
+                      int amount = offerType != 'none'
+                          ? (int.tryParse(amountController.text) ?? 0)
+                          : 0;
+                      Navigator.pop(context);
+                      widget.onSubmit(amount, offerType == 'give');
+                    },
+                    child: const Text('Send Counter Offer')),
               ],
             ),
           ),

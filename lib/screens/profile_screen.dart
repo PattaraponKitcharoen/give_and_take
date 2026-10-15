@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../widgets/star_rating.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart'; // 🟢 เพิ่ม BLoC
@@ -13,6 +14,7 @@ import '../repositories/user_repository.dart';
 import '../repositories/listing_repository.dart';
 import '../repositories/auth_repository.dart';
 import '../models/listing_model.dart';
+import '../theme/app_theme.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -22,11 +24,31 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final Color tealColor = const Color(0xFF008080);
-  final Color bgColor = const Color(0xFFF8FAFC);
+  final Color tealColor = AppColors.primary;
+  final Color bgColor = AppColors.background;
   User? get currentUser => context.read<AuthRepository>().currentUser;
 
   String _selectedTab = 'Active';
+
+  // The header is transparent so the avatar can rise into it; once the
+  // page scrolls it turns solid so content doesn't run under the title.
+  final ScrollController _scrollController = ScrollController();
+  bool _headerSolid = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      final solid = _scrollController.offset > 24;
+      if (solid != _headerSolid) setState(() => _headerSolid = solid);
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   Future<void> _logout() async {
     await context.read<AuthRepository>().signOut();
@@ -67,7 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SnackBar(
                 content: Text(state.verificationMessage!),
                 backgroundColor:
-                    state.isVerificationError ? Colors.red : tealColor,
+                    state.isVerificationError ? AppColors.danger : tealColor,
                 duration: const Duration(seconds: 4),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -80,12 +102,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             return Scaffold(
               backgroundColor: bgColor,
               appBar: AppBar(
-                backgroundColor: Colors.white,
-                elevation: 0,
-                title: const Text('โปรไฟล์ของฉัน',
-                    style: TextStyle(
-                        color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
-                centerTitle: true,
+                title: const Text('Profile', style: AppText.title),
+                centerTitle: false,
               ),
               body: Center(child: CircularProgressIndicator(color: tealColor)),
             );
@@ -94,7 +112,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (state is ProfileError) {
             return Scaffold(
               backgroundColor: bgColor,
-              appBar: AppBar(title: const Text('โปรไฟล์ของฉัน')),
+              appBar: AppBar(
+                  title: const Text('Profile', style: AppText.title),
+                  centerTitle: false),
               body: Center(child: Text('Error: ${state.message}')),
             );
           }
@@ -111,18 +131,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             return Scaffold(
               backgroundColor: bgColor,
+              extendBodyBehindAppBar: true,
               appBar: AppBar(
-                backgroundColor: Colors.white,
-                elevation: 0,
-                title: const Text('โปรไฟล์ของฉัน',
-                    style: TextStyle(
-                        color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
-                centerTitle: true,
+                title: const Text('Profile', style: AppText.title),
+                centerTitle: false,
+                backgroundColor:
+                    _headerSolid ? AppColors.background : Colors.transparent,
+                // A transparent bar would otherwise get light status-bar
+                // icons over the light page.
+                systemOverlayStyle: SystemUiOverlayStyle.dark,
                 actions: [
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, color: Colors.black87),
+                    icon: const Icon(Icons.more_horiz_rounded,
+                        color: AppColors.ink),
+                    color: AppColors.surface,
+                    surfaceTintColor: Colors.transparent,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(AppRadius.md)),
                     onSelected: (value) {
                       if (value == 'edit') {
                         Navigator.push(
@@ -138,53 +163,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const PopupMenuItem(
                           value: 'edit',
                           child: Row(children: [
-                            Icon(Icons.edit, color: Colors.blue, size: 20),
+                            Icon(Icons.edit_outlined,
+                                color: AppColors.ink, size: 20),
                             SizedBox(width: 8),
                             Text('แก้ไขโปรไฟล์')
                           ])),
                       const PopupMenuItem(
                           value: 'logout',
                           child: Row(children: [
-                            Icon(Icons.logout, color: Colors.red, size: 20),
+                            Icon(Icons.logout_rounded,
+                                color: AppColors.danger, size: 20),
                             SizedBox(width: 8),
                             Text('ออกจากระบบ',
-                                style: TextStyle(color: Colors.red))
+                                style: TextStyle(color: AppColors.danger))
                           ])),
                     ],
                   ),
                 ],
               ),
-              body: NestedScrollView(
-                headerSliverBuilder: (context, innerBoxIsScrolled) {
-                  return [
+              body: Builder(
+                // Builder: the header reads MediaQuery padding from inside
+                // this Scaffold (status bar + transparent app bar).
+                builder: (context) => CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
                     SliverToBoxAdapter(
                       child: Container(
-                        color: Colors.white,
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Column(
                           children: [
-                            const SizedBox(height: 16),
+                            // padding.top = status bar + toolbar here
+                            // (extendBodyBehindAppBar); the avatar starts
+                            // just below the "Profile" title, slightly
+                            // overlapping the bottom of the header.
+                            SizedBox(
+                                height: MediaQuery.paddingOf(context).top - 8),
                             Container(
-                              width: 100,
-                              height: 100,
+                              width: 128,
+                              height: 128,
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(24),
-                                color: Colors.grey.shade200,
+                                shape: BoxShape.circle,
+                                color: AppColors.hairline,
+                                border:
+                                    Border.all(color: Colors.white, width: 4),
                                 image: profileImg.isNotEmpty
                                     ? DecorationImage(
                                         image: NetworkImage(profileImg),
                                         fit: BoxFit.cover)
                                     : null,
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: tealColor.withOpacity(0.2),
-                                      blurRadius: 20,
-                                      offset: const Offset(0, 10))
-                                ],
+                                boxShadow: AppShadows.lifted,
                               ),
                               child: profileImg.isEmpty
                                   ? const Icon(Icons.person,
-                                      size: 50, color: Colors.white)
+                                      size: 64, color: Colors.white)
                                   : null,
                             ),
                             const SizedBox(height: 16),
@@ -192,15 +223,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text(name,
-                                    style: const TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF004D40))),
+                                Text(name, style: AppText.display),
                                 if (isEmailVerified) ...[
                                   const SizedBox(width: 6),
-                                  Icon(Icons.verified,
-                                      color: Colors.green.shade400, size: 20),
+                                  const Icon(Icons.verified_rounded,
+                                      color: AppColors.primary, size: 22),
                                 ]
                               ],
                             ),
@@ -217,10 +244,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: Colors.orange.shade50,
-                                      borderRadius: BorderRadius.circular(20),
+                                      color: AppColors.warningSoft,
+                                      borderRadius:
+                                          BorderRadius.circular(AppRadius.pill),
                                       border: Border.all(
-                                          color: Colors.orange.shade200),
+                                          color: AppColors.warning
+                                              .withOpacity(0.35)),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -236,16 +265,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                             .orange.shade700))
                                             : Icon(Icons.warning_amber_rounded,
                                                 size: 14,
-                                                color: Colors.orange.shade700),
+                                                color: AppColors.warning),
                                         const SizedBox(width: 6),
                                         Text(
                                           isSendingEmail
                                               ? 'กำลังส่ง...'
                                               : 'คลิกที่นี่เพื่อส่งอีเมลยืนยันตัวตน',
-                                          style: TextStyle(
-                                              color: Colors.orange.shade800,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold),
+                                          style: AppText.caption.copyWith(
+                                              color: AppColors.warning,
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w600),
                                         ),
                                       ],
                                     ),
@@ -256,12 +285,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 32),
-                              child: Text(bio,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 13,
-                                      height: 1.4)),
+                              child: bio.trim().isEmpty
+                                  ? Text('คุณยังไม่ได้เพิ่มไบโอ',
+                                      textAlign: TextAlign.center,
+                                      style: AppText.bodySecondary.copyWith(
+                                          color: AppColors.inkTertiary))
+                                  : Text(bio,
+                                      textAlign: TextAlign.center,
+                                      style: AppText.bodySecondary),
                             ),
                             const SizedBox(height: 20),
                             Row(
@@ -292,27 +323,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 20),
-                              child: Row(
-                                children: [
-                                  Expanded(child: _buildTabButton('Active')),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: _buildTabButton('Reviews')),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: _buildTabButton('Traded')),
-                                ],
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceMuted,
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.md),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(child: _buildTabButton('Active')),
+                                    Expanded(child: _buildTabButton('Reviews')),
+                                    Expanded(child: _buildTabButton('Traded')),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    )
-                  ];
-                },
-                body: switch (_selectedTab) {
-                  'Active' => _buildActiveItemsGrid(context, state),
-                  'Reviews' => _buildReviewsList(context, state),
-                  _ => _buildTradeHistoryGrid(context, state),
-                },
+                    ),
+                    switch (_selectedTab) {
+                      'Active' => _buildActiveItemsGrid(context, state),
+                      'Reviews' => _buildReviewsList(context, state),
+                      _ => _buildTradeHistoryGrid(context, state),
+                    },
+                  ],
+                ),
               ),
             );
           }
@@ -325,19 +362,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatPill(IconData icon, String text,
       {bool isHighlight = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
-        color: isHighlight ? Colors.teal.shade50 : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tealColor.withOpacity(0.3)),
+        color: isHighlight ? null : AppColors.surface,
+        gradient: isHighlight ? AppGradients.primary : null,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        boxShadow: isHighlight
+            ? AppShadows.glow(AppColors.primary)
+            : AppShadows.raised,
       ),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: tealColor),
-          const SizedBox(width: 4),
+          Icon(icon,
+              size: 15, color: isHighlight ? Colors.white : AppColors.primary),
+          const SizedBox(width: 5),
           Text(text,
-              style: TextStyle(
-                  color: tealColor, fontWeight: FontWeight.bold, fontSize: 12)),
+              style: AppText.label.copyWith(
+                  color: isHighlight ? Colors.white : AppColors.ink,
+                  fontSize: 12.5)),
         ],
       ),
     );
@@ -348,18 +390,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.shade50.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.shade100),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadows.raised,
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.star, color: Colors.orange, size: 28),
+                gradient: AppGradients.of(AppColors.gold),
+                shape: BoxShape.circle,
+                boxShadow: AppShadows.glow(AppColors.gold)),
+            child:
+                const Icon(Icons.star_rounded, color: Colors.white, size: 26),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -369,36 +413,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Row(
                   children: [
                     Text(rating > 0 ? rating.toStringAsFixed(1) : 'New',
-                        style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF004D40))),
+                        style: AppText.title),
                     const SizedBox(width: 8),
                     StarRating(rating: rating),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text('Based on user reviews',
-                    style:
-                        TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                Text('Based on user reviews', style: AppText.caption),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-                color: Colors.green.shade100.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.green.shade200)),
+                color: AppColors.successSoft,
+                borderRadius: BorderRadius.circular(AppRadius.pill)),
             child: Row(
               children: [
-                Icon(Icons.help_outline,
-                    size: 12, color: Colors.green.shade700),
+                Icon(Icons.help_outline, size: 12, color: AppColors.success),
                 const SizedBox(width: 4),
                 Text('Verified',
-                    style: TextStyle(
-                        color: Colors.green.shade700,
-                        fontWeight: FontWeight.bold,
+                    style: AppText.caption.copyWith(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.w600,
                         fontSize: 11)),
               ],
             ),
@@ -412,21 +449,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool isSelected = _selectedTab == title;
     return GestureDetector(
       onTap: () => setState(() => _selectedTab = title),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? tealColor : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: isSelected ? tealColor : Colors.grey.shade300),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                      color: tealColor.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3))
-                ]
-              : [],
+          color: isSelected ? AppColors.surface : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          boxShadow: isSelected ? AppShadows.raised : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -438,16 +467,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _ => Icons.history,
                 },
                 size: 16,
-                color: isSelected ? Colors.white : Colors.grey.shade600),
+                color: isSelected ? AppColors.primary : AppColors.inkTertiary),
             const SizedBox(width: 6),
             Flexible(
               child: Text(title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey.shade700,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
+                  style: AppText.label.copyWith(
+                      color:
+                          isSelected ? AppColors.ink : AppColors.inkSecondary)),
             ),
           ],
         ),
@@ -463,98 +491,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
         state.userListings.where((item) => item.status == 'active').toList();
 
     if (listings.isEmpty) {
-      return Center(
-          child: Text('คุณยังไม่มีสิ่งของที่กำลังลงประกาศอยู่',
-              style: TextStyle(color: Colors.grey.shade500)));
+      return SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+              child: Text('คุณยังไม่มีสิ่งของที่กำลังลงประกาศอยู่',
+                  style: TextStyle(color: AppColors.inkTertiary))));
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 0.75),
-      itemCount: listings.length,
-      itemBuilder: (context, index) {
-        final item = listings[index];
-        return InkWell(
-          onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => ItemDetailScreen(listing: item))),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4))
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(16)),
-                      image: item.thumbnailUrl.isNotEmpty
-                          ? DecorationImage(
-                              image: NetworkImage(item.thumbnailUrl),
-                              fit: BoxFit.cover)
-                          : null,
-                    ),
-                    child: item.thumbnailUrl.isEmpty
-                        ? const Center(
-                            child: Icon(Icons.image, color: Colors.grey))
-                        : null,
-                  ),
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(
+          16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 0.75),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final item = listings[index];
+            return InkWell(
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => ItemDetailScreen(listing: item))),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border:
+                      Border.all(color: AppColors.hairline.withOpacity(0.6)),
+                  boxShadow: AppShadows.raised,
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.title,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Container(
                         decoration: BoxDecoration(
-                            color: Colors.green.shade50,
-                            borderRadius: BorderRadius.circular(8)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.monetization_on,
-                                color: Colors.green.shade700, size: 10),
-                            const SizedBox(width: 4),
-                            Text('${item.estimatedCoins}',
-                                style: TextStyle(
-                                    color: Colors.green.shade700,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold)),
-                          ],
+                          color: AppColors.surfaceMuted,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(16)),
+                          image: item.thumbnailUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(item.thumbnailUrl),
+                                  fit: BoxFit.cover)
+                              : null,
                         ),
-                      )
-                    ],
-                  ),
+                        child: item.thumbnailUrl.isEmpty
+                            ? const Center(
+                                child: Icon(Icons.image,
+                                    color: AppColors.inkTertiary))
+                            : null,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.title,
+                              style: AppText.label.copyWith(fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                                color: AppColors.primarySoft,
+                                borderRadius: BorderRadius.circular(8)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.toll_rounded,
+                                    color: AppColors.primaryDark, size: 10),
+                                const SizedBox(width: 4),
+                                Text('${item.estimatedCoins}',
+                                    style: TextStyle(
+                                        color: AppColors.primaryDark,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        );
-      },
+              ),
+            );
+          },
+          childCount: listings.length,
+        ),
+      ),
     );
   }
 
@@ -566,130 +597,133 @@ class _ProfileScreenState extends State<ProfileScreen> {
         state.userListings.where((item) => item.status != 'active').toList();
 
     if (listings.isEmpty) {
-      return Center(
-          child: Text('คุณยังไม่มีประวัติการแลกเปลี่ยน',
-              style: TextStyle(color: Colors.grey.shade500)));
+      return SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+              child: Text('คุณยังไม่มีประวัติการแลกเปลี่ยน',
+                  style: TextStyle(color: AppColors.inkTertiary))));
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 0.75),
-      itemCount: listings.length,
-      itemBuilder: (context, index) {
-        final item = listings[index];
-        final isCompleted = item.status == 'completed';
-        final statusLabel = isCompleted ? 'แลกไปแล้ว' : 'กำลังแลกเปลี่ยน';
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(
+          16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 0.75),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final item = listings[index];
+            final isCompleted = item.status == 'completed';
+            final statusLabel = isCompleted ? 'แลกไปแล้ว' : 'กำลังแลกเปลี่ยน';
 
-        return InkWell(
-          onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => ItemDetailScreen(listing: item))),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4))
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(16)),
-                          image: item.thumbnailUrl.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(item.thumbnailUrl),
-                                  fit: BoxFit.cover,
-                                  // Greyed out so it visually reads as no
-                                  // longer available, without needing a
-                                  // separate "sold" placeholder image.
-                                  colorFilter: ColorFilter.mode(
-                                      Colors.black.withOpacity(0.35),
-                                      BlendMode.darken))
-                              : null,
-                        ),
-                        child: item.thumbnailUrl.isEmpty
-                            ? const Center(
-                                child: Icon(Icons.image, color: Colors.grey))
-                            : null,
-                      ),
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                              color: isCompleted
-                                  ? Colors.black.withOpacity(0.6)
-                                  : Colors.orange.shade700,
-                              borderRadius: BorderRadius.circular(8)),
-                          child: Text(statusLabel,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
+            return InkWell(
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => ItemDetailScreen(listing: item))),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border:
+                      Border.all(color: AppColors.hairline.withOpacity(0.6)),
+                  boxShadow: AppShadows.raised,
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.title,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(8)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.monetization_on,
-                                color: Colors.grey.shade600, size: 10),
-                            const SizedBox(width: 4),
-                            Text('${item.estimatedCoins}',
-                                style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      )
-                    ],
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceMuted,
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(16)),
+                              image: item.thumbnailUrl.isNotEmpty
+                                  ? DecorationImage(
+                                      image: NetworkImage(item.thumbnailUrl),
+                                      fit: BoxFit.cover,
+                                      // Greyed out so it visually reads as no
+                                      // longer available, without needing a
+                                      // separate "sold" placeholder image.
+                                      colorFilter: ColorFilter.mode(
+                                          Colors.black.withOpacity(0.35),
+                                          BlendMode.darken))
+                                  : null,
+                            ),
+                            child: item.thumbnailUrl.isEmpty
+                                ? const Center(
+                                    child: Icon(Icons.image,
+                                        color: AppColors.inkTertiary))
+                                : null,
+                          ),
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                  color: isCompleted
+                                      ? Colors.black.withOpacity(0.6)
+                                      : AppColors.warning,
+                                  borderRadius: BorderRadius.circular(8)),
+                              child: Text(statusLabel,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.title,
+                              style: AppText.label.copyWith(fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                                color: AppColors.surfaceMuted,
+                                borderRadius: BorderRadius.circular(8)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.toll_rounded,
+                                    color: AppColors.inkSecondary, size: 10),
+                                const SizedBox(width: 4),
+                                Text('${item.estimatedCoins}',
+                                    style: TextStyle(
+                                        color: AppColors.inkSecondary,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        );
-      },
+              ),
+            );
+          },
+          childCount: listings.length,
+        ),
+      ),
     );
   }
 
@@ -704,14 +738,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: 36,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        color: Colors.grey.shade200,
+        color: AppColors.hairline,
         image: img.isNotEmpty
             ? DecorationImage(image: NetworkImage(img), fit: BoxFit.cover)
             : null,
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: AppColors.hairline),
       ),
       child: img.isEmpty
-          ? const Icon(Icons.image, size: 16, color: Colors.grey)
+          ? const Icon(Icons.image, size: 16, color: AppColors.inkTertiary)
           : null,
     );
 
@@ -722,12 +756,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(label,
-              style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
+              style: TextStyle(fontSize: 9, color: AppColors.inkTertiary)),
           Text(title,
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: item == null ? Colors.red : Colors.black87),
+                  color: item == null ? AppColors.danger : AppColors.ink),
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
         ],
@@ -763,9 +797,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.hairline),
       ),
       child: Row(
         children: [
@@ -775,7 +809,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.grey.shade200)),
+                border: Border.all(color: AppColors.hairline)),
             child: Icon(Icons.swap_horiz, size: 16, color: tealColor),
           ),
           Expanded(
@@ -789,122 +823,125 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final reviews = state.enrichedReviews;
 
     if (reviews.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.chat_bubble_outline,
-                size: 40, color: Colors.grey.shade300),
-            const SizedBox(height: 12),
-            Text('ยังไม่มีรีวิว',
-                style: TextStyle(color: Colors.grey.shade500)),
-          ],
-        ),
-      );
+      return SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.chat_bubble_outline,
+                    size: 40, color: AppColors.hairline),
+                const SizedBox(height: 12),
+                Text('ยังไม่มีรีวิว',
+                    style: TextStyle(color: AppColors.inkTertiary)),
+              ],
+            ),
+          ));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: reviews.length,
-      itemBuilder: (context, index) {
-        final data = reviews[index];
-        final reviewData = data['review'] as Map<String, dynamic>;
-        final reviewerName = data['name'] ?? 'ผู้ใช้งาน';
-        final reviewerImg = data['img'] ?? '';
-        final myItem = data['myItem'];
-        final theirItem = data['theirItem'];
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(
+          16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final data = reviews[index];
+            final reviewData = data['review'] as Map<String, dynamic>;
+            final reviewerName = data['name'] ?? 'ผู้ใช้งาน';
+            final reviewerImg = data['img'] ?? '';
+            final myItem = data['myItem'];
+            final theirItem = data['theirItem'];
 
-        final double rating = (reviewData['rating'] ?? 0).toDouble();
-        final String comment = reviewData['comment'] ?? '';
-        final Timestamp? time = reviewData['created_at'];
+            final double rating = (reviewData['rating'] ?? 0).toDouble();
+            final String comment = reviewData['comment'] ?? '';
+            final Timestamp? time = reviewData['created_at'];
 
-        String timeText = '';
-        if (time != null) {
-          final date = time.toDate();
-          timeText = '${date.day}/${date.month}/${date.year}';
-        }
+            String timeText = '';
+            if (time != null) {
+              final date = time.toDate();
+              timeText = '${date.day}/${date.month}/${date.year}';
+            }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4))
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+            return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: AppColors.hairline.withOpacity(0.6)),
+                boxShadow: AppShadows.raised,
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.teal.shade50,
-                    backgroundImage: reviewerImg.isNotEmpty
-                        ? NetworkImage(reviewerImg)
-                        : null,
-                    child: reviewerImg.isEmpty
-                        ? Icon(Icons.person, color: tealColor)
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppColors.primarySoft,
+                        backgroundImage: reviewerImg.isNotEmpty
+                            ? NetworkImage(reviewerImg)
+                            : null,
+                        child: reviewerImg.isEmpty
+                            ? Icon(Icons.person, color: tealColor)
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                                child: Text(reviewerName,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis)),
-                            Text(timeText,
-                                style: TextStyle(
-                                    color: Colors.grey.shade400, fontSize: 11)),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                    child: Text(reviewerName,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis)),
+                                Text(timeText,
+                                    style: TextStyle(
+                                        color: AppColors.inkTertiary,
+                                        fontSize: 11)),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: List.generate(
+                                  5,
+                                  (starIndex) => Icon(
+                                        starIndex < rating.floor()
+                                            ? Icons.star
+                                            : Icons.star_border,
+                                        color: AppColors.warning,
+                                        size: 14,
+                                      )),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: List.generate(
-                              5,
-                              (starIndex) => Icon(
-                                    starIndex < rating.floor()
-                                        ? Icons.star
-                                        : Icons.star_border,
-                                    color: Colors.orange,
-                                    size: 14,
-                                  )),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                  if (comment.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(comment,
+                        style: TextStyle(
+                            color: AppColors.inkSecondary,
+                            fontSize: 13,
+                            height: 1.4)),
+                  ],
+                  if (myItem != null || theirItem != null)
+                    _buildTradedItemBox(context, myItem, theirItem),
                 ],
               ),
-              if (comment.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(comment,
-                    style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 13,
-                        height: 1.4)),
-              ],
-              if (myItem != null || theirItem != null)
-                _buildTradedItemBox(context, myItem, theirItem),
-            ],
-          ),
-        );
-      },
+            );
+          },
+          childCount: reviews.length,
+        ),
+      ),
     );
   }
 }

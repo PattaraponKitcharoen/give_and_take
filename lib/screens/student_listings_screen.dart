@@ -6,6 +6,7 @@ import '../repositories/auth_repository.dart';
 import '../repositories/listing_repository.dart';
 import '../repositories/user_repository.dart';
 import '../widgets/listing_grid_card.dart';
+import '../theme/app_theme.dart';
 
 /// Destination of the home feed's "Student" banner — every active listing
 /// whose owner is a verified student (UserModel.isStudent), for people who
@@ -13,7 +14,7 @@ import '../widgets/listing_grid_card.dart';
 class StudentListingsScreen extends StatelessWidget {
   const StudentListingsScreen({super.key});
 
-  static const Color _studentColor = Color(0xFF7C3AED);
+  static const Color _studentColor = AppColors.student;
 
   @override
   Widget build(BuildContext context) {
@@ -26,14 +27,8 @@ class StudentListingsScreen extends StatelessWidget {
         currentUserId: currentUserId,
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: Colors.black87),
-          title: const Text('สินค้าจากนักศึกษา',
-              style: TextStyle(
-                  color: Color(0xFF004D40), fontWeight: FontWeight.bold)),
+          title: const Text('สินค้าจากนักศึกษา'),
           centerTitle: true,
         ),
         body: BlocBuilder<StudentListingsCubit, StudentListingsState>(
@@ -53,18 +48,18 @@ class StudentListingsScreen extends StatelessWidget {
                   child: Text(
                     'ยังไม่มีสิ่งของจากนักศึกษาที่ยืนยันตัวตนในขณะนี้',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
+                    style: AppText.bodySecondary,
                   ),
                 ));
               }
 
               return GridView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.62),
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.64),
                 itemCount: state.items.length,
                 itemBuilder: (context, index) {
                   final item = state.items[index];

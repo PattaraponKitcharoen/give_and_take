@@ -31,7 +31,9 @@ class ChatListCubit extends Cubit<ChatListState> {
                 if (itemData.isNotEmpty) {
                   title = itemData['title'] ?? 'ไม่มีชื่อสิ่งของ';
                   thumbnail = itemData['thumbnail_url'] ?? '';
-                  status = itemData['status'] ?? ''; 
+                  // Status of the deal in this room, not of the listing:
+                  // a listing goes back to active when a deal is cancelled.
+                  status = itemData['offer_status'] ?? itemData['status'] ?? '';
                 } else {
                   title = 'ห้องแชท (ไม่พบข้อมูล)';
                 }

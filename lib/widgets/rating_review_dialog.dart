@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
+import 'ui/dialog_header.dart';
 
 class RatingReviewDialog extends StatefulWidget {
   final Function(int, String) onSubmit;
@@ -21,14 +23,15 @@ class _RatingReviewDialogState extends State<RatingReviewDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('ให้คะแนนการแลกเปลี่ยน',
-          style:
-              TextStyle(color: Color(0xFF008080), fontWeight: FontWeight.bold)),
+      title: const DialogHeader(
+          icon: Icons.star_rounded,
+          title: 'ให้คะแนนการแลกเปลี่ยน',
+          color: AppColors.gold),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Text('ความประทับใจต่อคู่กรณีในดีลนี้',
-              style: TextStyle(color: Colors.black54)),
+              style: AppText.bodySecondary),
           const SizedBox(height: 16),
           Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -36,36 +39,43 @@ class _RatingReviewDialogState extends State<RatingReviewDialog> {
                   5,
                   (idx) => IconButton(
                       icon: Icon(
-                          idx < selectedRating ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                          size: 36),
+                          idx < selectedRating
+                              ? Icons.star_rounded
+                              : Icons.star_outline_rounded,
+                          color: AppColors.gold,
+                          size: 38),
                       onPressed: () =>
                           setState(() => selectedRating = idx + 1)))),
           const SizedBox(height: 16),
           TextField(
               controller: commentController,
               maxLines: 3,
-              decoration: InputDecoration(
+              style: AppText.body,
+              decoration: const InputDecoration(
                   hintText: 'เขียนรีวิวสั้นๆ (ไม่บังคับ)...',
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none))),
+                  fillColor: AppColors.surfaceMuted)),
         ],
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('ข้าม', style: TextStyle(color: Colors.grey))),
-        ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              widget.onSubmit(selectedRating, commentController.text.trim());
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF008080)),
-            child: const Text('ยืนยัน', style: TextStyle(color: Colors.white))),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('ข้าม')),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onSubmit(
+                      selectedRating, commentController.text.trim());
+                },
+                style: ElevatedButton.styleFrom(minimumSize: const Size(0, 48)),
+                child: const Text('ยืนยัน')),
+          ),
+        ]),
       ],
     );
   }

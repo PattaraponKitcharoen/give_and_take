@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../cubits/auth/auth_cubit.dart';
+import '../cubits/auth/auth_state.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/user_repository.dart';
 import '../models/user_model.dart';
+import '../widgets/google_sign_in_button.dart';
 import 'main_layout.dart';
 import 'package:flutter/gestures.dart';
 import '../constants/app_terms.dart';
+import '../theme/app_theme.dart';
+import '../widgets/ui/primary_button.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -16,13 +21,14 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final Color tealColor = const Color(0xFF10B981);
-  final Color bgColor = const Color(0xFFF8FAFC);
+  final Color tealColor = AppColors.primary;
+  final Color bgColor = AppColors.background;
 
   bool _obscureText = true;
   bool _obscureConfirmText = true;
   bool _isLoading = false;
   bool _agreeToTerms = false;
+  bool _isGoogleLoading = false;
 
   // 🟢 1. ตัวแปรเก็บสถานะว่าอ่านจบหรือยัง
   bool _hasReadTerms = false;
@@ -79,8 +85,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final authRepo = context.read<AuthRepository>();
       final userRepo = context.read<UserRepository>();
-      
-      final userCredential = await authRepo.createUserWithEmailAndPassword(email: email, password: password);
+
+      final userCredential = await authRepo.createUserWithEmailAndPassword(
+          email: email, password: password);
 
       if (userCredential.user != null) {
         final userModel = UserModel(
@@ -172,12 +179,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             bool currentReadStatus = isTerms ? _hasReadTerms : _hasReadPrivacy;
 
             return AlertDialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: Text(title,
-                  style:
-                      TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+              title: Text(title, style: AppText.title),
               content: SizedBox(
                 height: MediaQuery.of(context).size.height * 0.4,
                 child: Column(
@@ -186,10 +188,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: SingleChildScrollView(
                         controller: scrollController,
                         child: Text(content,
-                            style: const TextStyle(
-                                fontSize: 14,
-                                color: Colors.black87,
-                                height: 1.5)),
+                            style: AppText.body.copyWith(fontSize: 14)),
                       ),
                     ),
                     if (!currentReadStatus)
@@ -198,14 +197,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.keyboard_arrow_down,
-                                color: Colors.orange.shade400, size: 16),
+                            const Icon(Icons.keyboard_arrow_down_rounded,
+                                color: AppColors.warning, size: 16),
                             const SizedBox(width: 4),
                             Text('เลื่อนลงเพื่ออ่านให้จบก่อนปิด',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange.shade600,
-                                    fontWeight: FontWeight.bold)),
+                                style: AppText.caption.copyWith(
+                                    color: AppColors.warning,
+                                    fontWeight: FontWeight.w600)),
                           ],
                         ),
                       )
@@ -215,14 +213,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.check_circle,
-                                color: Colors.green, size: 16),
+                            const Icon(Icons.check_circle_rounded,
+                                color: AppColors.success, size: 16),
                             const SizedBox(width: 4),
                             Text('อ่านจบเรียบร้อย ปลดล็อคปุ่มปิดแล้ว',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.green.shade600,
-                                    fontWeight: FontWeight.bold)),
+                                style: AppText.caption.copyWith(
+                                    color: AppColors.success,
+                                    fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -236,9 +233,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       currentReadStatus ? () => Navigator.pop(context) : null,
                   style: TextButton.styleFrom(
                     foregroundColor: tealColor,
-                    disabledForegroundColor: Colors
-                        .grey.shade400, // 🟢 3. บังคับสีเทาจางตอนที่ยังกดไม่ได้
-                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    disabledForegroundColor: AppColors
+                        .inkTertiary, // 🟢 3. บังคับสีเทาจางตอนที่ยังกดไม่ได้
                   ),
                   child: const Text('ปิด'),
                 ),
@@ -262,52 +258,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Colors.blueGrey,
-                letterSpacing: 0.5)),
-        const SizedBox(height: 4),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4))
-            ],
-          ),
-          child: TextField(
-            controller: controller,
-            obscureText: isPassword ? (obscureState ?? true) : false,
-            keyboardType:
-                isPassword ? TextInputType.text : TextInputType.emailAddress,
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-              prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 18),
-              suffixIcon: isPassword
-                  ? IconButton(
-                      icon: Icon(
-                          obscureState!
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                          color: Colors.grey.shade400,
-                          size: 18),
-                      onPressed: onToggleObscure)
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-            ),
+        Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: Text(label, style: AppText.overline),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          obscureText: isPassword ? (obscureState ?? true) : false,
+          keyboardType:
+              isPassword ? TextInputType.text : TextInputType.emailAddress,
+          style: AppText.body,
+          decoration: InputDecoration(
+            hintText: hintText,
+            prefixIcon: Icon(icon, color: AppColors.inkSecondary, size: 20),
+            suffixIcon: isPassword
+                ? IconButton(
+                    icon: Icon(
+                        obscureState!
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: AppColors.inkSecondary,
+                        size: 20),
+                    onPressed: onToggleObscure)
+                : null,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
       ],
     );
+  }
+
+  // Same terms gate as email sign-up: a first Google sign-in creates the
+  // account, so the user has to accept the terms first.
+  Future<void> _signUpWithGoogle() async {
+    if (!_agreeToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('กรุณายอมรับเงื่อนไขและข้อตกลงการใช้งาน')));
+      return;
+    }
+    setState(() => _isGoogleLoading = true);
+    await context.read<AuthCubit>().signInWithGoogle();
+    if (!mounted) return;
+    setState(() => _isGoogleLoading = false);
+    final state = context.read<AuthCubit>().state;
+    if (state is AuthError) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(state.message)));
+    }
+    if (context.read<AuthRepository>().currentUser != null) {
+      Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MainLayout()),
+          (route) => false);
+    }
   }
 
   @override
@@ -317,37 +321,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 12.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 16),
               Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 68,
+                  height: 68,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: AppGradients.primary,
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                    boxShadow: AppShadows.glow(AppColors.primary),
+                  ),
                   child: Image.asset('assets/logo.png',
-                      width: 80,
-                      height: 80,
-                      color: const Color.fromARGB(255, 16, 159, 111),
-                      fit: BoxFit.cover),
+                      color: Colors.white, fit: BoxFit.contain),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
               const Text(
                 'Create an Account',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black87),
+                style: AppText.display,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               const Text(
                 'Join the marketplace. Trade what you have.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.blueGrey),
+                style: AppText.bodySecondary,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
 
               _buildLabeledTextField(
                   label: 'FULL NAME',
@@ -397,7 +402,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               const SnackBar(
                                 content: Text(
                                     'กรุณากดเข้าไปอ่าน Terms of Service และ Privacy Policy ให้จบก่อนกดยอมรับ'),
-                                backgroundColor: Colors.orange,
+                                backgroundColor: AppColors.warning,
                               ),
                             );
                             return;
@@ -410,16 +415,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Text.rich(
                       TextSpan(
                         text: 'I agree to the ',
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.blueGrey),
+                        style: AppText.caption.copyWith(fontSize: 13),
                         children: [
                           TextSpan(
                             text: 'Terms of Service',
                             style: TextStyle(
                               color: _hasReadTerms
-                                  ? const Color(0xFF10B981)
-                                  : Colors.orange, // เปลี่ยนสีถ้าอ่านแล้ว
-                              fontWeight: FontWeight.bold,
+                                  ? AppColors.primary
+                                  : AppColors.warning, // เปลี่ยนสีถ้าอ่านแล้ว
+                              fontWeight: FontWeight.w600,
                               decoration: _hasReadTerms
                                   ? null
                                   : TextDecoration.underline,
@@ -436,9 +440,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             text: 'Privacy Policy',
                             style: TextStyle(
                               color: _hasReadPrivacy
-                                  ? const Color(0xFF10B981)
-                                  : Colors.orange, // เปลี่ยนสีถ้าอ่านแล้ว
-                              fontWeight: FontWeight.bold,
+                                  ? AppColors.primary
+                                  : AppColors.warning, // เปลี่ยนสีถ้าอ่านแล้ว
+                              fontWeight: FontWeight.w600,
                               decoration: _hasReadPrivacy
                                   ? null
                                   : TextDecoration.underline,
@@ -459,63 +463,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 20),
 
               // ปุ่ม Sign Up
-              ElevatedButton(
-                onPressed: _isLoading ? null : _register,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: tealColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  elevation: 2,
-                  shadowColor: tealColor.withOpacity(0.4),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                    : const Text('Sign Up',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+              PrimaryButton(
+                onPressed: _register,
+                isLoading: _isLoading,
+                child: const Text('Sign Up'),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
               Row(
                 children: [
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
-                  const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
+                  const Expanded(child: Divider()),
+                  Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       child: Text('OR CONTINUE WITH',
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black26))),
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
+                          style: AppText.caption
+                              .copyWith(color: AppColors.inkTertiary))),
+                  const Expanded(child: Divider()),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-              OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Text('G',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.redAccent)),
-                label: const Text('Google',
-                    style: TextStyle(
-                        fontSize: 15,
-                        color: Colors.black87,
-                        fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  backgroundColor: Colors.white,
-                  side: BorderSide(color: Colors.grey.shade300),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
+              GoogleSignInButton(
+                onPressed: _isLoading ? null : _signUpWithGoogle,
+                isLoading: _isGoogleLoading,
+                label: 'Sign up with Google',
               ),
               const SizedBox(height: 20),
 
@@ -523,14 +494,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text('Already have an account? ',
-                      style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
+                      style: AppText.bodySecondary),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Text('Log In',
-                        style: TextStyle(
-                            color: tealColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13)),
+                        style: AppText.label
+                            .copyWith(color: AppColors.primary, fontSize: 14)),
                   ),
                 ],
               ),

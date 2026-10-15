@@ -130,6 +130,9 @@ class ChatRepository {
         if (itemDoc.exists) {
           var itemData = itemDoc.data() as Map<String, dynamic>;
           itemData['listing_id'] = itemDoc.id;
+          // The deal's own status (pending / accepted / completed /
+          // rejected / cancelled), as opposed to the listing's.
+          itemData['offer_status'] = data['status'] ?? '';
           return itemData;
         }
       }

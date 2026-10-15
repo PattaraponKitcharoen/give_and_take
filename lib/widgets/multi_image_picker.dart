@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
+import '../theme/app_theme.dart';
 
 /// One entry in a [MultiImagePickerWidget]'s image list — either a photo
 /// already uploaded to Storage ([NetworkPickedImage]) or one picked on this
@@ -101,7 +102,7 @@ class MultiImagePickerWidget extends StatelessWidget {
       onChanged(updated);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('ไม่สามารถเลือกรูปภาพได้'), backgroundColor: Colors.red.shade600, behavior: SnackBarBehavior.floating));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('ไม่สามารถเลือกรูปภาพได้'), backgroundColor: AppColors.danger, behavior: SnackBarBehavior.floating));
       }
     }
   }
@@ -122,10 +123,6 @@ class MultiImagePickerWidget extends StatelessWidget {
   void _showImageSourceSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (sheetContext) {
         return SafeArea(
           child: Column(
@@ -134,7 +131,7 @@ class MultiImagePickerWidget extends StatelessWidget {
               const SizedBox(height: 12),
               Container(
                 width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(color: AppColors.hairline, borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -175,7 +172,7 @@ class MultiImagePickerWidget extends StatelessWidget {
             child: Text(
               'อัปโหลดได้สูงสุด $maxImages รูป · กดค้างที่รูปเพื่อลากจัดเรียง · รูปแรกจะเป็นรูปหน้าปก',
               maxLines: 1,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 11, color: AppColors.inkSecondary),
             ),
           ),
         ),
@@ -185,31 +182,54 @@ class MultiImagePickerWidget extends StatelessWidget {
 
   Widget _buildEmptyState(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: 26),
       decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: primaryColor.withOpacity(0.2), width: 1.5),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        border: Border.all(color: AppColors.hairline.withOpacity(0.6)),
+        boxShadow: AppShadows.raised,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(Icons.camera_alt, color: primaryColor, size: 28),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: AppGradients.of(primaryColor),
+              shape: BoxShape.circle,
+              boxShadow: AppShadows.glow(primaryColor),
+            ),
+            child: const Icon(Icons.photo_camera_rounded, color: Colors.white, size: 26),
           ),
           const SizedBox(height: 12),
-          const Text('Cover Photo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+          const Text('Cover Photo', style: AppText.subtitle),
           const SizedBox(height: 4),
-          Text('แตะเพื่ออัปโหลดหรือถ่ายรูป', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+          Text('แตะเพื่ออัปโหลดหรือถ่ายรูป', style: AppText.caption.copyWith(fontSize: 13)),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextButton.icon(onPressed: () => _pickImage(context, ImageSource.gallery), icon: Icon(Icons.photo_library_outlined, size: 16, color: Colors.grey.shade700), label: Text('Gallery', style: TextStyle(color: Colors.grey.shade700))),
-              const SizedBox(width: 16),
-              TextButton.icon(onPressed: () => _pickImage(context, ImageSource.camera), icon: Icon(Icons.camera_alt_outlined, size: 16, color: Colors.grey.shade700), label: Text('Camera', style: TextStyle(color: Colors.grey.shade700))),
+              OutlinedButton.icon(
+                onPressed: () => _pickImage(context, ImageSource.gallery),
+                icon: const Icon(Icons.photo_library_outlined, size: 17),
+                label: const Text('Gallery'),
+                style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    backgroundColor: AppColors.surfaceMuted,
+                    side: BorderSide.none,
+                    shape: const StadiumBorder()),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: () => _pickImage(context, ImageSource.camera),
+                icon: const Icon(Icons.camera_alt_outlined, size: 17),
+                label: const Text('Camera'),
+                style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    backgroundColor: AppColors.surfaceMuted,
+                    side: BorderSide.none,
+                    shape: const StadiumBorder()),
+              ),
             ],
           ),
         ],
@@ -220,7 +240,7 @@ class MultiImagePickerWidget extends StatelessWidget {
   Widget _buildBadge(IconData icon, String label, Color backgroundColor) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(AppRadius.pill)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -245,15 +265,15 @@ class MultiImagePickerWidget extends StatelessWidget {
             return Container(
               width: thumbSize,
               height: thumbSize,
-              color: Colors.grey.shade200,
+              color: AppColors.hairline,
               child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
             );
           },
           errorBuilder: (context, error, stackTrace) => Container(
             width: thumbSize,
             height: thumbSize,
-            color: Colors.grey.shade200,
-            child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+            color: AppColors.hairline,
+            child: const Icon(Icons.broken_image_outlined, color: AppColors.inkTertiary),
           ),
         ),
     };
@@ -286,7 +306,7 @@ class MultiImagePickerWidget extends StatelessWidget {
                 left: 6,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(6)),
+                  decoration: BoxDecoration(gradient: AppGradients.of(primaryColor), borderRadius: BorderRadius.circular(AppRadius.pill)),
                   child: const Text('Cover', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
               ),
@@ -295,10 +315,16 @@ class MultiImagePickerWidget extends StatelessWidget {
               right: -6,
               child: GestureDetector(
                 onTap: () => _removeAt(index),
-                child: const CircleAvatar(
-                  radius: 12,
-                  backgroundColor: Colors.black54,
-                  child: Icon(Icons.close, size: 14, color: Colors.white),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: AppColors.ink,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: AppShadows.raised,
+                  ),
+                  child: const Icon(Icons.close_rounded, size: 13, color: Colors.white),
                 ),
               ),
             ),
@@ -320,9 +346,10 @@ class MultiImagePickerWidget extends StatelessWidget {
             width: thumbSize,
             height: thumbSize,
             decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.03),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: primaryColor.withOpacity(0.3), width: 1.5),
+              border: Border.all(color: AppColors.hairline),
+              boxShadow: AppShadows.raised,
             ),
             child: Icon(Icons.add_photo_alternate_outlined, color: primaryColor, size: 28),
           ),

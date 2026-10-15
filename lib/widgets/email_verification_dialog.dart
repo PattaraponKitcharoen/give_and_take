@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../repositories/auth_repository.dart';
+import '../theme/app_theme.dart';
+import 'ui/dialog_header.dart';
 
 /// The "you must verify your email before doing X" dialog, shown before
 /// gated actions (posting a listing, submitting an offer). Previously
@@ -17,14 +19,16 @@ void showEmailVerificationDialog(
     context: context,
     builder: (dialogContext) {
       return AlertDialog(
-        title: Text('ยืนยันอีเมลของคุณ',
-            style: TextStyle(fontWeight: FontWeight.bold, color: themeColor)),
-        content: Text(message),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: DialogHeader(
+            icon: Icons.mark_email_unread_outlined,
+            title: 'ยืนยันอีเมลของคุณ',
+            color: themeColor),
+        content: Text(message, textAlign: TextAlign.center),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('ปิด', style: TextStyle(color: Colors.grey)),
+            child: const Text('ปิด',
+                style: TextStyle(color: AppColors.inkSecondary)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -47,14 +51,14 @@ void showEmailVerificationDialog(
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: Text(e.toString()),
-                      backgroundColor: Colors.red,
+                      backgroundColor: AppColors.danger,
                       behavior: SnackBarBehavior.floating));
                 }
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: themeColor),
-            child: const Text('ส่งอีเมลอีกครั้ง',
-                style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: themeColor, minimumSize: const Size(0, 44)),
+            child: const Text('ส่งอีเมลอีกครั้ง'),
           ),
         ],
       );

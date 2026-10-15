@@ -4,9 +4,10 @@ import '../repositories/auth_repository.dart';
 import '../repositories/listing_repository.dart';
 import 'item_detail_screen.dart';
 import '../models/listing_model.dart';
+import '../theme/app_theme.dart';
 
 class ItemSearchDelegate extends SearchDelegate<String> {
-  final Color tealColor = const Color(0xFF008080);
+  final Color tealColor = AppColors.primary;
 
   // เปลี่ยนคำใบ้ในช่องค้นหา
   @override
@@ -18,7 +19,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
     return [
       if (query.isNotEmpty)
         IconButton(
-          icon: const Icon(Icons.clear, color: Colors.grey),
+          icon: const Icon(Icons.clear, color: AppColors.inkTertiary),
           onPressed: () {
             query = ''; // ล้างข้อความ
           },
@@ -30,7 +31,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
   @override
   Widget? buildLeading(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.grey),
+      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.inkTertiary),
       onPressed: () {
         close(context, ''); // ปิดหน้าต่างค้นหา
       },
@@ -50,9 +51,9 @@ class ItemSearchDelegate extends SearchDelegate<String> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search, size: 80, color: Colors.grey.shade300),
+            Icon(Icons.search, size: 80, color: AppColors.hairline),
             const SizedBox(height: 16),
-            Text('พิมพ์ชื่อสิ่งของที่ต้องการค้นหา', style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
+            Text('พิมพ์ชื่อสิ่งของที่ต้องการค้นหา', style: TextStyle(color: AppColors.inkTertiary, fontSize: 16)),
           ],
         ),
       );
@@ -86,7 +87,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
 
         if (filteredDocs.isEmpty) {
           return Center(
-            child: Text('ไม่พบผลลัพธ์สำหรับ "$query"', style: const TextStyle(color: Colors.grey, fontSize: 16)),
+            child: Text('ไม่พบผลลัพธ์สำหรับ "$query"', style: const TextStyle(color: AppColors.inkTertiary, fontSize: 16)),
           );
         }
 
@@ -113,7 +114,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: AppColors.hairline),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,7 +124,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
                         width: double.infinity,
                         margin: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
+                          color: AppColors.hairline,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: thumbnail.isNotEmpty

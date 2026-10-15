@@ -77,6 +77,12 @@ class ProfileCubit extends Cubit<ProfileState> {
           user: _latestUser,
           userListings: _latestListings,
         ));
+        // This cubit lives for the whole session (MainLayout's profile tab),
+        // so reviews and the trade count must be refetched when the user doc
+        // or listings change — a new review updates the user's rating fields
+        // and a finished deal flips a listing to completed. Otherwise they
+        // stayed at whatever they were when the app started.
+        _refreshDerived();
       } else {
         emit(ProfileLoading());
         try {
@@ -94,6 +100,27 @@ class ProfileCubit extends Cubit<ProfileState> {
           emit(ProfileError(e.toString()));
         }
       }
+    }
+  }
+
+  int _refreshGeneration = 0;
+
+  Future<void> _refreshDerived() async {
+    // Streams can fire in quick succession; only the latest refresh emits.
+    final generation = ++_refreshGeneration;
+    try {
+      final results = await Future.wait([
+        _fetchTradeCount(),
+        _fetchEnrichedReviews(),
+      ]);
+      if (generation != _refreshGeneration || isClosed) return;
+      if (state is! ProfileLoaded) return;
+      emit((state as ProfileLoaded).copyWith(
+        tradeCount: results[0] as int,
+        enrichedReviews: results[1] as List<Map<String, dynamic>>,
+      ));
+    } catch (_) {
+      // Keep showing the previous reviews/count; the next update retries.
     }
   }
 

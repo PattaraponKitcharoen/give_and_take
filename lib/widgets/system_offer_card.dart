@@ -4,11 +4,14 @@ import '../cubits/transaction/transaction_cubit.dart';
 import '../cubits/transaction/transaction_state.dart';
 import '../repositories/offer_repository.dart';
 import '../repositories/review_repository.dart';
+import '../repositories/transaction_repository.dart';
 import '../models/listing_model.dart';
 import '../models/message_model.dart';
 import '../models/offer_model.dart';
 import '../models/review_model.dart';
 import '../screens/item_detail_screen.dart';
+import '../theme/app_theme.dart';
+import 'ui/primary_button.dart';
 
 class SystemOfferCard extends StatelessWidget {
   final MessageModel msg;
@@ -53,14 +56,16 @@ class SystemOfferCard extends StatelessWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-                color: Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300)),
+                color: AppColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: AppShadows.raised),
             child: (item.thumbnailUrl != '')
                 ? ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.md - 2),
                     child: Image.network(item.thumbnailUrl, fit: BoxFit.cover))
-                : const Icon(Icons.image, color: Colors.grey, size: 30),
+                : const Icon(Icons.image,
+                    color: AppColors.inkTertiary, size: 30),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -68,8 +73,8 @@ class SystemOfferCard extends StatelessWidget {
             child: Text(item.title,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: AppText.caption.copyWith(
+                    color: AppColors.ink, fontWeight: FontWeight.w600)),
           )
         ],
       ),
@@ -108,85 +113,96 @@ class SystemOfferCard extends StatelessWidget {
         int currentOffset = currentOffer?.coinOffset ?? 0;
 
         String offsetText = 'แลกของต่อของ (ไม่มีการเพิ่มเหรียญ)';
-        Color offsetColor = Colors.black54;
+        Color offsetColor = AppColors.inkSecondary;
 
         if (currentOffset > 0) {
           bool iAmSender = (currentUserId == currentOffer?.senderId);
           offsetText = iAmSender
               ? 'คุณเสนอจ่ายเพิ่ม $currentOffset Coins'
               : 'อีกฝ่ายเสนอจ่ายเพิ่ม $currentOffset Coins';
-          offsetColor = iAmSender ? Colors.red : Colors.green;
+          offsetColor = iAmSender ? AppColors.danger : AppColors.success;
         } else if (currentOffset < 0) {
           bool iAmSender = (currentUserId == currentOffer?.senderId);
           offsetText = iAmSender
               ? 'คุณขอรับเงินเพิ่ม ${currentOffset.abs()} Coins'
               : 'อีกฝ่ายขอรับเงินเพิ่ม ${currentOffset.abs()} Coins';
-          offsetColor = iAmSender ? Colors.green : Colors.red;
+          offsetColor = iAmSender ? AppColors.success : AppColors.danger;
         }
 
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF008080), width: 2),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
-            ],
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.xl),
+            border: Border.all(color: AppColors.primary.withOpacity(0.18)),
+            boxShadow: AppShadows.lifted,
           ),
           child: Column(
             children: [
-              const Text('ข้อเสนอแลกเปลี่ยน',
-                  style: TextStyle(
-                      color: Color(0xFF008080),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                    color: AppColors.primarySoft,
+                    borderRadius: BorderRadius.circular(AppRadius.pill)),
+                child: Text('ข้อเสนอแลกเปลี่ยน',
+                    style:
+                        AppText.label.copyWith(color: AppColors.primaryDark)),
+              ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildItemThumbnail(context, theirItemData),
-                  const Icon(Icons.sync_alt,
-                      color: Color(0xFF008080), size: 32),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppGradients.primary,
+                      boxShadow: AppShadows.glow(AppColors.primary),
+                    ),
+                    child: const Icon(Icons.swap_horiz_rounded,
+                        color: Colors.white, size: 22),
+                  ),
                   _buildItemThumbnail(context, myItemData),
                 ],
               ),
-              const Divider(height: 16),
+              const SizedBox(height: 14),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
                 decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8)),
+                    color: AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(AppRadius.pill)),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.monetization_on, color: offsetColor, size: 16),
+                    Icon(Icons.toll_rounded, color: offsetColor, size: 16),
                     const SizedBox(width: 8),
                     Text(offsetText,
-                        style: TextStyle(
-                            color: offsetColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13))
+                        style: AppText.label.copyWith(color: offsetColor))
                   ],
                 ),
               ),
-              const Divider(height: 16),
+              const SizedBox(height: 16),
               if (offerStatus == 'pending') ...[
                 if (!isMyTurn)
                   Column(children: [
                     const Text('รออีกฝ่ายพิจารณาข้อเสนอ...',
                         style: TextStyle(
-                            color: Colors.orange, fontWeight: FontWeight.bold)),
+                            color: AppColors.warning,
+                            fontWeight: FontWeight.w600)),
                     const SizedBox(height: 12),
                     SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
                             onPressed: onCancel,
                             style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red)),
+                                foregroundColor: AppColors.danger,
+                                side:
+                                    const BorderSide(color: AppColors.danger)),
                             child: const Text('ยกเลิกข้อเสนอ'))),
                   ])
                 else
@@ -198,41 +214,30 @@ class SystemOfferCard extends StatelessWidget {
                               child: OutlinedButton(
                                   onPressed: onReject,
                                   style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.red,
-                                      side:
-                                          const BorderSide(color: Colors.red)),
+                                      foregroundColor: AppColors.danger,
+                                      side: const BorderSide(
+                                          color: AppColors.danger)),
                                   child: const Text('ปฏิเสธ'))),
                           const SizedBox(width: 10),
                           Expanded(
-                              child: ElevatedButton(
+                              child: PrimaryButton(
                                   onPressed: () {
                                     if (currentOffer != null) {
                                       onCounter(currentOffer.toJson());
                                     }
                                   },
-                                  style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.orange),
-                                  child: const Text('ต่อรอง',
-                                      style: TextStyle(color: Colors.white)))),
+                                  color: AppColors.warning,
+                                  height: 48,
+                                  child: const Text('ต่อรอง'))),
                         ],
                       ),
                       const SizedBox(height: 8),
                       SizedBox(
                           width: double.infinity,
-                          child: ElevatedButton(
-                              onPressed: isSubmitting ? null : onAccept,
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF008080)),
-                              child: isSubmitting
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                          color: Colors.white, strokeWidth: 2))
-                                  : const Text('ยอมรับข้อเสนอ',
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold)))),
+                          child: PrimaryButton(
+                              onPressed: onAccept,
+                              isLoading: isSubmitting,
+                              child: const Text('ยอมรับข้อเสนอ'))),
                     ],
                   )
               ] else if (offerStatus == 'accepted' ||
@@ -241,21 +246,15 @@ class SystemOfferCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8)),
-                    child: const Text('ตกลงแลกเปลี่ยนแล้ว',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.green))),
-                BlocBuilder<TransactionCubit, TransactionState>(
+                        color: AppColors.successSoft,
+                        borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    child: Text('ตกลงแลกเปลี่ยนแล้ว',
+                        style:
+                            AppText.label.copyWith(color: AppColors.success))),
+                _dealProvider(BlocBuilder<TransactionCubit, TransactionState>(
                     builder: (context, txState) {
                   if (txState is TransactionInitial ||
                       txState is TransactionLoading) {
-                    if (activeOfferId != null && activeOfferId!.isNotEmpty) {
-                      context
-                          .read<TransactionCubit>()
-                          .listenToTransactionByOfferId(
-                              activeOfferId!, currentUserId);
-                    }
                     return const Center(
                         child: Padding(
                             padding: EdgeInsets.all(16.0),
@@ -269,37 +268,38 @@ class SystemOfferCard extends StatelessWidget {
                         const SizedBox(height: 16),
                         Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(8)),
+                                color: AppColors.primarySoft,
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.lg)),
                             child: Column(children: [
-                              const Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)',
-                                  style: TextStyle(color: Colors.black54)),
+                              Text('รหัสของคุณ (ให้อีกฝ่ายกรอก)',
+                                  style: AppText.caption
+                                      .copyWith(color: AppColors.primaryDark)),
+                              const SizedBox(height: 4),
                               Text(myCode,
                                   style: const TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 5,
-                                      color: Color(0xFF008080)))
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 8,
+                                      color: AppColors.primaryDark))
                             ])),
                         const SizedBox(height: 12),
                         SizedBox(
                             width: double.infinity,
-                            child: ElevatedButton(
+                            child: PrimaryButton(
                                 onPressed: onVerifyOtp,
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF008080)),
-                                child: const Text('กรอกรหัสของอีกฝ่าย',
-                                    style: TextStyle(color: Colors.white)))),
+                                child: const Text('กรอกรหัสของอีกฝ่าย'))),
                         const SizedBox(height: 8),
                         SizedBox(
                             width: double.infinity,
                             child: OutlinedButton(
                                 onPressed: onCancelDeal,
                                 style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red,
-                                    side: const BorderSide(color: Colors.red)),
+                                    foregroundColor: AppColors.danger,
+                                    side: const BorderSide(
+                                        color: AppColors.danger)),
                                 child: const Text('ยกเลิกดีลนี้'))),
                       ],
                     );
@@ -310,7 +310,7 @@ class SystemOfferCard extends StatelessWidget {
                         const SizedBox(height: 16),
                         const Text('ไม่สามารถโหลดข้อมูลการแลกเปลี่ยนได้',
                             style: TextStyle(
-                                color: Colors.red,
+                                color: AppColors.danger,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         SizedBox(
@@ -326,9 +326,9 @@ class SystemOfferCard extends StatelessWidget {
                               }
                             },
                             style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF008080),
+                                foregroundColor: AppColors.primary,
                                 side:
-                                    const BorderSide(color: Color(0xFF008080))),
+                                    const BorderSide(color: AppColors.primary)),
                             child: const Text('ลองอีกครั้ง'),
                           ),
                         ),
@@ -336,18 +336,18 @@ class SystemOfferCard extends StatelessWidget {
                     );
                   }
                   return const SizedBox();
-                })
+                }))
               ] else ...[
                 Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                         color: offerStatus == 'completed'
-                            ? Colors.green.shade50
+                            ? AppColors.successSoft
                             : (offerStatus == 'rejected'
-                                ? Colors.orange.shade50
-                                : Colors.red.shade50),
-                        borderRadius: BorderRadius.circular(8)),
+                                ? AppColors.warningSoft
+                                : AppColors.dangerSoft),
+                        borderRadius: BorderRadius.circular(AppRadius.pill)),
                     child: Text(
                         offerStatus == 'completed'
                             ? 'แลกเปลี่ยนสำเร็จสมบูรณ์'
@@ -355,31 +355,17 @@ class SystemOfferCard extends StatelessWidget {
                                 ? 'ถูกปฏิเสธ'
                                 : 'ถูกยกเลิกแล้ว'),
                         style: TextStyle(
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w600,
                             color: offerStatus == 'completed'
-                                ? Colors.green
+                                ? AppColors.success
                                 : (offerStatus == 'rejected'
-                                    ? Colors.orange
-                                    : Colors.red)))),
+                                    ? AppColors.warning
+                                    : AppColors.danger)))),
                 if (offerStatus == 'completed') ...[
-                  BlocBuilder<TransactionCubit, TransactionState>(
+                  _dealProvider(BlocBuilder<TransactionCubit, TransactionState>(
                       builder: (context, txState) {
                     if (txState is TransactionInitial ||
                         txState is TransactionLoading) {
-                      // If this device's offerStatus stream landed on
-                      // 'completed' before the offer ever passed through the
-                      // 'accepted'/'in_progress' branch above (e.g. the chat
-                      // was reopened after the deal already finished), the
-                      // subscription that branch normally starts on first
-                      // build never ran — leaving this cubit stuck on its
-                      // initial state forever and the rating button never
-                      // appearing. Starting it here too covers that case.
-                      if (activeOfferId != null && activeOfferId!.isNotEmpty) {
-                        context
-                            .read<TransactionCubit>()
-                            .listenToTransactionByOfferId(
-                                activeOfferId!, currentUserId);
-                      }
                       return const Center(
                           child: Padding(
                               padding: EdgeInsets.all(16.0),
@@ -414,42 +400,56 @@ class SystemOfferCard extends StatelessWidget {
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 8),
                                   decoration: BoxDecoration(
-                                      color: Colors.grey.shade100,
-                                      borderRadius: BorderRadius.circular(8)),
+                                      color: AppColors.surfaceMuted,
+                                      borderRadius:
+                                          BorderRadius.circular(AppRadius.md)),
                                   child: const Center(
                                       child: Text('คุณได้รีวิวดีลนี้แล้ว',
                                           style: TextStyle(
-                                              color: Colors.black54,
-                                              fontWeight: FontWeight.bold))),
+                                              color: AppColors.inkSecondary,
+                                              fontWeight: FontWeight.w600))),
                                 )
                               else
                                 SizedBox(
                                     width: double.infinity,
-                                    child: ElevatedButton.icon(
+                                    child: PrimaryButton(
                                         onPressed: () => onOpenRating(
                                             partnerId, transactionId),
-                                        icon: const Icon(Icons.star,
-                                            color: Colors.white, size: 20),
-                                        label: const Text('จัดการคะแนน/รีวิว',
-                                            style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold)),
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                Colors.amber.shade700))),
+                                        icon: Icons.star_rounded,
+                                        color: AppColors.gold,
+                                        child:
+                                            const Text('จัดการคะแนน/รีวิว'))),
                             ],
                           );
                         },
                       );
                     }
                     return const SizedBox();
-                  })
+                  }))
                 ]
               ]
             ],
           ),
         );
       },
+    );
+  }
+
+  // Each card watches its own deal through its own cubit. It used to share
+  // the app-wide TransactionCubit, which holds one deal at a time and is
+  // also where confirm/cancel report their result: two deal cards in the
+  // same chat kept stealing the subscription from each other (and could
+  // show the other deal's OTP), and a failed action or a listener error
+  // left from an earlier deal or account showed up here as "ไม่สามารถโหลด
+  // ข้อมูลการแลกเปลี่ยนได้". Actions still go through the app-wide cubit
+  // (ChatScreen shows their snackbars); this one only displays.
+  Widget _dealProvider(Widget child) {
+    return BlocProvider<TransactionCubit>(
+      key: ValueKey('deal-$activeOfferId'),
+      create: (context) =>
+          TransactionCubit(repository: context.read<TransactionRepository>())
+            ..listenToTransactionByOfferId(activeOfferId!, currentUserId),
+      child: child,
     );
   }
 }

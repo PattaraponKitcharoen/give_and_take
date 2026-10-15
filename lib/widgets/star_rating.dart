@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// Five stars filled to the exact [rating] — 4.7 shows four full stars and
 /// the fifth filled 70%, instead of rounding down to four.
@@ -11,7 +12,7 @@ class StarRating extends StatelessWidget {
     super.key,
     required this.rating,
     this.size = 14,
-    this.color = Colors.orange,
+    this.color = AppColors.gold,
   });
 
   @override
