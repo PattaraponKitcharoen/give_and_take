@@ -11,7 +11,7 @@ const P = "/databases/(default)/documents";
 const rulesPath = process.argv[2] || path.join(__dirname, "..", "..", "firestore.rules");
 const source = fs.readFileSync(rulesPath, "utf8");
 
-const A = "userA", B = "userB", C = "userC", ADMIN = "adminUser";
+const A = "userA", B = "userB", C = "userC", ADMIN = "adminUser", X = "bannedUser";
 const userDoc = (over = {}) => ({ name: "A", email: "a@x.com", role: "user", status: "active", coins_balance: 1000,
   owner_rating_scores: 0, owner_rating_count: 0, wishlist: [], is_email_verified: false, ...over });
 const listing = (owner, over = {}) => ({ owner_id: owner, status: "active", title: "item", estimated_coins: 50, ...over });
@@ -26,8 +26,17 @@ const world = {
   [`${P}/users/${ADMIN}`]: userDoc({ role: "admin" }),
   [`${P}/listings/LA`]: listing(A), [`${P}/listings/LB`]: listing(B), [`${P}/listings/LC`]: listing(C),
   [`${P}/listings/LB_busy`]: listing(B, { status: "in_progress" }),
+  // X is permanently banned (no banned_until)
+  [`${P}/users/${X}`]: userDoc({ status: "banned", ban_reason: "spam" }),
+  [`${P}/listings/LX`]: listing(X),
+  [`${P}/chat_rooms/RX`]: { members: [X, B] },
+  [`${P}/chat_rooms/RA`]: { members: [A, B] },
 };
-const mocks = Object.entries(world).map(([p, data]) => ({ function: "get", args: [{ exactValue: p }], result: { value: { data } } }));
+const mocks = [
+  ...Object.entries(world).map(([p, data]) => ({ function: "get", args: [{ exactValue: p }], result: { value: { data } } })),
+  ...Object.keys(world).map((p) => ({ function: "exists", args: [{ exactValue: p }], result: { value: true } })),
+  { function: "exists", args: [{ exactValue: `${P}/listings/NOPE` }], result: { value: false } },
+];
 
 const cases = [];
 const add = (name, expectation, uid, method, docPath, before, after) => {
@@ -73,6 +82,12 @@ add("listings: owner un-bans own listing (ADM-09)", DENY, A, "update", "/listing
 add("listings: owner hands listing to someone else", DENY, A, "update", "/listings/LA", l, { ...l, owner_id: B });
 add("listings: edit someone else's listing (POST-17)", DENY, A, "update", "/listings/LB", listing(B), { ...listing(B), title: "x" });
 add("listings: delete own active listing (app)", ALLOW, A, "delete", "/listings/LA", l);
+const loc = {"latitude": 7.01, "longitude": 100.47, "district": "หาดใหญ่", "province": "สงขลา", "display_name": "หาดใหญ่, สงขลา"};
+add("listings: create with pickup location (app)", ALLOW, A, "create", "/listings/new", undefined, { ...l, location: loc });
+add("listings: create with junk location", DENY, A, "create", "/listings/new", undefined, { ...l, location: { latitude: "here", longitude: 1 } });
+add("listings: create with out-of-range location", DENY, A, "create", "/listings/new", undefined, { ...l, location: { ...loc, latitude: 120 } });
+add("listings: create with extra fields in location", DENY, A, "create", "/listings/new", undefined, { ...l, location: { ...loc, exact_address: "room 304" } });
+add("listings: owner moves pickup location (app)", ALLOW, A, "update", "/listings/LA", { ...l, location: loc }, { ...l, location: { ...loc, latitude: 7.02 } });
 add("listings: delete listing that is mid-trade (POST-15)", DENY, A, "delete", "/listings/LA", listing(A, { status: "in_progress" }));
 add("listings: delete someone else's listing", DENY, A, "delete", "/listings/LB", listing(B));
 add("listings: admin bans a listing (admin web)", ALLOW, ADMIN, "update", "/listings/LA", l, { ...l, status: "banned" });
@@ -120,6 +135,79 @@ const w = { user_id: A, amount: -50, type: "escrow_lock" };
 add("wallet: owner reads own history (app)", ALLOW, A, "get", "/wallet_transactions/W1", w);
 add("wallet: read someone else's history (WAL-08)", DENY, B, "get", "/wallet_transactions/W1", w);
 add("wallet: write a history entry (WAL-07)", DENY, A, "create", "/wallet_transactions/W2", undefined, { ...w, amount: 9999 });
+
+// ---------------------------------------------------------------- matching
+const want = { owner_id: A, text: "หูฟังบลูทูธ", status: "active", created_at: 1, updated_at: 1 };
+add("wants: add own want (app)", ALLOW, A, "create", "/wants/W1", undefined, want);
+add("wants: add want for someone else", DENY, A, "create", "/wants/W1", undefined, { ...want, owner_id: B });
+add("wants: add want with a forged embedding", DENY, A, "create", "/wants/W1", undefined, { ...want, embedding: [1, 2], embedding_hash: "x" });
+add("wants: add empty want", DENY, A, "create", "/wants/W1", undefined, { ...want, text: "" });
+add("wants: add over-long want", DENY, A, "create", "/wants/W1", undefined, { ...want, text: "x".repeat(121) });
+add("wants: owner reads own want", ALLOW, A, "get", "/wants/W1", want);
+add("wants: read someone else's want", DENY, B, "get", "/wants/W1", want);
+add("wants: owner edits text (app)", ALLOW, A, "update", "/wants/W1", want, { ...want, text: "เสื่อโยคะ", updated_at: 2 });
+add("wants: owner overwrites embedding", DENY, A, "update", "/wants/W1", want, { ...want, embedding: [1, 2] });
+add("wants: owner deletes own want (app)", ALLOW, A, "delete", "/wants/W1", want);
+add("wants: delete someone else's want", DENY, B, "delete", "/wants/W1", want);
+add("users: turn matching off (app)", ALLOW, A, "update", `/users/${A}`, u, { ...u, match_enabled: false });
+add("users: reset own rescan cooldown", DENY, A, "update", `/users/${A}`, { ...u, last_rescan_at: 5 }, { ...u, last_rescan_at: 0 });
+const m = { members: [A, B], listing_ids: ["LA", "LB"], want_ids: ["W1", "W2"], score: 0.8, seen_by: [] };
+add("matches: member reads match (app)", ALLOW, A, "get", "/matches/M1", m);
+add("matches: outsider reads match", DENY, C, "get", "/matches/M1", m);
+add("matches: member marks it seen (app)", ALLOW, A, "update", "/matches/M1", m, { ...m, seen_by: [A] });
+add("matches: member marks it seen for the other side", DENY, A, "update", "/matches/M1", m, { ...m, seen_by: [B] });
+add("matches: member unmarks the other side's seen", DENY, A, "update", "/matches/M1", { ...m, seen_by: [B] }, { ...m, seen_by: [A] });
+add("matches: member changes the score", DENY, A, "update", "/matches/M1", m, { ...m, score: 1 });
+add("matches: create a match directly", DENY, A, "create", "/matches/M2", undefined, m);
+add("matches: delete a match", DENY, A, "delete", "/matches/M1", m);
+add("listing_vectors: read a vector", DENY, A, "get", "/listing_vectors/LA", { owner_id: A, status: "active" });
+add("listing_vectors: write a vector", DENY, A, "create", "/listing_vectors/LA", undefined, { owner_id: A, status: "active" });
+
+// ---------------------------------------------------------------- bans
+const xb = userDoc({ status: "banned", ban_reason: "spam" });
+add("ban: banned user posts a listing", DENY, X, "create", "/listings/new", undefined, listing(X));
+add("ban: banned user edits own listing", DENY, X, "update", "/listings/LX", listing(X), { ...listing(X), title: "x" });
+add("ban: banned user deletes own listing", DENY, X, "delete", "/listings/LX", listing(X));
+add("ban: banned user makes an offer", DENY, X, "create", "/offers/OX", undefined,
+  offer({ sender_id: X, last_offer_by: X, offered_listing_id: "LX", members: [X, B] }));
+add("ban: banned user sends a chat message", DENY, X, "create", "/chat_rooms/RX/messages/M1", undefined, { sender_id: X, text: "hi" });
+add("ban: banned user still reads their chat", ALLOW, X, "get", "/chat_rooms/RX/messages/M1", { sender_id: B, text: "hi" });
+add("ban: active user sends a chat message (app)", ALLOW, A, "create", "/chat_rooms/RA/messages/M1", undefined, { sender_id: A, text: "hi" });
+add("ban: banned user opens a chat room", DENY, X, "create", "/chat_rooms/RN", undefined, { members: [X, C] });
+add("ban: banned user adds a want", DENY, X, "create", "/wants/WX", undefined, { owner_id: X, text: "x", status: "active", created_at: 1, updated_at: 1 });
+add("ban: banned user edits own profile", DENY, X, "update", `/users/${X}`, xb, { ...xb, name: "New name" });
+add("ban: banned user's app saves push token (app)", ALLOW, X, "update", `/users/${X}`, xb, { ...xb, fcm_token: "t", updated_at: 2 });
+add("ban: banned user lifts own ban", DENY, X, "update", `/users/${X}`, xb, { ...xb, status: "active" });
+add("ban: banned user clears ban reason", DENY, X, "update", `/users/${X}`, xb, { ...u, status: "banned" });
+add("ban: register with ban fields pre-set", DENY, A, "create", `/users/${A}`, undefined, userDoc({ ban_reason: "x" }));
+add("ban: admin bans a user with reason (admin web)", ALLOW, ADMIN, "update", `/users/${A}`, u, { ...u, status: "banned", ban_reason: "โกง", banned_at: 1, updated_at: 1 });
+add("ban: admin sets a ban reason on a listing (admin web)", ALLOW, ADMIN, "update", "/listings/LA", l, { ...l, status: "banned", ban_reason: "ของผิดกฎหมาย" });
+add("ban: owner marks own listing hidden_by_user_ban", DENY, A, "update", "/listings/LA", { ...l, status: "banned" }, { ...l, status: "banned", hidden_by_user_ban: true });
+add("ban: owner clears ban reason on own listing", DENY, A, "update", "/listings/LA", { ...l, status: "banned", ban_reason: "x" }, { ...l, status: "banned" });
+
+// ---------------------------------------------------------------- reports
+const rep = (over = {}) => ({ reporter_id: A, target_type: "listing", target_id: "LB", reason: "ของปลอม", detail: "", status: "open", created_at: 1, ...over });
+add("reports: report someone's listing (app)", ALLOW, A, "create", `/reports/${A}_listing_LB`, undefined, rep());
+add("reports: report own listing", DENY, A, "create", `/reports/${A}_listing_LA`, undefined, rep({ target_id: "LA" }));
+add("reports: report a listing that doesn't exist", DENY, A, "create", `/reports/${A}_listing_NOPE`, undefined, rep({ target_id: "NOPE" }));
+add("reports: report a user (app)", ALLOW, A, "create", `/reports/${A}_user_${B}`, undefined, rep({ target_type: "user", target_id: B }));
+add("reports: report yourself", DENY, A, "create", `/reports/${A}_user_${A}`, undefined, rep({ target_type: "user", target_id: A }));
+add("reports: report own chat (app)", ALLOW, A, "create", `/reports/${A}_chat_RA`, undefined, rep({ target_type: "chat", target_id: "RA" }));
+add("reports: report a chat you're not in", DENY, C, "create", `/reports/${C}_chat_RA`, undefined, rep({ reporter_id: C, target_type: "chat", target_id: "RA" }));
+add("reports: report in someone else's name", DENY, A, "create", `/reports/${B}_listing_LA`, undefined, rep({ reporter_id: B, target_id: "LA" }));
+add("reports: doc id not matching target (dodge one-per-target)", DENY, A, "create", `/reports/${A}_listing_LB_2`, undefined, rep());
+add("reports: forge evidence", DENY, A, "create", `/reports/${A}_listing_LB`, undefined, { ...rep(), snapshot: { title: "fake" } });
+add("reports: create already resolved", DENY, A, "create", `/reports/${A}_listing_LB`, undefined, rep({ status: "resolved" }));
+add("reports: overlong detail", DENY, A, "create", `/reports/${A}_listing_LB`, undefined, rep({ detail: "x".repeat(501) }));
+add("reports: banned user reports", DENY, X, "create", `/reports/${X}_listing_LB`, undefined, rep({ reporter_id: X }));
+add("reports: reporter checks own report (app)", ALLOW, A, "get", `/reports/${A}_listing_LB`, rep());
+add("reports: read someone else's report", DENY, B, "get", `/reports/${A}_listing_LB`, rep());
+add("reports: reporter edits report", DENY, A, "update", `/reports/${A}_listing_LB`, rep(), rep({ reason: "x" }));
+add("reports: admin reads reports (admin web)", ALLOW, ADMIN, "get", `/reports/${A}_listing_LB`, rep());
+add("reports: admin edits report directly", DENY, ADMIN, "update", `/reports/${A}_listing_LB`, rep(), rep({ status: "resolved" }));
+add("admin_actions: admin reads log (admin web)", ALLOW, ADMIN, "get", "/admin_actions/a1", { admin_id: ADMIN });
+add("admin_actions: user reads log", DENY, A, "get", "/admin_actions/a1", { admin_id: ADMIN });
+add("admin_actions: admin writes log directly", DENY, ADMIN, "create", "/admin_actions/a2", undefined, { admin_id: ADMIN });
 
 // ---------------------------------------------------------------- run
 const token = () => {

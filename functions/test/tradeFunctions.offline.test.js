@@ -8,6 +8,7 @@ let auto = 0;
 const ref = (p) => ({
   path: p, id: p.split("/").pop(),
   collection: (n) => col(p + "/" + n),
+  get: async () => ({ exists: p in store, data: () => store[p] }),
 });
 const query = (p, filters = []) => ({
   isQuery: true,
@@ -45,13 +46,24 @@ const db = {
   },
 };
 const adminMock = { initializeApp() {}, firestore: Object.assign(() => db, { FieldValue: { serverTimestamp: () => "TS", delete: () => "DEL" } }), messaging: () => ({}) };
+let genaiReply = "{}";
+let genaiCalls = [];
+class FakeGenAI {
+  constructor() {
+    this.interactions = { create: async (req) => { genaiCalls.push(req); if (genaiReply instanceof Error) throw genaiReply; return { output_text: genaiReply }; } };
+  }
+}
 const orig = Module._load;
 Module._load = function (req, ...a) {
   if (req === "firebase-admin") return adminMock;
   if (req === "firebase-functions") return {};
   if (req === "firebase-functions/v2") return { setGlobalOptions() {} };
-  if (req === "firebase-functions/v2/https") return { onCall: (f) => f, HttpsError };
-  if (req === "firebase-functions/v2/firestore") return { onDocumentCreated: (_p, f) => f };
+  // onCall(handler) or onCall(options, handler)
+  if (req === "firebase-functions/v2/https") return { onCall: (a, b) => b || a, HttpsError };
+  if (req === "firebase-functions/params") return { defineSecret: () => ({ value: () => "test-key" }) };
+  if (req === "@google/genai") return { GoogleGenAI: FakeGenAI };
+  if (req === "firebase-functions/v2/firestore") return { onDocumentCreated: (_p, f) => f, onDocumentWritten: (_p, f) => f, onDocumentUpdated: (_p, f) => f };
+  if (req === "firebase-functions/v2/scheduler") return { onSchedule: (_o, f) => f };
   if (req === "firebase-functions/logger") return { error() {}, warn() {}, info() {} };
   return orig.call(this, req, ...a);
 };
@@ -103,6 +115,19 @@ const t = async (name, expect, setup, uid, check) => {
   const txOf = () => Object.entries(store).find(([k]) => k.startsWith("transactions/"));
   const check = (name, ok, got) => { if (!ok) fail++; console.log((ok ? "PASS" : "FAIL") + "  " + name + "  -> " + got); };
   let got;
+
+  // Bans: a banned caller is refused by every trade callable.
+  seed({ "users/B": { status: "banned", ban_reason: "spam" } });
+  got = await call("B");
+  check("BAN-01 banned user can't accept an offer", got === "permission-denied" && store["offers/O1"].status === "pending", got);
+  seed({ "users/B": { status: "banned", banned_until: { toMillis: () => Date.now() - 1000 } } });
+  got = await call("B");
+  check("BAN-02 expired temporary ban no longer blocks", got === "OK", got);
+  seed({ "users/B": { status: "banned", banned_until: { toMillis: () => Date.now() + 3600e3 } } });
+  for (const name of ["confirmHandoverOtp", "cancelAcceptedTrade", "submitTradeReview"]) {
+    got = await fn(name, "B", { offerId: "O1" });
+    check(`BAN-03 banned user refused by ${name}`, got === "permission-denied", got);
+  }
 
   await deal(50);
   got = await fn("confirmHandoverOtp", "A", { offerId: "O1", inputOtp: "000000" });
@@ -159,6 +184,38 @@ const t = async (name, expect, setup, uid, check) => {
   const otpOk = bad === 0 && diffs.size > 250 && !(diffs.size === 1 && diffs.has(400000));
   if (!otpOk) fail++;
   console.log((otpOk ? "PASS" : "FAIL") + "  OTP-02 codes independent: " + diffs.size + " distinct differences in 300 deals, malformed=" + bad);
+  // AI listing assistant (Gemini mocked)
+  const ai = async (auth, data) => {
+    try { return { ok: await fns.estimateListing({ auth, data }) }; } catch (e) { return { code: e.code }; }
+  };
+  const me = { uid: "A", token: { email_verified: true } };
+  const img = { data: "aGVsbG8=", mimeType: "image/jpeg" };
+  seed({ "listings/LA": { status: "completed", title: "Leaf", category: "อื่นๆ (Miscellaneous)", estimated_coins: 20 } });
+  genaiCalls = [];
+  genaiReply = JSON.stringify({ title: " UGREEN 65W ", description: "หัวชาร์จ", category: "อุปกรณ์ไอที & แก็ดเจ็ต", condition: "มือสองสภาพดี", coins_min: 650, coins_max: 450, coins_suggested: 900, reason: "r", confidence: "high" });
+  let r = await ai(me, { images: [img, img] });
+  check("AI-01 suggestion is normalized (range ordered, suggested clamped, text trimmed)",
+    r.ok && r.ok.coins_min === 450 && r.ok.coins_max === 650 && r.ok.coins_suggested === 650 && r.ok.title === "UGREEN 65W", JSON.stringify(r.ok));
+  const req = genaiCalls[0] || {};
+  check("AI-02 all photos sent, nothing stored, traded items given as reference",
+    req.input && req.input.filter((x) => x.type === "image").length === 2 && req.store === false &&
+    req.input[0].text.includes("Leaf | อื่นๆ (Miscellaneous)"), req.input && req.input.length);
+  genaiReply = JSON.stringify({ category: "ขนม", condition: "ใหม่มาก", coins_suggested: -5 });
+  r = await ai(me, { images: [img] });
+  check("AI-03 unknown category/condition and bad numbers fall back to safe values",
+    r.ok && r.ok.category === "อื่นๆ (Miscellaneous)" && r.ok.condition === "มือสองสภาพดี" && r.ok.coins_suggested === 0 && r.ok.confidence === "low", JSON.stringify(r.ok));
+  check("AI-04 signed-out caller rejected", (await ai(null, { images: [img] })).code === "unauthenticated", "");
+  check("AI-05 unverified email rejected", (await ai({ uid: "A", token: { email_verified: false } }, { images: [img] })).code === "permission-denied", "");
+  check("AI-06 no photos rejected", (await ai(me, { images: [] })).code === "invalid-argument", "");
+  check("AI-07 more than 6 photos rejected", (await ai(me, { images: Array(7).fill(img) })).code === "invalid-argument", "");
+  check("AI-08 non-image file rejected", (await ai(me, { images: [{ data: "eA==", mimeType: "application/pdf" }] })).code === "invalid-argument", "");
+  genaiReply = new Error("429 RESOURCE_EXHAUSTED quota");
+  check("AI-09 Gemini quota error reported as resource-exhausted", (await ai(me, { images: [img] })).code === "resource-exhausted", "");
+  genaiReply = new Error("boom");
+  genaiCalls = [];
+  check("AI-10 other Gemini errors reported as internal", (await ai(me, { images: [img] })).code === "internal", "");
+  check("AI-11 a failing model falls back to the next one", genaiCalls.map((c) => c.model).join(",") === "gemini-3.6-flash,gemini-3.5-flash", genaiCalls.map((c) => c.model).join(","));
+
   console.log(fail ? fail + " FAILED" : "ALL PASSED");
   process.exit(fail ? 1 : 0);
 })();

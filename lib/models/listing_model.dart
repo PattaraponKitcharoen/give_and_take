@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'place_location.dart';
 
 /// One photo in a listing's [ListingModel.images] array: its Storage
 /// download URL plus whether it was taken with the in-app camera (used to
@@ -49,6 +50,13 @@ class ListingModel {
   final List<ListingImage> images;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  // Pickup point, rounded to ~1 km. Null on listings posted before this
+  // existed (until backfilled) or when the owner gave no location.
+  final PlaceLocation? location;
+  // Set by moderation, read-only for the app (never in toJson): why an
+  // admin suspended it, or that it's hidden because the owner is banned.
+  final String banReason;
+  final bool hiddenByUserBan;
 
   ListingModel({
     required this.listingId,
@@ -67,6 +75,9 @@ class ListingModel {
     required this.images,
     this.createdAt,
     this.updatedAt,
+    this.location,
+    this.banReason = '',
+    this.hiddenByUserBan = false,
   });
 
   factory ListingModel.fromJson(Map<String, dynamic> json, String documentId) {
@@ -100,6 +111,9 @@ class ListingModel {
           ? ((metadata?['updated_at'] ?? json['updated_at']) as Timestamp)
               .toDate()
           : null,
+      location: PlaceLocation.fromMap(json['location']),
+      banReason: json['ban_reason'] ?? '',
+      hiddenByUserBan: json['hidden_by_user_ban'] == true,
     );
   }
 
@@ -120,6 +134,7 @@ class ListingModel {
       'images': images.map((img) => img.toMap()).toList(),
       if (createdAt != null) 'created_at': Timestamp.fromDate(createdAt!),
       if (updatedAt != null) 'updated_at': Timestamp.fromDate(updatedAt!),
+      if (location != null) 'location': location!.toMap(),
     };
   }
 
@@ -140,6 +155,7 @@ class ListingModel {
     List<ListingImage>? images,
     DateTime? createdAt,
     DateTime? updatedAt,
+    PlaceLocation? location,
   }) {
     return ListingModel(
       listingId: listingId ?? this.listingId,
@@ -158,6 +174,9 @@ class ListingModel {
       images: images ?? this.images,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      location: location ?? this.location,
+      banReason: banReason,
+      hiddenByUserBan: hiddenByUserBan,
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/report_repository.dart';
+import '../widgets/report_sheet.dart';
 import '../repositories/auth_repository.dart';
 import '../models/message_model.dart';
 import '../models/chat_room_model.dart';
@@ -18,6 +20,7 @@ import '../widgets/counter_offer_dialog.dart';
 import '../widgets/handover_otp_dialog.dart';
 import '../widgets/rating_review_dialog.dart';
 import '../widgets/chat_bubble_widget.dart';
+import '../theme/app_theme.dart';
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -213,7 +216,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _scaffoldMessengerKey.currentState?.showSnackBar(
                   SnackBar(
                     content: Text(state.message),
-                    backgroundColor: const Color(0xFF008080),
+                    backgroundColor: AppColors.primary,
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -221,7 +224,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _scaffoldMessengerKey.currentState?.showSnackBar(
                   SnackBar(
                     content: Text(state.error),
-                    backgroundColor: Colors.red,
+                    backgroundColor: AppColors.danger,
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -238,7 +241,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _scaffoldMessengerKey.currentState?.showSnackBar(
                   SnackBar(
                     content: Text(state.error),
-                    backgroundColor: Colors.red,
+                    backgroundColor: AppColors.danger,
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -255,7 +258,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _scaffoldMessengerKey.currentState?.showSnackBar(
                   SnackBar(
                     content: Text(state.message),
-                    backgroundColor: const Color(0xFF008080),
+                    backgroundColor: AppColors.primary,
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -263,7 +266,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _scaffoldMessengerKey.currentState?.showSnackBar(
                   SnackBar(
                     content: Text(state.error),
-                    backgroundColor: Colors.red,
+                    backgroundColor: AppColors.danger,
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -294,27 +297,24 @@ class _ChatScreenState extends State<ChatScreen> {
                   readBy.any((id) => id != currentUserId);
 
               return Scaffold(
-                backgroundColor: Colors.white,
                 appBar: AppBar(
-                  backgroundColor: Colors.white,
-                  elevation: 0.5,
-                  iconTheme: const IconThemeData(color: Colors.black87),
+                  shape: const Border(
+                      bottom: BorderSide(color: AppColors.hairline)),
                   title: FutureBuilder<Map<String, dynamic>>(
                       future: _targetItemInfoFor(activeOfferId),
                       builder: (context, itemSnap) {
                         if (!itemSnap.hasData || itemSnap.data!.isEmpty) {
                           return const Text('เจรจาแลกเปลี่ยน',
-                              style: TextStyle(
-                                  color: Colors.black87, fontSize: 16));
+                              style: AppText.subtitle);
                         }
                         return Row(
                           children: [
                             ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
                               child: Container(
-                                width: 36,
-                                height: 36,
-                                color: Colors.grey.shade100,
+                                width: 38,
+                                height: 38,
+                                color: AppColors.surfaceMuted,
                                 child: itemSnap.data!['thumbnail_url'] !=
                                             null &&
                                         itemSnap.data!['thumbnail_url'] != ''
@@ -322,7 +322,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         itemSnap.data!['thumbnail_url'],
                                         fit: BoxFit.cover)
                                     : const Icon(Icons.image,
-                                        size: 20, color: Colors.grey),
+                                        size: 20, color: AppColors.inkTertiary),
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -333,22 +333,39 @@ class _ChatScreenState extends State<ChatScreen> {
                                   Text(
                                       itemSnap.data!['title'] ??
                                           'สิ่งของแลกเปลี่ยน',
-                                      style: const TextStyle(
-                                          color: Colors.black87,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold),
+                                      style: AppText.label
+                                          .copyWith(fontSize: 14.5),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis),
                                   const Text(
                                       'รายละเอียดเพิ่มเติมกดดูที่ข้อเสนอ',
                                       style: TextStyle(
-                                          color: Colors.grey, fontSize: 10)),
+                                          color: AppColors.inkTertiary,
+                                          fontSize: 11)),
                                 ],
                               ),
                             )
                           ],
                         );
                       }),
+                  actions: [
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert_rounded),
+                      onSelected: (_) => showReportSheet(context,
+                          type: ReportTarget.chat, targetId: widget.roomId),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'report',
+                          child: Row(children: [
+                            Icon(Icons.flag_outlined,
+                                color: AppColors.danger, size: 20),
+                            SizedBox(width: 10),
+                            Text('รายงานแชทนี้'),
+                          ]),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
                 body: Column(
                   children: [
@@ -404,21 +421,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
                               if (msg.senderId == 'system' &&
                                   type != 'system_offer') {
+                                // Kept narrower than the screen and centred,
+                                // so long notices wrap into a tidy block
+                                // instead of a full-width bar.
                                 return Center(
                                   child: Container(
                                     margin: const EdgeInsets.symmetric(
-                                        vertical: 12),
+                                        vertical: 10, horizontal: 28),
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 8),
+                                        horizontal: 16, vertical: 9),
                                     decoration: BoxDecoration(
-                                        color: Colors.grey.shade100,
-                                        borderRadius:
-                                            BorderRadius.circular(20)),
+                                        color: AppColors.surface,
+                                        boxShadow: AppShadows.raised,
+                                        borderRadius: BorderRadius.circular(
+                                            AppRadius.lg)),
                                     child: Text(msg.content,
-                                        style: const TextStyle(
-                                            color: Colors.black54,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold)),
+                                        textAlign: TextAlign.center,
+                                        style: AppText.caption.copyWith(
+                                            color: AppColors.inkSecondary,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.45)),
                                   ),
                                 );
                               }
@@ -481,13 +503,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
-                      decoration:
-                          BoxDecoration(color: Colors.white, boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, -5))
-                      ]),
+                      decoration: const BoxDecoration(
+                          color: AppColors.surface,
+                          border: Border(
+                              top: BorderSide(color: AppColors.hairline))),
                       child: SafeArea(
                         bottom: true,
                         top: false,
@@ -496,24 +515,42 @@ class _ChatScreenState extends State<ChatScreen> {
                             Expanded(
                               child: TextField(
                                 controller: _messageController,
+                                style: AppText.body,
                                 decoration: InputDecoration(
                                     hintText: 'พิมพ์ข้อความ...',
                                     filled: true,
-                                    fillColor: Colors.grey.shade100,
+                                    fillColor: AppColors.surfaceMuted,
                                     border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(25),
+                                        borderRadius: BorderRadius.circular(
+                                            AppRadius.pill),
                                         borderSide: BorderSide.none),
+                                    enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                            AppRadius.pill),
+                                        borderSide: BorderSide.none),
+                                    focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                            AppRadius.pill),
+                                        borderSide: const BorderSide(
+                                            color: AppColors.hairline)),
                                     contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 20, vertical: 10)),
+                                        horizontal: 20, vertical: 12)),
                               ),
                             ),
                             const SizedBox(width: 8),
-                            CircleAvatar(
-                              backgroundColor: const Color(0xFF008080),
-                              child: IconButton(
-                                  icon: const Icon(Icons.send,
-                                      color: Colors.white, size: 20),
-                                  onPressed: _sendMessage),
+                            GestureDetector(
+                              onTap: _sendMessage,
+                              child: Container(
+                                width: 46,
+                                height: 46,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: AppGradients.primary,
+                                  boxShadow: AppShadows.glow(AppColors.primary),
+                                ),
+                                child: const Icon(Icons.arrow_upward_rounded,
+                                    color: Colors.white, size: 22),
+                              ),
                             ),
                           ],
                         ),

@@ -20,6 +20,9 @@ class UserModel {
   final String? academicYear;
   final bool isStudent;
   final List<String> wishlist;
+  // Set by an admin (status == 'banned'); bannedUntil null = permanent.
+  final String banReason;
+  final DateTime? bannedUntil;
 
   UserModel({
     required this.uid,
@@ -41,7 +44,15 @@ class UserModel {
     this.academicYear,
     this.isStudent = false,
     this.wishlist = const [],
+    this.banReason = '',
+    this.bannedUntil,
   });
+
+  /// Same test as isBanned() in firestore.rules: a temporary ban stops
+  /// counting once its end time passes, even before the hourly job clears it.
+  bool get isBanned =>
+      status == 'banned' &&
+      (bannedUntil == null || bannedUntil!.isAfter(DateTime.now()));
 
   factory UserModel.fromJson(Map<String, dynamic> json, String documentId) {
     return UserModel(
@@ -74,6 +85,8 @@ class UserModel {
       academicYear: json['academic_year'],
       isStudent: json['is_student'] ?? false,
       wishlist: List<String>.from(json['wishlist'] ?? []),
+      banReason: json['ban_reason'] ?? '',
+      bannedUntil: (json['banned_until'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -141,6 +154,9 @@ class UserModel {
       academicYear: academicYear ?? this.academicYear,
       isStudent: isStudent ?? this.isStudent,
       wishlist: wishlist ?? this.wishlist,
+      // Admin-only fields: carried over, never set by the app.
+      banReason: banReason,
+      bannedUntil: bannedUntil,
     );
   }
 }

@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../repositories/report_repository.dart';
+import '../widgets/report_sheet.dart';
+import '../cubits/location/location_cubit.dart';
+import '../models/place_location.dart';
 import '../models/listing_model.dart';
 import '../models/offer_model.dart';
 import '../models/user_model.dart';
@@ -12,6 +16,8 @@ import '../cubits/offer/offer_state.dart';
 import 'chat_screen.dart';
 import 'user_profile_screen.dart';
 import '../widgets/email_verification_dialog.dart';
+import '../widgets/ui/glass.dart';
+import '../theme/app_theme.dart';
 
 /// [BouncingScrollPhysics] that hard-caps how far the user can pull down
 /// past the top, while leaving the bottom bounce completely normal.
@@ -45,8 +51,12 @@ class CappedTopBouncingScrollPhysics extends BouncingScrollPhysics {
 
 class ItemDetailScreen extends StatefulWidget {
   final ListingModel listing;
+  // Opened from a match: the offer sheet starts with this item of mine
+  // selected (the one the other side wants) instead of my first item.
+  final String? preselectedOfferListingId;
 
-  const ItemDetailScreen({super.key, required this.listing});
+  const ItemDetailScreen(
+      {super.key, required this.listing, this.preselectedOfferListingId});
 
   @override
   State<ItemDetailScreen> createState() => _ItemDetailScreenState();
@@ -72,9 +82,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final listing = widget.listing;
 
     // 🟢 แก้รหัสสีให้ตรงกับหน้า Add Item (0xFF008080)
-    const Color tealColor = Color(0xFF008080);
-    const Color lightTeal = Color(0xFFE0F2F1);
-    const Color coinGreen = Color(0xFF00C853);
+    const Color tealColor = AppColors.primary;
+    const Color lightTeal = AppColors.primarySoft;
+    const Color coinGreen = AppColors.primary;
 
     final String listingId = listing.listingId;
     final String title = listing.title;
@@ -119,7 +129,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       appBar: AppBar(
         toolbarHeight: 0,
         elevation: 0,
-        backgroundColor: tealColor,
+        backgroundColor: AppColors.background,
       ),
       // Root Stack: the gradient and Back button below are siblings of the
       // scroll view, not descendants of it, so they stay fixed at the top
@@ -135,7 +145,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [tealColor, Colors.white],
+                colors: [AppColors.background, AppColors.surface],
                 stops: const [0.5, 0.5],
               ),
             ),
@@ -154,7 +164,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         // nothing painted yet, so fast swipes never flash
                         // the teal/white background through instead.
                         Container(
-                          color: Colors.grey.shade200,
+                          color: AppColors.hairline,
                           child: PageView.builder(
                             controller: _pageController,
                             // Stops exactly at the first/last image instead
@@ -167,7 +177,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             itemBuilder: (context, index) {
                               if (imageCount == 0) {
                                 return Container(
-                                  color: Colors.grey.shade200,
+                                  color: AppColors.hairline,
                                   child: const Icon(Icons.image,
                                       size: 80, color: Colors.black12),
                                 );
@@ -178,7 +188,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 loadingBuilder: (context, child, progress) {
                                   if (progress == null) return child;
                                   return Container(
-                                    color: Colors.grey.shade200,
+                                    color: AppColors.hairline,
                                     child: const Center(
                                         child: CircularProgressIndicator(
                                             strokeWidth: 2)),
@@ -186,7 +196,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 },
                                 errorBuilder: (context, error, stackTrace) =>
                                     Container(
-                                  color: Colors.grey.shade200,
+                                  color: AppColors.hairline,
                                   child: const Icon(Icons.broken_image_outlined,
                                       size: 60, color: Colors.black12),
                                 ),
@@ -211,14 +221,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         ),
                         if (currentIsFromCamera)
                           Positioned(
-                            bottom: 16,
+                            bottom: 40,
                             left: 16,
-                            child: Container(
+                            child: Glass(
+                              tint: AppColors.ink,
+                              opacity: 0.4,
+                              blur: 12,
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.5),
-                                  borderRadius: BorderRadius.circular(20)),
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -236,14 +246,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                           ),
                         if (imageCount > 1)
                           Positioned(
-                            bottom: 16,
+                            bottom: 40,
                             right: 16,
-                            child: Container(
+                            child: Glass(
+                              tint: AppColors.ink,
+                              opacity: 0.4,
+                              blur: 12,
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.5),
-                                  borderRadius: BorderRadius.circular(20)),
                               child: Text('${safeIndex + 1}/$imageCount',
                                   style: const TextStyle(
                                       color: Colors.white,
@@ -253,7 +263,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                           ),
                         if (imageCount > 1)
                           Positioned(
-                            bottom: 24,
+                            bottom: 48,
                             left: 0,
                             right: 0,
                             child: Row(
@@ -267,96 +277,121 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       ],
                     ),
                   ),
-                  Container(
-                    color: Colors.white,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _buildBadge(Icons.laptop_mac, category, lightTeal,
-                                  tealColor),
-                              _buildBadge(
-                                  Icons.star, condition, lightTeal, tealColor),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(title,
-                                        style: const TextStyle(
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.black87,
-                                            height: 1.2)),
-                                    const SizedBox(height: 6),
-                                    Text(listedText,
-                                        style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontSize: 13)),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 8),
-                                    decoration: BoxDecoration(
-                                        color: coinGreen,
-                                        borderRadius:
-                                            BorderRadius.circular(20)),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.layers,
-                                            color: Colors.white, size: 16),
-                                        const SizedBox(width: 4),
-                                        Text('$coins',
-                                            style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.white)),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text('Coin Value',
-                                      style: TextStyle(
-                                          color: Colors.grey.shade600,
-                                          fontSize: 11)),
-                                ],
-                              )
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          _buildOwnerProfileCard(context, listing, tealColor),
-                          const SizedBox(height: 16),
-                          const Text('About This Item',
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: tealColor)),
-                          const SizedBox(height: 8),
-                          Text(
-                            description,
-                            style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.grey.shade800,
-                                height: 1.6),
-                          ),
-                          const SizedBox(height: 80),
+                  // Rounded sheet pulled up over the bottom of the photo.
+                  Transform.translate(
+                    offset: const Offset(0, -24),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(28)),
+                        boxShadow: [
+                          BoxShadow(
+                              color: Color(0x1414171A),
+                              blurRadius: 20,
+                              offset: Offset(0, -6)),
                         ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                            AppSpace.page, 22, AppSpace.page, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _buildBadge(Icons.laptop_mac, category,
+                                    lightTeal, tealColor),
+                                _buildBadge(Icons.star, condition, lightTeal,
+                                    tealColor),
+                                if (listing.location != null)
+                                  BlocBuilder<LocationCubit, LocationState>(
+                                    builder: (context, loc) {
+                                      final there = listing.location!;
+                                      final here = loc.location;
+                                      final parts = [
+                                        if (here != null)
+                                          PlaceLocation.formatDistance(
+                                              there.distanceKmTo(here)),
+                                        if (there.displayName.isNotEmpty)
+                                          there.displayName,
+                                      ];
+                                      if (parts.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return _buildBadge(Icons.place_outlined,
+                                          parts.join(' · '), lightTeal, tealColor);
+                                    },
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(title,
+                                          style: AppText.display
+                                              .copyWith(fontSize: 24)),
+                                      const SizedBox(height: 6),
+                                      Text(listedText,
+                                          style: AppText.caption
+                                              .copyWith(fontSize: 13)),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 8),
+                                      decoration: BoxDecoration(
+                                          gradient: AppGradients.of(coinGreen),
+                                          boxShadow: AppShadows.glow(coinGreen),
+                                          borderRadius: BorderRadius.circular(
+                                              AppRadius.pill)),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.toll_rounded,
+                                              color: Colors.white, size: 16),
+                                          const SizedBox(width: 4),
+                                          Text('$coins',
+                                              style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white)),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text('Coin Value',
+                                        style: AppText.caption
+                                            .copyWith(fontSize: 11)),
+                                  ],
+                                )
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            _buildOwnerProfileCard(context, listing, tealColor),
+                            const SizedBox(height: 24),
+                            const Text('About This Item', style: AppText.title),
+                            const SizedBox(height: 10),
+                            Text(
+                              description,
+                              style: AppText.body.copyWith(
+                                  color: AppColors.inkSecondary, height: 1.65),
+                            ),
+                            const SizedBox(height: 56),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -372,6 +407,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             child: _buildFloatingIcon(
                 Icons.arrow_back_ios_new_rounded, () => Navigator.pop(context)),
           ),
+          // Report menu, only on other people's listings.
+          if (listing.ownerId.isNotEmpty &&
+              listing.ownerId != context.read<AuthRepository>().currentUser?.uid)
+            Positioned(
+              top: 8,
+              right: 16,
+              child: _buildFloatingIcon(Icons.more_horiz_rounded,
+                  () => _showReportMenu(context, listing)),
+            ),
         ],
       ),
 
@@ -429,20 +473,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 height: 52,
                                 width: 52,
                                 decoration: BoxDecoration(
-                                  color:
-                                      isLiked ? Colors.red.shade50 : lightTeal,
-                                  borderRadius: BorderRadius.circular(16),
+                                  color: isLiked
+                                      ? AppColors.dangerSoft
+                                      : AppColors.surface,
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.md),
                                   border: Border.all(
                                       color: isLiked
-                                          ? Colors.red.shade200
-                                          : tealColor.withOpacity(0.3)),
+                                          ? AppColors.danger.withOpacity(0.25)
+                                          : AppColors.hairline),
                                 ),
                                 child: IconButton(
                                   icon: Icon(
                                     isLiked
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    color: isLiked ? Colors.red : tealColor,
+                                        ? Icons.favorite_rounded
+                                        : Icons.favorite_border_rounded,
+                                    color: isLiked
+                                        ? AppColors.danger
+                                        : AppColors.ink,
                                   ),
                                   onPressed: () async {
                                     if (currentUserId.isEmpty) return;
@@ -471,7 +519,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           const SnackBar(
                                             content: Text(
                                                 'บันทึกรายการโปรดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
-                                            backgroundColor: Colors.red,
+                                            backgroundColor: AppColors.danger,
                                             behavior: SnackBarBehavior.floating,
                                           ),
                                         );
@@ -485,15 +533,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 // 🟢 เพิ่ม Container ห่อปุ่มไว้เพื่อทำเอฟเฟกต์เงาแบบเดียวกับหน้า Add Item
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.md),
+                                    gradient: isActive
+                                        ? AppGradients.of(tealColor)
+                                        : null,
                                     boxShadow: isActive
-                                        ? [
-                                            BoxShadow(
-                                              color: tealColor.withOpacity(0.3),
-                                              blurRadius: 15,
-                                              offset: const Offset(0, 5),
-                                            ),
-                                          ]
+                                        ? AppShadows.glow(tealColor)
                                         : [],
                                   ),
                                   child: ElevatedButton(
@@ -564,14 +610,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                             }
                                           : null,
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: tealColor,
+                                        backgroundColor: Colors.transparent,
+                                        shadowColor: Colors.transparent,
                                         disabledBackgroundColor:
-                                            Colors.grey.shade400,
+                                            AppColors.hairline,
                                         minimumSize:
-                                            const Size(double.infinity, 52),
+                                            const Size(double.infinity, 54),
                                         shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(16)),
+                                            borderRadius: BorderRadius.circular(
+                                                AppRadius.md)),
                                         elevation:
                                             0, // ปิด elevation เดิมทิ้ง เพราะเราใช้ BoxShadow จาก Container แทนแล้ว
                                       ),
@@ -579,21 +626,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          Icon(Icons.swap_horiz,
+                                          Icon(Icons.swap_horiz_rounded,
                                               color: isActive
                                                   ? Colors.white
-                                                  : Colors.white70),
+                                                  : AppColors.inkTertiary),
                                           const SizedBox(width: 8),
                                           Text(
                                               isActive
                                                   ? 'Make an Offer'
                                                   : 'Item Unavailable',
-                                              style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
+                                              style: AppText.subtitle.copyWith(
                                                   color: isActive
                                                       ? Colors.white
-                                                      : Colors.white70)),
+                                                      : AppColors.inkTertiary)),
                                         ],
                                       )),
                                 ),
@@ -609,14 +654,54 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     );
   }
 
+  void _showReportMenu(BuildContext context, ListingModel listing) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(AppRadius.xl))),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.flag_outlined, color: AppColors.danger),
+                title: const Text('รายงานประกาศนี้'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  showReportSheet(context,
+                      type: ReportTarget.listing, targetId: listing.listingId);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_off_outlined,
+                    color: AppColors.danger),
+                title: const Text('รายงานผู้ลงประกาศ'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  showReportSheet(context,
+                      type: ReportTarget.user, targetId: listing.ownerId);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFloatingIcon(IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.3), shape: BoxShape.circle),
-        child: Icon(icon, color: Colors.white, size: 20),
+      child: Glass(
+        opacity: 0.6,
+        blur: 16,
+        shadows: AppShadows.raised,
+        padding: const EdgeInsets.all(11),
+        child: Icon(icon, color: AppColors.ink, size: 18),
       ),
     );
   }
@@ -635,19 +720,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   Widget _buildBadge(
       IconData icon, String text, Color bgColor, Color textColor) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: textColor.withOpacity(0.3))),
+          color: bgColor, borderRadius: BorderRadius.circular(AppRadius.pill)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: textColor),
           const SizedBox(width: 4),
           Text(text,
-              style: TextStyle(
-                  color: textColor, fontWeight: FontWeight.bold, fontSize: 11)),
+              style: AppText.caption.copyWith(
+                  color: textColor, fontWeight: FontWeight.w600, fontSize: 12)),
         ],
       ),
     );
@@ -661,17 +744,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         listing.ownerName.trim().isEmpty ? 'ผู้ใช้งาน' : listing.ownerName;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
-        ],
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.hairline.withOpacity(0.6)),
+        boxShadow: AppShadows.raised,
       ),
       child: Column(
         children: [
@@ -695,8 +773,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     width: 46,
                     height: 46,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(12),
+                      color: AppColors.hairline,
+                      shape: BoxShape.circle,
                       image: profileImg.isNotEmpty
                           ? DecorationImage(
                               image: NetworkImage(profileImg),
@@ -704,7 +782,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                           : null,
                     ),
                     child: profileImg.isEmpty
-                        ? const Icon(Icons.person, color: Colors.grey)
+                        ? const Icon(Icons.person, color: AppColors.inkTertiary)
                         : null,
                   ),
                   const SizedBox(width: 12),
@@ -713,8 +791,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(ownerName,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16),
+                            style: AppText.subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 2),
@@ -729,7 +806,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 children: [
                                   Text('$tradeCount successful trades',
                                       style: TextStyle(
-                                          color: Colors.grey.shade500,
+                                          color: AppColors.inkTertiary,
                                           fontSize: 11,
                                           height: 1.2)),
                                 ],
@@ -742,20 +819,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(12)),
+                        color: AppColors.warningSoft,
+                        borderRadius: BorderRadius.circular(AppRadius.pill)),
                     child: Row(
                       children: [
-                        const Icon(Icons.star, color: Colors.orange, size: 14),
+                        const Icon(Icons.star_rounded,
+                            color: AppColors.gold, size: 15),
                         const SizedBox(width: 4),
                         Text(
                             ratingScore > 0
                                 ? ratingScore.toStringAsFixed(1)
                                 : 'New',
-                            style: const TextStyle(
-                                color: Colors.orange,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13)),
+                            style: AppText.label
+                                .copyWith(color: AppColors.ink, fontSize: 13)),
                       ],
                     ),
                   )
@@ -772,16 +848,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   MaterialPageRoute(
                       builder: (context) =>
                           UserProfileScreen(userId: listing.ownerId))),
-              icon: Icon(Icons.person_outline, size: 16, color: tealColor),
+              icon: const Icon(Icons.person_outline_rounded,
+                  size: 17, color: AppColors.ink),
               label: Text('View Profile',
-                  style:
-                      TextStyle(color: tealColor, fontWeight: FontWeight.bold)),
+                  style: AppText.label.copyWith(fontSize: 14)),
               style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  backgroundColor: tealColor.withOpacity(0.05),
-                  side: BorderSide(color: tealColor.withOpacity(0.3)),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12))),
+                  backgroundColor: AppColors.surfaceMuted,
+                  side: BorderSide.none),
             ),
           )
         ],
@@ -815,14 +889,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   child: Container(
                     margin: const EdgeInsets.only(top: 80),
                     decoration: const BoxDecoration(
-                        color: Colors.white,
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(32)),
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(AppRadius.xl)),
                         boxShadow: [
                           BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 20,
-                              spreadRadius: 5)
+                              color: Color(0x2414171A),
+                              blurRadius: 30,
+                              offset: Offset(0, -8))
                         ]),
                     padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
                     child: Column(
@@ -834,31 +908,21 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 width: 40,
                                 height: 4,
                                 decoration: BoxDecoration(
-                                    color: Colors.grey.shade300,
+                                    color: AppColors.hairline,
                                     borderRadius: BorderRadius.circular(2)))),
                         const SizedBox(height: 24),
                         const Center(
                           child: Column(
                             children: [
-                              Text('Make an Offer',
-                                  style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF004D40))),
+                              Text('Make an Offer', style: AppText.display),
                               SizedBox(height: 4),
                               Text('Propose a fair trade for this item',
-                                  style: TextStyle(
-                                      fontSize: 14, color: Colors.black54)),
+                                  style: AppText.bodySecondary),
                             ],
                           ),
                         ),
                         const SizedBox(height: 32),
-                        const Text('YOUR OFFER ITEM',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.blueGrey,
-                                letterSpacing: 0.5)),
+                        const Text('YOUR OFFER ITEM', style: AppText.overline),
                         const SizedBox(height: 12),
                         FutureBuilder<List<ListingModel>>(
                           future: context
@@ -874,24 +938,28 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                               return Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                    color: Colors.grey.shade50,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                        color: Colors.grey.shade200)),
+                                    color: AppColors.surfaceMuted,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.lg)),
                                 child: const Center(
                                     child: Text('คุณยังไม่มีสิ่งของให้แลก',
-                                        style:
-                                            TextStyle(color: Colors.black54))),
+                                        style: TextStyle(
+                                            color: AppColors.inkSecondary))),
                               );
                             }
 
                             if (selectedMyItemId == null && items.isNotEmpty) {
+                              final initial = items.firstWhere(
+                                  (item) =>
+                                      item.listingId ==
+                                      widget.preselectedOfferListingId,
+                                  orElse: () => items.first);
                               WidgetsBinding.instance.addPostFrameCallback((_) {
                                 setModalState(() {
-                                  selectedMyItemId = items.first.listingId;
-                                  selectedMyItemData = items.first.toJson();
+                                  selectedMyItemId = initial.listingId;
+                                  selectedMyItemData = initial.toJson();
                                   selectedMyItemData!['listing_id'] =
-                                      items.first.listingId;
+                                      initial.listingId;
                                 });
                               });
                             }
@@ -901,27 +969,22 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
+                                    color: AppColors.surface,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.lg),
                                     border: Border.all(
-                                        color: const Color(0xFF00C853)
-                                            .withOpacity(0.5),
-                                        width: 1.5),
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: const Color(0xFF00C853)
-                                              .withOpacity(0.05),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 4))
-                                    ]),
+                                        color: AppColors.primary
+                                            .withOpacity(0.35)),
+                                    boxShadow: AppShadows.raised),
                                 child: Row(
                                   children: [
                                     Container(
                                       width: 50,
                                       height: 50,
                                       decoration: BoxDecoration(
-                                        color: Colors.grey.shade200,
-                                        borderRadius: BorderRadius.circular(8),
+                                        color: AppColors.surfaceMuted,
+                                        borderRadius:
+                                            BorderRadius.circular(AppRadius.sm),
                                         image: selectedMyItemData?[
                                                         'thumbnail_url'] !=
                                                     null &&
@@ -942,7 +1005,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                       'thumbnail_url']
                                                   .isEmpty
                                           ? const Icon(Icons.image,
-                                              color: Colors.grey)
+                                              color: AppColors.inkTertiary)
                                           : null,
                                     ),
                                     const SizedBox(width: 16),
@@ -954,10 +1017,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           Text(
                                               selectedMyItemData?['title'] ??
                                                   'ไม่ระบุชื่อ',
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                  color: Colors.black87),
+                                              style: AppText.subtitle,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis),
                                           const SizedBox(height: 4),
@@ -970,40 +1030,46 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                         vertical: 2),
                                                 decoration: BoxDecoration(
                                                     color:
-                                                        const Color(0xFF00C853)
-                                                            .withOpacity(0.1),
+                                                        AppColors.primarySoft,
                                                     borderRadius:
                                                         BorderRadius.circular(
-                                                            4)),
+                                                            AppRadius.pill)),
                                                 child: Row(
                                                   children: [
-                                                    const Icon(Icons.layers,
-                                                        size: 10,
-                                                        color:
-                                                            Color(0xFF00C853)),
+                                                    const Icon(
+                                                        Icons.toll_rounded,
+                                                        size: 11,
+                                                        color: AppColors
+                                                            .primaryDark),
                                                     const SizedBox(width: 4),
                                                     Text(
                                                         '~${selectedMyItemData?['estimated_coins'] ?? 0} Coins',
                                                         style: const TextStyle(
                                                             fontSize: 11,
                                                             fontWeight:
-                                                                FontWeight.bold,
-                                                            color: Color(
-                                                                0xFF00C853))),
+                                                                FontWeight.w600,
+                                                            color: AppColors
+                                                                .primaryDark)),
                                                   ],
                                                 ),
                                               ),
                                               const SizedBox(width: 8),
-                                              DropdownButtonHideUnderline(
+                                              Expanded(
+                                                child:
+                                                    DropdownButtonHideUnderline(
                                                 child: DropdownButton<String>(
                                                   value: selectedMyItemId,
+                                                  // Fill the remaining width so
+                                                  // long titles ellipsize
+                                                  // instead of overflowing.
+                                                  isExpanded: true,
                                                   icon: const Icon(
                                                       Icons.keyboard_arrow_down,
                                                       size: 16),
-                                                  style: TextStyle(
+                                                  style: const TextStyle(
                                                       fontSize: 12,
-                                                      color: Colors
-                                                          .blueGrey.shade600),
+                                                      color: AppColors
+                                                          .inkSecondary),
                                                   isDense: true,
                                                   items: items
                                                       .map((item) =>
@@ -1011,7 +1077,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                               value: item
                                                                   .listingId,
                                                               child: Text(
-                                                                  item.title)))
+                                                                  item.title,
+                                                                  maxLines: 1,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis)))
                                                       .toList(),
                                                   onChanged: (val) {
                                                     setModalState(() {
@@ -1030,6 +1100,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                   },
                                                 ),
                                               ),
+                                              ),
                                             ],
                                           ),
                                         ],
@@ -1043,11 +1114,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         ),
                         const SizedBox(height: 24),
                         const Text('BALANCE THE TRADE',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.blueGrey,
-                                letterSpacing: 0.5)),
+                            style: AppText.overline),
                         const SizedBox(height: 12),
                         Row(
                           children: [
@@ -1059,10 +1126,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 12),
                                   decoration: BoxDecoration(
+                                    gradient: offerType == 'give'
+                                        ? AppGradients.of(AppColors.success)
+                                        : null,
                                     color: offerType == 'give'
-                                        ? const Color(0xFF00C853)
-                                        : Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(16),
+                                        ? null
+                                        : AppColors.surfaceMuted,
+                                    boxShadow: offerType == 'give'
+                                        ? AppShadows.glow(AppColors.success)
+                                        : null,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.md),
                                   ),
                                   child: Column(
                                     children: [
@@ -1070,7 +1144,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           size: 18,
                                           color: offerType == 'give'
                                               ? Colors.white
-                                              : Colors.grey.shade500),
+                                              : AppColors.inkTertiary),
                                       const SizedBox(height: 4),
                                       Text('แถมเหรียญ',
                                           style: TextStyle(
@@ -1078,7 +1152,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                               fontSize: 12,
                                               color: offerType == 'give'
                                                   ? Colors.white
-                                                  : Colors.grey.shade600)),
+                                                  : AppColors.inkSecondary)),
                                     ],
                                   ),
                                 ),
@@ -1095,10 +1169,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 12),
                                   decoration: BoxDecoration(
+                                    gradient: offerType == 'none'
+                                        ? AppGradients.of(AppColors.primary)
+                                        : null,
                                     color: offerType == 'none'
-                                        ? const Color(0xFF008080)
-                                        : Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(16),
+                                        ? null
+                                        : AppColors.surfaceMuted,
+                                    boxShadow: offerType == 'none'
+                                        ? AppShadows.glow(AppColors.primary)
+                                        : null,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.md),
                                   ),
                                   child: Column(
                                     children: [
@@ -1106,7 +1187,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           size: 18,
                                           color: offerType == 'none'
                                               ? Colors.white
-                                              : Colors.grey.shade500),
+                                              : AppColors.inkTertiary),
                                       const SizedBox(height: 4),
                                       Text('แลกของเท่านั้น',
                                           style: TextStyle(
@@ -1114,7 +1195,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                               fontSize: 12,
                                               color: offerType == 'none'
                                                   ? Colors.white
-                                                  : Colors.grey.shade600)),
+                                                  : AppColors.inkSecondary)),
                                     ],
                                   ),
                                 ),
@@ -1129,10 +1210,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 12),
                                   decoration: BoxDecoration(
+                                    gradient: offerType == 'ask'
+                                        ? AppGradients.of(AppColors.danger)
+                                        : null,
                                     color: offerType == 'ask'
-                                        ? const Color(0xFFFF5252)
-                                        : Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(16),
+                                        ? null
+                                        : AppColors.surfaceMuted,
+                                    boxShadow: offerType == 'ask'
+                                        ? AppShadows.glow(AppColors.danger)
+                                        : null,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.md),
                                   ),
                                   child: Column(
                                     children: [
@@ -1140,7 +1228,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           size: 18,
                                           color: offerType == 'ask'
                                               ? Colors.white
-                                              : Colors.grey.shade500),
+                                              : AppColors.inkTertiary),
                                       const SizedBox(height: 4),
                                       Text('ขอเหรียญเพิ่ม',
                                           style: TextStyle(
@@ -1148,7 +1236,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                               fontSize: 12,
                                               color: offerType == 'ask'
                                                   ? Colors.white
-                                                  : Colors.grey.shade600)),
+                                                  : AppColors.inkSecondary)),
                                     ],
                                   ),
                                 ),
@@ -1160,22 +1248,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         if (offerType != 'none')
                           Container(
                             decoration: BoxDecoration(
-                                color: Colors.grey.shade50,
-                                borderRadius: BorderRadius.circular(16),
-                                border:
-                                    Border.all(color: Colors.grey.shade200)),
+                                color: AppColors.surfaceMuted,
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.lg)),
                             child: TextField(
                               keyboardType: TextInputType.number,
                               textAlign: TextAlign.right,
                               style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.black87),
+                                  color: AppColors.ink),
                               decoration: InputDecoration(
                                   hintText: '0',
                                   hintStyle:
-                                      TextStyle(color: Colors.grey.shade400),
+                                      TextStyle(color: AppColors.inkTertiary),
+                                  filled: false,
                                   border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
                                   contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 20, vertical: 16),
                                   prefixIcon: Padding(
@@ -1184,15 +1274,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     child: Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                          color: Colors.amber,
+                                          gradient:
+                                              AppGradients.of(AppColors.gold),
                                           shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                                color: Colors.amber
-                                                    .withOpacity(0.4),
-                                                blurRadius: 4)
-                                          ]),
-                                      child: const Icon(Icons.layers,
+                                          boxShadow:
+                                              AppShadows.glow(AppColors.gold)),
+                                      child: const Icon(Icons.toll_rounded,
                                           size: 16, color: Colors.white),
                                     ),
                                   ),
@@ -1202,7 +1289,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     child: Text('coins',
                                         style: TextStyle(
                                             fontSize: 14,
-                                            color: Colors.blueGrey,
+                                            color: AppColors.inkSecondary,
                                             fontWeight: FontWeight.bold)),
                                   )),
                               onChanged: (val) =>
@@ -1216,7 +1303,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 child: Text(
                                     'ใช้สิ่งของแลกเปลี่ยนกันโดยตรง ไม่มีการใช้เหรียญ',
                                     style: TextStyle(
-                                        color: Colors.grey.shade500,
+                                        color: AppColors.inkTertiary,
                                         fontSize: 13))),
                           ),
                         const SizedBox(height: 32),
@@ -1235,91 +1322,97 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                           } else if (state is OfferError) {
                             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                 content: Text(state.error),
-                                backgroundColor: Colors.red,
+                                backgroundColor: AppColors.danger,
                                 behavior: SnackBarBehavior.floating));
                           }
                         }, builder: (context, state) {
                           bool isSubmitting = state is OfferSubmitting;
-                          return ElevatedButton.icon(
-                            onPressed: isSubmitting
-                                ? null
-                                : () async {
-                                    bool isVerified = await context
-                                        .read<AuthRepository>()
-                                        .isEmailVerified();
-                                    if (!context.mounted) return;
+                          return DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: AppGradients.primary,
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              boxShadow: AppShadows.glow(AppColors.primary),
+                            ),
+                            child: ElevatedButton.icon(
+                              onPressed: isSubmitting
+                                  ? null
+                                  : () async {
+                                      bool isVerified = await context
+                                          .read<AuthRepository>()
+                                          .isEmailVerified();
+                                      if (!context.mounted) return;
 
-                                    if (!isVerified) {
-                                      showEmailVerificationDialog(
-                                        context,
-                                        message:
-                                            'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถยื่นข้อเสนอได้ กรุณาตรวจสอบกล่องจดหมายของคุณ',
-                                        themeColor: tealColor,
+                                      if (!isVerified) {
+                                        showEmailVerificationDialog(
+                                          context,
+                                          message:
+                                              'คุณต้องยืนยันอีเมลก่อนจึงจะสามารถยื่นข้อเสนอได้ กรุณาตรวจสอบกล่องจดหมายของคุณ',
+                                          themeColor: tealColor,
+                                        );
+                                        return;
+                                      }
+
+                                      if (selectedMyItemId == null) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(const SnackBar(
+                                                content: Text(
+                                                    'กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ'),
+                                                behavior:
+                                                    SnackBarBehavior.floating));
+                                        return;
+                                      }
+
+                                      String coinText = "";
+                                      int finalCoinOffset = 0;
+
+                                      if (offerType != 'none' &&
+                                          coinOffset > 0) {
+                                        finalCoinOffset = offerType == 'ask'
+                                            ? -coinOffset
+                                            : coinOffset;
+                                        coinText =
+                                            " และยินดี${offerType == 'ask' ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
+                                      }
+
+                                      final offer = OfferModel(
+                                        offerId: '',
+                                        senderId: currentUserId,
+                                        targetUserId: listing.ownerId,
+                                        targetListingId: listing.listingId,
+                                        offeredListingId: selectedMyItemId!,
+                                        coinOffset: finalCoinOffset,
+                                        status: 'pending',
                                       );
-                                      return;
-                                    }
 
-                                    if (selectedMyItemId == null) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(const SnackBar(
-                                              content: Text(
-                                                  'กรุณาเลือกสิ่งของของคุณก่อนยื่นข้อเสนอครับ'),
-                                              behavior:
-                                                  SnackBarBehavior.floating));
-                                      return;
-                                    }
-
-                                    String coinText = "";
-                                    int finalCoinOffset = 0;
-
-                                    if (offerType != 'none' && coinOffset > 0) {
-                                      finalCoinOffset = offerType == 'ask'
-                                          ? -coinOffset
-                                          : coinOffset;
-                                      coinText =
-                                          " และยินดี${offerType == 'ask' ? 'ขอรับเหรียญเพิ่ม' : 'แถมเหรียญให้'} $coinOffset Coins";
-                                    }
-
-                                    final offer = OfferModel(
-                                      offerId: '',
-                                      senderId: currentUserId,
-                                      targetUserId: listing.ownerId,
-                                      targetListingId: listing.listingId,
-                                      offeredListingId: selectedMyItemId!,
-                                      coinOffset: finalCoinOffset,
-                                      status: 'pending',
-                                    );
-
-                                    context.read<OfferCubit>().submitNewOffer(
-                                        offer: offer,
-                                        targetItemData: listing.toJson(),
-                                        offeredItemData: selectedMyItemData!,
-                                        coinText: coinText);
-                                  },
-                            icon: isSubmitting
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white, strokeWidth: 2))
-                                : const Icon(Icons.chat_bubble,
-                                    color: Colors.white, size: 20),
-                            label: Text(
-                                isSubmitting
-                                    ? 'กำลังส่งข้อเสนอ...'
-                                    : 'Confirm & Start Chat',
-                                style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white)),
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF008080),
-                                minimumSize: const Size(double.infinity, 56),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16)),
-                                elevation: 4,
-                                shadowColor:
-                                    const Color(0xFF008080).withOpacity(0.5)),
+                                      context.read<OfferCubit>().submitNewOffer(
+                                          offer: offer,
+                                          targetItemData: listing.toJson(),
+                                          offeredItemData: selectedMyItemData!,
+                                          coinText: coinText);
+                                    },
+                              icon: isSubmitting
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          color: Colors.white, strokeWidth: 2))
+                                  : const Icon(Icons.chat_bubble_rounded,
+                                      color: Colors.white, size: 20),
+                              label: Text(
+                                  isSubmitting
+                                      ? 'กำลังส่งข้อเสนอ...'
+                                      : 'Confirm & Start Chat',
+                                  style: AppText.subtitle
+                                      .copyWith(color: Colors.white)),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  disabledBackgroundColor: Colors.transparent,
+                                  minimumSize: const Size(double.infinity, 56),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(AppRadius.md))),
+                            ),
                           );
                         }),
                       ],

@@ -7,6 +7,17 @@ service cloud.firestore {
       return request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin';
     }
+
+    // บัญชีถูกระงับ: status == 'banned' และ (แบนถาวร หรือยังไม่ถึง banned_until)
+    // เมื่อหมดเวลา rules ปล่อยให้ใช้งานได้ทันที ส่วน liftExpiredBans ค่อยล้างสถานะตามมา
+    function bannedData(u) {
+      return u.get('status', 'active') == 'banned' &&
+        (u.get('banned_until', null) == null || u.banned_until > request.time);
+    }
+    // ผู้ใช้ที่ถูกระงับเขียนข้อมูลไม่ได้ (ลงของ ยื่นข้อเสนอ แชท ฯลฯ) อ่านได้ตามปกติ
+    function isBanned() {
+      return bannedData(get(/databases/$(database)/documents/users/$(request.auth.uid)).data);
+    }
     
     // 1. คอลเลกชัน Users
     match /users/{userId} {
@@ -19,34 +30,54 @@ service cloud.firestore {
         request.resource.data.get('status', 'active') == 'active' &&
         request.resource.data.get('owner_rating_scores', 0) == 0 &&
         request.resource.data.get('owner_rating_count', 0) == 0 &&
-        request.resource.data.get('is_verified', false) == false;
+        request.resource.data.get('is_verified', false) == false &&
+        !request.resource.data.keys().hasAny(['ban_reason', 'banned_until', 'banned_at']);
       // เจ้าของบัญชีแก้ข้อมูลของตัวเองได้ ยกเว้นฟิลด์ที่ระบบเป็นผู้ดูแล:
       // เหรียญและคะแนนรีวิวเปลี่ยนผ่าน Cloud Functions เท่านั้น ส่วน role/status/is_verified เป็นของผู้ดูแลระบบ
+      // last_rescan_at = เวลาค้นหาคู่แลกซ้ำครั้งล่าสุด (rescanMatches ใช้จำกัดชั่วโมงละครั้ง)
+      // ระหว่างถูกระงับ แก้ได้แค่ข้อมูลที่แอปเขียนเองเบื้องหลัง (token แจ้งเตือน, ตำแหน่ง)
       allow update: if request.auth != null && request.auth.uid == userId &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(
-          ['role', 'coins_balance', 'status', 'owner_rating_scores', 'owner_rating_count', 'is_verified']);
+          ['role', 'coins_balance', 'status', 'owner_rating_scores', 'owner_rating_count', 'is_verified', 'last_rescan_at',
+           'ban_reason', 'banned_until', 'banned_at']) &&
+        (!bannedData(resource.data) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcm_token', 'location', 'updated_at']));
       // ไม่ให้ลบเอกสารผู้ใช้เอง (ลบแล้วสมัครใหม่ = ล้างการระงับและได้เหรียญเริ่มต้นใหม่)
       allow delete: if false;
-      // เว็บผู้ดูแลระบบ: ระงับ/ปลดระงับบัญชี และติดป้ายยืนยัน (แก้ได้เฉพาะฟิลด์เหล่านี้)
+      // เว็บผู้ดูแลระบบ: ระงับ/ปลดระงับบัญชี (พร้อมเหตุผลและวันหมดโทษ) และติดป้ายยืนยัน
       allow update: if isAdmin() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'is_verified', 'updated_at']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['status', 'is_verified', 'updated_at', 'ban_reason', 'banned_until', 'banned_at']);
     }
     
     // 2. คอลเลกชัน Listings
     match /listings/{listingId} {
+      // จุดรับของ (ไม่บังคับ): พิกัดปัดหยาบ ~1 กม. จากแอป ต้องเป็นตัวเลขในช่วงที่ถูกต้อง
+      function validLocation(data) {
+        return !('location' in data) || (
+          data.location is map &&
+          data.location.keys().hasOnly(['latitude', 'longitude', 'district', 'province', 'display_name']) &&
+          data.location.latitude is number && data.location.latitude >= -90 && data.location.latitude <= 90 &&
+          data.location.longitude is number && data.location.longitude >= -180 && data.location.longitude <= 180);
+      }
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.owner_id == request.auth.uid &&
-        request.resource.data.status == 'active';
+        request.resource.data.status == 'active' && validLocation(request.resource.data) &&
+        !request.resource.data.keys().hasAny(['ban_reason', 'hidden_by_user_ban']) && !isBanned();
       // เจ้าของแก้รายละเอียดได้ แต่เปลี่ยนเจ้าของหรือสถานะเองไม่ได้
       // (สถานะ in_progress/completed มาจาก Cloud Functions, banned มาจากผู้ดูแลระบบ)
+      // hidden_by_user_ban = ซ่อนเพราะเจ้าของโดนแบน (ระบบคืนให้ตอนปลดแบน) เจ้าของจึงห้ามแก้เอง
       allow update: if request.auth != null && resource.data.owner_id == request.auth.uid &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['owner_id', 'status']);
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(
+          ['owner_id', 'status', 'ban_reason', 'hidden_by_user_ban']) &&
+        validLocation(request.resource.data) && !isBanned();
       // ลบได้เฉพาะของที่ไม่ได้อยู่ระหว่างแลกเปลี่ยนหรือแลกไปแล้ว
       allow delete: if request.auth != null && resource.data.owner_id == request.auth.uid &&
-        resource.data.status in ['active', 'banned'];
-      // เว็บผู้ดูแลระบบ: ระงับ/ปลดระงับประกาศ (แก้ได้เฉพาะสถานะ)
+        resource.data.status in ['active', 'banned'] && !isBanned();
+      // เว็บผู้ดูแลระบบ: ระงับ/ปลดระงับประกาศ พร้อมเหตุผล (แก้ได้เฉพาะฟิลด์เหล่านี้)
       allow update: if isAdmin() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['status', 'ban_reason', 'hidden_by_user_ban', 'updated_at']);
     }
     
     // 3. คอลเลกชัน Offers (🔥 แก้ไข: ใช้ request.resource สำหรับสร้างใหม่)
@@ -61,7 +92,7 @@ service cloud.firestore {
       }
       allow read: if isParty();
       // ยื่นข้อเสนอ: ในนามตัวเอง สถานะ pending ขอของของอีกฝ่ายที่ยัง active ด้วยของของตัวเองที่ยัง active
-      allow create: if request.auth != null &&
+      allow create: if request.auth != null && !isBanned() &&
         request.auth.uid == request.resource.data.sender_id &&
         request.resource.data.target_user_id != request.auth.uid &&
         request.resource.data.status == 'pending' &&
@@ -75,7 +106,7 @@ service cloud.firestore {
       //  - ต่อรอง: เปลี่ยนส่วนต่างเหรียญ และต้องลงชื่อตัวเองเป็นผู้เสนอล่าสุด
       //  - ปฏิเสธ: เปลี่ยนสถานะเป็น rejected
       // การตอบรับ/ปิดดีล/ยกเลิกดีลที่ตอบรับแล้ว ทำผ่าน Cloud Functions เท่านั้น
-      allow update: if isParty() && resource.data.status == 'pending' && lastOfferBy() != request.auth.uid && (
+      allow update: if isParty() && !isBanned() && resource.data.status == 'pending' && lastOfferBy() != request.auth.uid && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coin_offset', 'last_offer_by', 'updated_at']) &&
           request.resource.data.last_offer_by == request.auth.uid &&
           request.resource.data.coin_offset is int) ||
@@ -83,7 +114,7 @@ service cloud.firestore {
           request.resource.data.status == 'rejected')
       );
       // ถอนข้อเสนอได้เฉพาะตอนยัง pending
-      allow delete: if isParty() && resource.data.status == 'pending';
+      allow delete: if isParty() && !isBanned() && resource.data.status == 'pending';
     }
     
     // 4. คอลเลกชัน Transactions และห้องแชท
@@ -97,7 +128,9 @@ service cloud.firestore {
       allow read: if isAdmin();
       
       match /messages/{messageId} {
-        allow read, write: if request.auth != null && 
+        allow read: if request.auth != null &&
+          request.auth.uid in get(/databases/$(database)/documents/transactions/$(transactionId)).data.members;
+        allow write: if request.auth != null && !isBanned() &&
           request.auth.uid in get(/databases/$(database)/documents/transactions/$(transactionId)).data.members;
       }
     }
@@ -118,14 +151,89 @@ service cloud.firestore {
     // 7. คอลเลกชัน Chat Rooms: ห้องแชทเจรจา
     match /chat_rooms/{roomId} {
       // 🔥 แก้ไข: แยก create กับ update
-      allow read, update, delete: if request.auth != null && request.auth.uid in resource.data.members;
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
+      allow read: if request.auth != null && request.auth.uid in resource.data.members;
+      allow update, delete: if request.auth != null && request.auth.uid in resource.data.members && !isBanned();
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.members && !isBanned();
       
       // 🔥 แก้ไข: เพิ่มกฎสำหรับข้อความในห้องแชท (ไม่งั้นจะส่งข้อความไม่ได้)
       match /messages/{messageId} {
-        allow read, write: if request.auth != null && 
+        allow read: if request.auth != null &&
+          request.auth.uid in get(/databases/$(database)/documents/chat_rooms/$(roomId)).data.members;
+        allow write: if request.auth != null && !isBanned() &&
           request.auth.uid in get(/databases/$(database)/documents/chat_rooms/$(roomId)).data.members;
       }
+    }
+
+    // 8. คอลเลกชัน Wants: สิ่งที่ผู้ใช้อยากได้ (ระบบแลกตามความต้องการ)
+    // เจ้าของอ่าน/เพิ่ม/แก้ข้อความ/ลบได้ ส่วน embedding และ embedding_hash เขียนโดย Cloud Function เท่านั้น
+    match /wants/{wantId} {
+      function validText(data) {
+        return data.text is string && data.text.size() > 0 && data.text.size() <= 120;
+      }
+      allow read: if request.auth != null && resource.data.owner_id == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.owner_id == request.auth.uid && !isBanned();
+      allow create: if request.auth != null && !isBanned() &&
+        request.resource.data.owner_id == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['owner_id', 'text', 'status', 'created_at', 'updated_at']) &&
+        request.resource.data.status == 'active' &&
+        validText(request.resource.data);
+      allow update: if request.auth != null && resource.data.owner_id == request.auth.uid && !isBanned() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'updated_at']) &&
+        validText(request.resource.data);
+    }
+
+    // 9. คอลเลกชัน Matches: คู่แลกที่ระบบจับให้ (สร้าง/ลบโดย Cloud Function เท่านั้น)
+    // สมาชิกอ่านได้ และทำเครื่องหมาย "เห็นแล้ว" ได้เฉพาะชื่อตัวเอง
+    match /matches/{matchId} {
+      allow read: if request.auth != null && request.auth.uid in resource.data.members;
+      allow update: if request.auth != null && request.auth.uid in resource.data.members &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seen_by']) &&
+        request.resource.data.seen_by.toSet().hasAll(resource.data.seen_by) &&
+        request.resource.data.seen_by.toSet().difference(resource.data.seen_by.toSet()) == [request.auth.uid].toSet();
+      allow create, delete: if false;
+    }
+
+    // 10. เวกเตอร์ของประกาศและสถานะ backfill: ใช้ภายใน Cloud Function เท่านั้น
+    match /listing_vectors/{listingId} {
+      allow read, write: if false;
+    }
+    match /match_meta/{docId} {
+      allow read, write: if false;
+    }
+
+    // 11. คอลเลกชัน Reports: ผู้ใช้รายงานประกาศ / ผู้ใช้ / ห้องแชท
+    // id = {ผู้รายงาน}_{ประเภท}_{เป้าหมาย} จึงรายงานเป้าหมายเดิมได้ครั้งเดียว
+    // หลักฐาน (snapshot) และผู้ถูกรายงานเติมโดย Cloud Function onReportCreated เท่านั้น
+    match /reports/{reportId} {
+      function validTarget(d) {
+        return (d.target_type == 'listing' &&
+            exists(/databases/$(database)/documents/listings/$(d.target_id)) &&
+            get(/databases/$(database)/documents/listings/$(d.target_id)).data.owner_id != request.auth.uid) ||
+          (d.target_type == 'user' && d.target_id != request.auth.uid &&
+            exists(/databases/$(database)/documents/users/$(d.target_id))) ||
+          (d.target_type == 'chat' &&
+            request.auth.uid in get(/databases/$(database)/documents/chat_rooms/$(d.target_id)).data.members);
+      }
+      allow create: if request.auth != null && !isBanned() &&
+        request.resource.data.keys().hasOnly(['reporter_id', 'target_type', 'target_id', 'reason', 'detail', 'status', 'created_at']) &&
+        request.resource.data.reporter_id == request.auth.uid &&
+        reportId == request.auth.uid + '_' + request.resource.data.target_type + '_' + request.resource.data.target_id &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() > 0 && request.resource.data.reason.size() <= 60 &&
+        request.resource.data.get('detail', '') is string && request.resource.data.get('detail', '').size() <= 500 &&
+        validTarget(request.resource.data);
+      // ผู้รายงานเช็กได้ว่าเคยรายงานเป้าหมายนี้แล้วหรือยัง (อ่านได้เฉพาะ id ที่ขึ้นต้นด้วย uid ตัวเอง)
+      allow get: if request.auth != null && reportId.matches(request.auth.uid + '_.*');
+      // ผู้ดูแลระบบอ่านได้ทั้งหมด การปิดรายงานทำผ่าน Cloud Function adminModerate
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // 12. ประวัติการทำงานของผู้ดูแลระบบ (เขียนโดย adminModerate เท่านั้น)
+    match /admin_actions/{actionId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
   }

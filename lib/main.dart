@@ -7,6 +7,10 @@ import 'screens/login_screen.dart';
 import 'services/notification_service.dart';
 
 // Repositories
+import 'repositories/report_repository.dart';
+import 'repositories/location_repository.dart';
+import 'cubits/location/location_cubit.dart';
+import 'repositories/match_repository.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/user_repository.dart';
 import 'repositories/listing_repository.dart';
@@ -15,6 +19,8 @@ import 'repositories/transaction_repository.dart';
 import 'repositories/review_repository.dart';
 import 'repositories/chat_repository.dart';
 import 'repositories/wallet_repository.dart';
+import 'repositories/ai_repository.dart';
+import 'theme/app_theme.dart';
 
 // Cubits
 import 'cubits/auth/auth_cubit.dart';
@@ -48,11 +54,25 @@ class GiveAndTakeApp extends StatelessWidget {
         RepositoryProvider(create: (context) => ReviewRepository()),
         RepositoryProvider(create: (context) => ChatRepository()),
         RepositoryProvider(create: (context) => WalletRepository()),
+        RepositoryProvider(create: (context) => AiRepository()),
+        RepositoryProvider(create: (context) => MatchRepository()),
+        RepositoryProvider(create: (context) => LocationRepository()),
+        RepositoryProvider(create: (context) => ReportRepository()),
       ],
       child: MultiBlocProvider(
         providers: [
           BlocProvider(
             create: (context) => AuthCubit(
+              authRepository: context.read<AuthRepository>(),
+              userRepository: context.read<UserRepository>(),
+            ),
+          ),
+          // App-wide: the user's coarse position, used by Home (distance
+          // sorting) and when posting/editing a listing (pickup point).
+          BlocProvider(
+            create: (context) => LocationCubit(
+              locationRepository: context.read<LocationRepository>(),
+              userRepository: context.read<UserRepository>(),
               authRepository: context.read<AuthRepository>(),
             ),
           ),
@@ -81,17 +101,13 @@ class GiveAndTakeApp extends StatelessWidget {
         child: MaterialApp(
           title: 'Give & Take',
           debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme:
-                ColorScheme.fromSeed(seedColor: const Color(0xFF008080)),
-            useMaterial3: true,
-          ),
+          theme: AppTheme.light,
           home: BlocBuilder<AuthCubit, AuthState>(
             builder: (context, state) {
               if (state is AuthLoading || state is AuthInitial) {
                 return const Scaffold(
                   body: Center(
-                    child: CircularProgressIndicator(color: Color(0xFF008080)),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   ),
                 );
               }

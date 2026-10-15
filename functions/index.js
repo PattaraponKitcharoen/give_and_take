@@ -13,6 +13,11 @@ admin.initializeApp();
 // region (see lib/constants/firebase_config.dart).
 setGlobalOptions({ region: "asia-southeast1" });
 
+// Required after setGlobalOptions: functions take the global options at the
+// moment they are defined, so modules loaded earlier deploy to us-central1.
+const moderation = require("./moderation");
+const { assertNotBanned } = moderation;
+
 /**
  * The public bits of a listing, as stored inside a review
  * (reviews.reviewer_item / reviews.reviewee_item).
@@ -51,6 +56,7 @@ exports.acceptTradeOffer = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "กรุณาล็อกอินก่อนทำรายการ");
   }
   const callerId = request.auth.uid;
+  await assertNotBanned(callerId);
 
   const offerId = request.data && request.data.offerId;
   const listingId = request.data && request.data.listingId;
@@ -299,6 +305,7 @@ exports.confirmHandoverOtp = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "กรุณาล็อกอินก่อนทำรายการ");
   }
   const callerId = request.auth.uid;
+  await assertNotBanned(callerId);
 
   const offerId = request.data && request.data.offerId;
   const inputOtp = request.data && request.data.inputOtp;
@@ -454,6 +461,7 @@ exports.cancelAcceptedTrade = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "กรุณาล็อกอินก่อนทำรายการ");
   }
   const callerId = request.auth.uid;
+  await assertNotBanned(callerId);
 
   const offerId = request.data && request.data.offerId;
   const reason = (request.data && request.data.reason) || "";
@@ -601,6 +609,7 @@ exports.submitTradeReview = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "กรุณาล็อกอินก่อนทำรายการ");
   }
   const callerId = request.auth.uid;
+  await assertNotBanned(callerId);
 
   const revieweeId = request.data && request.data.revieweeId;
   const transactionId = request.data && request.data.transactionId;
@@ -869,3 +878,22 @@ exports.onNewOfferCreated = onDocumentCreated(
     }
   }
 );
+// AI listing assistant (Gemini). Kept in its own file: it is the only
+// function that talks to an outside API and needs the GEMINI_API_KEY secret.
+exports.estimateListing = require("./estimateListing").estimateListing;
+
+// Want-based two-way matching (Gemini embeddings + Firestore vector search).
+const matching = require("./matching");
+exports.onListingWrittenForMatching = matching.onListingWrittenForMatching;
+exports.onWantWrittenForMatching = matching.onWantWrittenForMatching;
+exports.rescanMatches = matching.rescanMatches;
+exports.onBackfillRequested = matching.onBackfillRequested;
+
+// Account bans: hide/restore a banned user's listings, lift expired bans.
+exports.onUserBanChanged = moderation.onUserBanChanged;
+exports.liftExpiredBans = moderation.liftExpiredBans;
+
+// Reports from the app, and the admin web's moderation actions.
+const reports = require("./reports");
+exports.onReportCreated = reports.onReportCreated;
+exports.adminModerate = reports.adminModerate;
