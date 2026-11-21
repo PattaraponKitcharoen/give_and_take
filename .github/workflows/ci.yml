@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch replaces a run still in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App (analyze + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.9 # same as .fvmrc
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Infos (style hints) don't fail the build; warnings and errors do.
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
+  functions:
+    name: Cloud Functions + Firestore rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+      # Offline tests: fake Firestore, fake Gemini, no network.
+      - run: node test/tradeFunctions.offline.test.js
+      - run: node test/matching.offline.test.js
+      - run: node test/moderation.offline.test.js
+      - run: node test/reports.offline.test.js
+      # Rules, against the Firestore emulator (needs Java). demo-* project
+      # ids never touch a real project, so no credentials are involved.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Firestore rules (emulator)
+        working-directory: .
+        run: >
+          npx --yes firebase-tools@15.13.0 emulators:exec --only firestore
+          --project demo-give-and-take
+          "node functions/test/firestoreRules.test.js"

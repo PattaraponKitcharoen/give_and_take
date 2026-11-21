@@ -1,6 +1,11 @@
-// Tests firestore.rules against the Firebase Rules test API (no emulator needed, no data touched).
-// Run from the project root:  node functions/test/firestoreRules.test.js
-// Needs a logged-in Firebase CLI (uses its access token).
+// Tests firestore.rules. The same cases run two ways:
+//  - Locally, against the Firebase Rules test API (no emulator, no data
+//    touched; needs a logged-in Firebase CLI):
+//      node functions/test/firestoreRules.test.js
+//  - In CI, against the Firestore emulator (no credentials; needs Java):
+//      firebase emulators:exec --only firestore --project demo-give-and-take \
+//        "node functions/test/firestoreRules.test.js"
+//    (picked automatically when FIRESTORE_EMULATOR_HOST is set).
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -44,7 +49,7 @@ const add = (name, expectation, uid, method, docPath, before, after) => {
   if (after !== undefined) request.resource = { data: after };
   const tc = { expectation, request, functionMocks: mocks };
   if (before !== undefined) tc.resource = { data: before };
-  cases.push({ name, tc });
+  cases.push({ name, tc, raw: { expectation, uid, method, docPath, before, after } });
 };
 const ALLOW = "ALLOW", DENY = "DENY";
 
@@ -214,7 +219,56 @@ const token = () => {
   execSync("firebase projects:list", { stdio: "ignore" });   // refreshes the CLI token
   return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config/configstore/firebase-tools.json"), "utf8")).tokens.access_token;
 };
-(async () => {
+const report = (results) => {
+  let failed = 0;
+  results.forEach(({ ok, detail }, i) => {
+    if (!ok) failed++;
+    console.log((ok ? "PASS  " : "FAIL  ") + cases[i].tc.expectation.padEnd(5) + " " + cases[i].name +
+      (ok ? "" : "   <-- expected " + cases[i].tc.expectation + (detail ? " | " + detail : "")));
+  });
+  console.log(failed ? `${failed} of ${cases.length} FAILED` : `ALL ${cases.length} PASSED`);
+  process.exit(failed ? 1 : 0);
+};
+
+// Emulator: for every case, start from the same world (the docs the API run
+// mocks for get()/exists()), put `before` at the path (or make sure nothing
+// is there for a create), then try the request as that user.
+async function runOnEmulator() {
+  const { initializeTestEnvironment, assertSucceeds, assertFails } = require("@firebase/rules-unit-testing");
+  const { doc, getDoc, setDoc, deleteDoc } = require("firebase/firestore");
+  const [host, port] = process.env.FIRESTORE_EMULATOR_HOST.split(":");
+  const env = await initializeTestEnvironment({
+    projectId: process.env.GCLOUD_PROJECT || "demo-give-and-take",
+    firestore: { rules: source, host, port: Number(port) },
+  });
+  const rel = (p) => p.replace(/^\//, "");
+  const results = [];
+  for (const { raw } of cases) {
+    await env.clearFirestore();
+    await env.withSecurityRulesDisabled(async (admin) => {
+      const db = admin.firestore();
+      for (const [p, data] of Object.entries(world)) await setDoc(doc(db, rel(p.slice(P.length))), data);
+      const target = doc(db, rel(raw.docPath));
+      if (raw.before !== undefined) await setDoc(target, raw.before);
+      else await deleteDoc(target);
+    });
+    const ctx = raw.uid ? env.authenticatedContext(raw.uid) : env.unauthenticatedContext();
+    const ref = doc(ctx.firestore(), rel(raw.docPath));
+    const op = raw.method === "get" ? getDoc(ref)
+      : raw.method === "delete" ? deleteDoc(ref)
+      : setDoc(ref, raw.after); // create/update: the whole new document, like request.resource.data
+    try {
+      await (raw.expectation === "ALLOW" ? assertSucceeds(op) : assertFails(op));
+      results.push({ ok: true });
+    } catch (e) {
+      results.push({ ok: false, detail: (e.message || "").split("\n")[0] });
+    }
+  }
+  await env.cleanup();
+  report(results);
+}
+
+async function runOnRulesApi() {
   const res = await fetch(`https://firebaserules.googleapis.com/v1/projects/${PROJECT}:test`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
@@ -222,13 +276,10 @@ const token = () => {
   });
   const json = await res.json();
   if (!json.testResults) { console.log(JSON.stringify(json).slice(0, 1500)); process.exit(2); }
-  let failed = 0;
-  json.testResults.forEach((result, i) => {
-    const ok = result.state === "SUCCESS";
-    if (!ok) failed++;
-    const detail = ok ? "" : "   <-- expected " + cases[i].tc.expectation + (result.debugMessages ? " | " + result.debugMessages.join(" ") : "");
-    console.log((ok ? "PASS  " : "FAIL  ") + cases[i].tc.expectation.padEnd(5) + " " + cases[i].name + detail);
-  });
-  console.log(failed ? `${failed} of ${cases.length} FAILED` : `ALL ${cases.length} PASSED`);
-  process.exit(failed ? 1 : 0);
-})();
+  report(json.testResults.map((r) => ({ ok: r.state === "SUCCESS", detail: (r.debugMessages || []).join(" ") })));
+}
+
+(process.env.FIRESTORE_EMULATOR_HOST ? runOnEmulator() : runOnRulesApi()).catch((e) => {
+  console.error(e);
+  process.exit(2);
+});
