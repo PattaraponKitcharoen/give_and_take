@@ -16,8 +16,8 @@ void main() {
     });
 
     test('keeps the names it is given', () {
-      final p = PlaceLocation.coarse(7, 100,
-          district: 'หาดใหญ่', province: 'สงขลา');
+      final p =
+          PlaceLocation.coarse(7, 100, district: 'หาดใหญ่', province: 'สงขลา');
       expect(p.displayName, 'หาดใหญ่, สงขลา');
     });
   });
@@ -37,8 +37,8 @@ void main() {
 
     test('rejects malformed data', () {
       expect(PlaceLocation.fromMap(null), isNull);
-      expect(PlaceLocation.fromMap({'latitude': 'here', 'longitude': 1}),
-          isNull);
+      expect(
+          PlaceLocation.fromMap({'latitude': 'here', 'longitude': 1}), isNull);
     });
   });
 
