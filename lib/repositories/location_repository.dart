@@ -27,7 +27,13 @@ class LocationRepository {
     }
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied && askPermission) {
-      permission = await Geolocator.requestPermission();
+      try {
+        permission = await Geolocator.requestPermission();
+      } on PermissionRequestInProgressException {
+        // The prompt is already on screen (e.g. resume and a tap at the
+        // same moment); the first request will report the answer.
+        throw const LocationException(LocationIssue.failed);
+      }
     }
     if (permission == LocationPermission.deniedForever) {
       throw const LocationException(LocationIssue.deniedForever);

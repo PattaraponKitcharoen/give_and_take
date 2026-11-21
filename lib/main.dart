@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'firebase_options.dart';
+import 'services/firebase_setup.dart';
 import 'screens/main_layout.dart';
 import 'screens/login_screen.dart';
 import 'services/notification_service.dart';
@@ -32,10 +31,10 @@ import 'cubits/chat/chat_cubit.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await NotificationService().initNotification();
+  await configureFirebase();
+  // Emulator runs (integration tests) skip push setup: no APNs/FCM there,
+  // and its permission prompt would sit on top of the app under test.
+  if (!useFirebaseEmulator) await NotificationService().initNotification();
   runApp(const GiveAndTakeApp());
 }
 

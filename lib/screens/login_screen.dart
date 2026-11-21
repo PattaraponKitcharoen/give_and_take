@@ -233,6 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 44),
 
                         TextField(
+                          key: const Key('login-email'),
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           style: AppText.body,
@@ -245,6 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 12),
 
                         TextField(
+                          key: const Key('login-password'),
                           controller: _passwordController,
                           obscureText: _obscureText,
                           style: AppText.body,
@@ -276,6 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 12),
 
                         PrimaryButton(
+                          key: const Key('login-submit'),
                           onPressed: _login,
                           isLoading: _isLoading,
                           child: const Text('Login'),

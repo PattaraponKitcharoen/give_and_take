@@ -1,0 +1,70 @@
+name: E2E (Simulator + emulators)
+
+# Builds the app for the iOS Simulator and drives it with integration_test
+# against the Firebase emulators (Auth, Firestore, Functions) seeded by
+# functions/scripts/seedEmulator.js. Slower than CI (~20 min), so it runs on
+# pull requests, by hand (Actions tab › Run workflow) and every night.
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 19 * * *" # 02:00 in Thailand, on the latest main
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: iOS Simulator
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4 # Firestore/Auth emulators
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4 # Functions emulator
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+        working-directory: functions
+      # The functions read GEMINI_API_KEY as a secret; the emulator takes it
+      # from this file. No real key: tests don't call Gemini.
+      - run: echo "GEMINI_API_KEY=ci-fake-key" > functions/.secret.local
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.9 # same as .fvmrc
+          channel: stable
+          cache: true
+      - run: flutter pub get
+
+      # iOS sets up Firebase from GoogleService-Info.plist (kept out of git)
+      # before Dart runs; emulator runs need the demo project there.
+      - run: tool/e2e/placeholder_google_service_info.sh
+
+      - name: Boot a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r,l in d.items() if 'iOS' in r for x in l if x['name'].startswith('iPhone')))")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          # Location: allowed up front (no prompt) and set to Hat Yai.
+          xcrun simctl privacy "$UDID" grant location-always com.pattarapon.giveAndTake
+          xcrun simctl location "$UDID" set 7.0086,100.4747
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Run integration tests against the emulators
+        run: >
+          npx --yes firebase-tools@15.13.0 emulators:exec
+          --only auth,firestore,functions
+          --project demo-give-and-take
+          "node functions/scripts/seedEmulator.js &&
+          flutter test integration_test -d ${{ steps.sim.outputs.udid }}
+          --dart-define=USE_FIREBASE_EMULATOR=true"
