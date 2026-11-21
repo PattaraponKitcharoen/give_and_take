@@ -7,6 +7,8 @@ import '../repositories/chat_repository.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/listing_repository.dart';
 import '../cubits/location/location_cubit.dart';
+import '../cubits/notification/notification_tap_cubit.dart';
+import '../models/notification_target.dart';
 import '../cubits/profile/profile_cubit.dart';
 import '../cubits/profile/profile_state.dart';
 import '../models/user_model.dart';
@@ -18,6 +20,8 @@ import 'home_screen.dart';
 import 'my_listing_screen.dart';
 import 'add_post_screen.dart';
 import 'chat_list_screen.dart';
+import 'chat_screen.dart';
+import 'match_screen.dart';
 import 'profile_screen.dart';
 
 class MainLayout extends StatefulWidget {
@@ -112,6 +116,32 @@ class _MainLayoutState extends State<MainLayout>
     super.initState();
     // Signed in from here on: start following the user's coarse position.
     context.read<LocationCubit>().start();
+  }
+
+  Future<void> _openNotification(NotificationTarget target) async {
+    context.read<NotificationTapCubit>().handled();
+    final navigator = Navigator.of(context);
+    // Back to the tabs, but leave dialogs (e.g. student verification) be.
+    navigator.popUntil((route) => route.isFirst || route is PopupRoute);
+    switch (target.destination) {
+      case NotificationDestination.offerChat:
+        _selectTab(2);
+        final uid = context.read<AuthRepository>().currentUser?.uid;
+        final offerId = target.offerId;
+        if (uid == null || offerId == null) return;
+        final roomId = await context
+            .read<ChatRepository>()
+            .findRoomForOffer(uid, offerId)
+            .catchError((Object _) => null);
+        if (roomId == null || !mounted) return;
+        navigator.push(MaterialPageRoute(
+            builder: (context) => ChatScreen(roomId: roomId)));
+      case NotificationDestination.matches:
+        navigator.push(
+            MaterialPageRoute(builder: (context) => const MatchScreen()));
+      case NotificationDestination.myListings:
+        _selectTab(1);
+    }
   }
 
   bool _hasShownStudentDialog = false;
@@ -251,6 +281,15 @@ class _MainLayoutState extends State<MainLayout>
       state is ProfileLoaded && state.user.isBanned ? state.user : null;
 
   Widget _buildTabs(BuildContext context) {
+    // Only while the tabs are up: a banned user's taps wait until the ban
+    // is lifted.
+    return _NotificationOpener(
+      onOpen: _openNotification,
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       body: BlocListener<ProfileCubit, ProfileState>(
           listener: (context, state) {
@@ -368,6 +407,40 @@ class _MainLayoutState extends State<MainLayout>
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Opens tapped notifications while the tabs are on screen: one that was
+/// already waiting when they appear (app launched by the tap, tapped on the
+/// login screen, or during a ban), and any tapped after.
+class _NotificationOpener extends StatefulWidget {
+  final void Function(NotificationTarget target) onOpen;
+  final Widget child;
+
+  const _NotificationOpener({required this.onOpen, required this.child});
+
+  @override
+  State<_NotificationOpener> createState() => _NotificationOpenerState();
+}
+
+class _NotificationOpenerState extends State<_NotificationOpener> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final pending = context.read<NotificationTapCubit>().state;
+      if (pending != null) widget.onOpen(pending);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocListener<NotificationTapCubit, NotificationTarget?>(
+      listenWhen: (previous, current) => current != null,
+      listener: (context, target) => widget.onOpen(target!),
+      child: widget.child,
     );
   }
 }

@@ -18,6 +18,20 @@ class ChatRepository {
         .map((snapshot) => snapshot.docs.map((doc) => ChatRoomModel.fromJson(doc.data(), doc.id)).toList());
   }
 
+  /// The chat room opened for [offerId], or null if there's none (yet).
+  /// Filters the user's rooms locally instead of a members+offer query,
+  /// which would need its own composite index.
+  Future<String?> findRoomForOffer(String currentUserId, String offerId) async {
+    final rooms = await _firestore
+        .collection('chat_rooms')
+        .where('members', arrayContains: currentUserId)
+        .get();
+    for (final doc in rooms.docs) {
+      if (doc.data()['active_offer_id'] == offerId) return doc.id;
+    }
+    return null;
+  }
+
   Stream<ChatRoomModel?> getChatRoomStream(String roomId) {
     return _firestore
         .collection('chat_rooms')

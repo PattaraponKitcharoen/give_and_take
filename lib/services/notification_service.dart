@@ -1,8 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import '../models/notification_target.dart';
 
 // 🟢 ฟังก์ชันระดับ Top-level สำหรับจัดการข้อเสนอเวลาแอปอยู่ Background/Terminated
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -13,6 +16,28 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
+  // Taps are app-wide (NotificationService is created more than once), so
+  // they live in statics: NotificationTapCubit reads them.
+  static final StreamController<NotificationTarget> _taps =
+      StreamController<NotificationTarget>.broadcast();
+  static NotificationTarget? _launchTarget;
+
+  /// Notifications tapped while the app is running (foreground or
+  /// background).
+  static Stream<NotificationTarget> get taps => _taps.stream;
+
+  /// The notification that launched the app from closed, once.
+  static NotificationTarget? takeLaunchTarget() {
+    final target = _launchTarget;
+    _launchTarget = null;
+    return target;
+  }
+
+  static void _tapped(Map<String, dynamic> data) {
+    final target = NotificationTarget.fromData(data);
+    if (target != null) _taps.add(target);
+  }
+
   Future<void> initNotification() async {
     // 1. ขออนุญาตการแจ้งเตือน (สำคัญมากสำหรับ iOS และ Android 13+)
     NotificationSettings settings = await _fcm.requestPermission(
@@ -21,23 +46,42 @@ class NotificationService {
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       debugPrint('ผู้ใช้งานอนุญาตการแจ้งเตือนเรียบร้อยแล้ว');
-      
+
       // 2. ตั้งค่า Background Handler
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
       // 3. ตั้งค่าระบบ Local Notification สำหรับตอนเปิดแอปอยู่ (Foreground)
       await _initLocalNotifications();
 
-      // 4. รับและบันทึก FCM Token ของเครื่องนี้ลงฐานข้อมูล
+      // 4. Tapping a notification opens the screen it's about.
+      await _listenForTaps();
+
+      // 5. รับและบันทึก FCM Token ของเครื่องนี้ลงฐานข้อมูล
       await saveDeviceToken();
+    }
+  }
+
+  Future<void> _listenForTaps() async {
+    // App in the background: the system notification brings it forward.
+    FirebaseMessaging.onMessageOpenedApp
+        .listen((message) => _tapped(message.data));
+    // App was closed: the tap launched it.
+    final initial = await _fcm.getInitialMessage();
+    if (initial != null) {
+      _launchTarget = NotificationTarget.fromData(initial.data);
     }
   }
 
   // ตั้งค่าป๊อปอัปแจ้งเตือนภายในแอป (Foreground)
   Future<void> _initLocalNotifications() async {
+    // iOS shows FCM notifications itself while the app is open; tapping one
+    // arrives through onMessageOpenedApp like a background tap.
+    await _fcm.setForegroundNotificationPresentationOptions(
+        alert: true, badge: true, sound: true);
+
     // สำหรับ Android
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    
+
     // 🟢 สำหรับ iOS (ต้องเพิ่มตัวนี้เข้าไปเพื่อไม่ให้แอปแครชจอขาว)
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -50,8 +94,16 @@ class NotificationService {
       android: androidSettings,
       iOS: iosSettings, // 🟢 ใส่ค่า iOS ตรงนี้
     );
-    
-    await _localNotificationsPlugin.initialize(initSettings);
+
+    // Android foreground notifications are shown below with the FCM data
+    // as their payload; tapping one comes back here.
+    await _localNotificationsPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        final data = _decodePayload(response.payload);
+        if (data != null) _tapped(data);
+      },
+    );
 
     // ดักฟังตอนเปิดแอปอยู่แล้วมีแจ้งเตือนวิ่งเข้ามา
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -78,12 +130,23 @@ class NotificationService {
               presentSound: true,
             ),
           ),
+          payload: jsonEncode(message.data),
         );
       }
     });
   }
 
-  // 🟢 บันทึกรหัสเครื่องลงบนคอลเลกชัน users 
+  static Map<String, dynamic>? _decodePayload(String? payload) {
+    if (payload == null || payload.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(payload);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 🟢 บันทึกรหัสเครื่องลงบนคอลเลกชัน users
   Future<void> saveDeviceToken() async {
     try {
       // 🟢 ใช้ try-catch ครอบไว้ ป้องกันแอปแครชเวลาใช้ iOS Simulator

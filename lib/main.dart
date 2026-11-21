@@ -28,6 +28,7 @@ import 'cubits/offer/offer_cubit.dart';
 import 'cubits/transaction/transaction_cubit.dart';
 import 'cubits/review/review_cubit.dart';
 import 'cubits/chat/chat_cubit.dart';
+import 'cubits/notification/notification_tap_cubit.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +65,15 @@ class GiveAndTakeApp extends StatelessWidget {
             create: (context) => AuthCubit(
               authRepository: context.read<AuthRepository>(),
               userRepository: context.read<UserRepository>(),
+            ),
+          ),
+          // Not lazy: a notification tapped on the login screen still has
+          // to be caught, and opened once MainLayout is up.
+          BlocProvider(
+            lazy: false,
+            create: (context) => NotificationTapCubit(
+              taps: NotificationService.taps,
+              launchTarget: NotificationService.takeLaunchTarget(),
             ),
           ),
           // App-wide: the user's coarse position, used by Home (distance
