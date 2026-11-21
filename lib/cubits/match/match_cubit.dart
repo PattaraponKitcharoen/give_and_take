@@ -36,7 +36,10 @@ class MatchCubit extends Cubit<MatchState> {
 
   void _emit(MatchState next) {
     if (isClosed) return;
-    emit(next.copyWith(loading: !(_wantsLoaded && _matchesLoaded)));
+    // copyWith clears `message` unless it's passed again, so carry it over:
+    // otherwise no SnackBar message ever reached the screen.
+    emit(next.copyWith(
+        loading: !(_wantsLoaded && _matchesLoaded), message: next.message));
   }
 
   void _onError(Object e) {
