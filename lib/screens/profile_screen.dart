@@ -4,6 +4,7 @@ import '../widgets/star_rating.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart'; // 🟢 เพิ่ม BLoC
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Timestamp in reviews
+import 'delete_account_screen.dart';
 import 'edit_profile_screen.dart';
 import 'wallet_history_screen.dart';
 import 'item_detail_screen.dart';
@@ -150,6 +151,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             MaterialPageRoute(
                                 builder: (context) =>
                                     EditProfileScreen(currentUser: user)));
+                      } else if (value == 'delete') {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const DeleteAccountScreen()));
                       } else if (value == 'logout') {
                         _logout();
                       }
@@ -162,6 +169,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 color: AppColors.ink, size: 20),
                             SizedBox(width: 8),
                             Text('แก้ไขโปรไฟล์')
+                          ])),
+                      const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(children: [
+                            Icon(Icons.person_remove_outlined,
+                                color: AppColors.inkSecondary, size: 20),
+                            SizedBox(width: 8),
+                            Text('ลบบัญชี')
                           ])),
                       const PopupMenuItem(
                           value: 'logout',

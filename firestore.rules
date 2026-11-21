@@ -200,6 +200,11 @@ service cloud.firestore {
     match /match_meta/{docId} {
       allow read, write: if false;
     }
+    // อีเมล (เก็บเป็น hash) ของบัญชีที่ลบไปแล้ว ใช้กันลบแล้วสมัครใหม่เพื่อรับเหรียญซ้ำ/หนีการระงับ
+    // Cloud Function เท่านั้น (deleteAccount, onUserProfileCreated)
+    match /deleted_accounts/{emailHash} {
+      allow read, write: if false;
+    }
 
     // 11. คอลเลกชัน Reports: ผู้ใช้รายงานประกาศ / ผู้ใช้ / ห้องแชท
     // id = {ผู้รายงาน}_{ประเภท}_{เป้าหมาย} จึงรายงานเป้าหมายเดิมได้ครั้งเดียว

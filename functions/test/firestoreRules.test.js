@@ -167,6 +167,10 @@ add("matches: create a match directly", DENY, A, "create", "/matches/M2", undefi
 add("matches: delete a match", DENY, A, "delete", "/matches/M1", m);
 add("listing_vectors: read a vector", DENY, A, "get", "/listing_vectors/LA", { owner_id: A, status: "active" });
 add("listing_vectors: write a vector", DENY, A, "create", "/listing_vectors/LA", undefined, { owner_id: A, status: "active" });
+add("deleted_accounts: read a deleted email record", DENY, A, "get", "/deleted_accounts/h1", { deleted_at: 1 });
+add("deleted_accounts: clear a deleted email record", DENY, A, "delete", "/deleted_accounts/h1", { deleted_at: 1 });
+add("deleted_accounts: write a record", DENY, A, "create", "/deleted_accounts/h2", undefined, { deleted_at: 1 });
+add("users: mark own account deleted", DENY, A, "update", `/users/${A}`, u, { ...u, status: "deleted" });
 
 // ---------------------------------------------------------------- bans
 const xb = userDoc({ status: "banned", ban_reason: "spam" });

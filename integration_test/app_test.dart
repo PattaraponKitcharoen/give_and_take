@@ -104,6 +104,41 @@ void main() {
         find.text('คุณรายงานไปแล้ว'));
   });
 
+  testWidgets('deleting an account removes it and signs out', (tester) async {
+    await startAs(tester, 'carol@test.dev');
+    await tapAndWait(tester, find.bySemanticsLabel('โปรไฟล์'),
+        find.byIcon(Icons.more_horiz_rounded));
+    await tapAndWait(tester, find.byIcon(Icons.more_horiz_rounded),
+        find.text('ลบบัญชี'));
+    await tapAndWait(tester, find.text('ลบบัญชี'),
+        find.byKey(const Key('delete-confirm')));
+
+    await tester.enterText(find.byKey(const Key('delete-password')), password);
+    await tester.enterText(find.byKey(const Key('delete-confirm')), 'ลบบัญชี');
+    await tester.pump();
+    await tapAndWait(tester, find.byKey(const Key('delete-submit')),
+        find.byKey(const Key('login-email')));
+    // Shown on both scaffolds while the delete screen pops away.
+    expect(find.text('ลบบัญชีเรียบร้อยแล้ว'), findsWidgets);
+
+    // Can't sign in any more.
+    await expectLater(
+        FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: 'carol@test.dev', password: password),
+        throwsA(isA<FirebaseAuthException>()));
+
+    // As someone else: her profile is a tombstone, her listing is gone.
+    await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: 'alice@test.dev', password: password);
+    final db = FirebaseFirestore.instance;
+    final carol = (await db.doc('users/carol').get()).data()!;
+    expect(carol['status'], 'deleted');
+    expect(carol['name'], 'ผู้ใช้ที่ลบบัญชีแล้ว');
+    expect(carol.containsKey('email'), isFalse);
+    expect((await db.doc('listings/carol-lamp').get()).exists, isFalse);
+    await FirebaseAuth.instance.signOut();
+  });
+
   testWidgets('making an offer creates it and opens the chat', (tester) async {
     await startAs(tester, 'alice@test.dev');
     await openBobsListing(tester);

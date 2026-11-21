@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../constants/firebase_config.dart';
 
 class AuthRepository {
   final FirebaseAuth _firebaseAuth;
@@ -93,6 +94,56 @@ class AuthRepository {
     }
 
     return isVerified;
+  }
+
+  /// How the signed-in account proves who it is when asked again:
+  /// 'password' or 'google.com' (null if neither, e.g. not signed in).
+  String? get reauthProvider {
+    final ids = _firebaseAuth.currentUser?.providerData
+            .map((p) => p.providerId)
+            .toSet() ??
+        <String>{};
+    if (ids.contains('password')) return 'password';
+    if (ids.contains('google.com')) return 'google.com';
+    return null;
+  }
+
+  /// Signs in again as the current user (the server wants a fresh sign-in
+  /// before deleting an account). Pass [password] for an email account;
+  /// a Google account shows the picker. Returns false if it was closed.
+  Future<bool> reauthenticate({String? password}) async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) throw FirebaseAuthException(code: 'no-current-user');
+    final AuthCredential credential;
+    if (reauthProvider == 'password') {
+      credential = EmailAuthProvider.credential(
+          email: user.email ?? '', password: password ?? '');
+    } else {
+      await _ensureGoogleInitialized();
+      final GoogleSignInAccount account;
+      try {
+        account = await GoogleSignIn.instance.authenticate();
+      } on GoogleSignInException catch (e) {
+        if (e.code == GoogleSignInExceptionCode.canceled) return false;
+        rethrow;
+      }
+      final idToken = account.authentication.idToken;
+      if (idToken == null) {
+        throw Exception('ไม่ได้รับข้อมูลยืนยันตัวตนจาก Google');
+      }
+      credential = GoogleAuthProvider.credential(idToken: idToken);
+    }
+    await user.reauthenticateWithCredential(credential);
+    // The callable reads auth_time from the ID token: send a fresh one.
+    await user.getIdToken(true);
+    return true;
+  }
+
+  /// Deletes the account on the server (Cloud Function deleteAccount),
+  /// then signs out here. Call [reauthenticate] first.
+  Future<void> deleteAccount() async {
+    await appFunctions().httpsCallable('deleteAccount').call();
+    await signOut();
   }
 
   Future<void> signOut() async {

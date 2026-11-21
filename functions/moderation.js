@@ -49,6 +49,9 @@ exports.onUserBanChanged = onDocumentUpdated("users/{uid}", async (event) => {
   const uid = event.params.uid;
   const before = event.data.before.data() || {};
   const after = event.data.after.data() || {};
+  // Account deletion rewrites the doc as a tombstone; the Auth account is
+  // being deleted, so there's nothing to hide, restore or re-enable.
+  if (after.status === "deleted") return;
   const wasBanned = before.status === "banned";
   const nowBanned = after.status === "banned";
   const permanent = nowBanned && !after.banned_until;

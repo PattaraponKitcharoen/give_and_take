@@ -10,6 +10,7 @@
 //   bob@test.dev     regular user, owns "หูฟังบลูทูธ JBL"
 //   banned@test.dev  permanently banned
 //   admin@test.dev   admin
+//   carol@test.dev   regular user, owns "โคมไฟตั้งโต๊ะ" (deletes her account)
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "demo-give-and-take";
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
   console.error("seedEmulator: FIRESTORE_EMULATOR_HOST / FIREBASE_AUTH_EMULATOR_HOST not set — refusing to touch a real project.");
@@ -32,11 +33,13 @@ const users = [
   { uid: "bob", email: "bob@test.dev", name: "Bob" },
   { uid: "banned", email: "banned@test.dev", name: "Banned User", status: "banned", ban_reason: "สแปม / ลงของซ้ำ" },
   { uid: "admin", email: "admin@test.dev", name: "Admin", role: "admin" },
+  { uid: "carol", email: "carol@test.dev", name: "Carol" },
 ];
 
 const listings = [
   { id: "alice-mat", owner: "alice", title: "เสื่อโยคะ หนา 6mm", category: "กีฬา & กิจกรรมกลางแจ้ง", coins: 300 },
   { id: "bob-headphones", owner: "bob", title: "หูฟังบลูทูธ JBL", category: "อุปกรณ์ไอที & แก็ดเจ็ต", coins: 350 },
+  { id: "carol-lamp", owner: "carol", title: "โคมไฟตั้งโต๊ะ", category: "ของใช้ในบ้าน & เฟอร์นิเจอร์", coins: 200 },
 ];
 
 (async () => {

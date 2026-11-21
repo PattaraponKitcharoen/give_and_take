@@ -900,3 +900,8 @@ exports.liftExpiredBans = moderation.liftExpiredBans;
 const reports = require("./reports");
 exports.onReportCreated = reports.onReportCreated;
 exports.adminModerate = reports.adminModerate;
+
+// Account deletion (and the deleted-email check on sign-up): account.js
+const account = require("./account");
+exports.deleteAccount = account.deleteAccount;
+exports.onUserProfileCreated = account.onUserProfileCreated;

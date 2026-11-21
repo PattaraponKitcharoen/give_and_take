@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'delete_account_screen.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/user_model.dart';
 import '../repositories/auth_repository.dart';
@@ -103,6 +104,15 @@ class BannedScreen extends StatelessWidget {
                   ),
                   child: const Text('ออกจากระบบ'),
                 ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const DeleteAccountScreen())),
+                style: TextButton.styleFrom(
+                    foregroundColor: AppColors.inkSecondary),
+                child: const Text('ลบบัญชี'),
               ),
               const SizedBox(height: 16),
             ],
