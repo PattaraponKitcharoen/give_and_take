@@ -101,7 +101,14 @@ class GiveAndTakeApp extends StatelessWidget {
           title: 'Give & Take',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
+          // The only place that picks Login vs MainLayout: screens never
+          // push either, they just pop back to this route.
           home: BlocBuilder<AuthCubit, AuthState>(
+            // Spinner only for the first auth check. Later AuthLoading
+            // (Google sign-in, sign-out) keeps the current screen, so
+            // LoginScreen stays mounted and can show its own error.
+            buildWhen: (previous, current) =>
+                current is! AuthLoading || previous is AuthInitial,
             builder: (context, state) {
               if (state is AuthLoading || state is AuthInitial) {
                 return const Scaffold(

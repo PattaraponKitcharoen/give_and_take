@@ -31,17 +31,6 @@ Future<void> waitFor(WidgetTester tester, Finder finder,
   throw TestFailure('Timed out waiting for $finder');
 }
 
-/// Pumps until exactly one [finder] is left (e.g. a route transition that
-/// briefly shows the screen twice has finished).
-Future<void> waitForOne(WidgetTester tester, Finder finder) async {
-  final end = DateTime.now().add(const Duration(seconds: 30));
-  while (DateTime.now().isBefore(end)) {
-    await tester.pump(const Duration(milliseconds: 200));
-    if (finder.evaluate().length == 1) return;
-  }
-  throw TestFailure('Expected exactly one $finder');
-}
-
 /// Taps [target] once it's on screen and tappable, then waits for [next].
 Future<void> tapAndWait(WidgetTester tester, Finder target, Finder next) async {
   await waitFor(tester, target);
@@ -59,9 +48,11 @@ Future<void> startAs(WidgetTester tester, String email) async {
   await tester.enterText(find.byKey(const Key('login-email')), email);
   await tester.enterText(find.byKey(const Key('login-password')), password);
   await tester.tap(find.byKey(const Key('login-submit')));
-  // Login currently shows MainLayout twice during the transition (the root
-  // switches to it and LoginScreen also pushes one); wait until it's one.
-  await waitForOne(tester, find.byType(MainLayout));
+  await waitFor(tester, find.byType(MainLayout));
+  // Only the app's root opens MainLayout; the login screen used to push a
+  // second one on top.
+  await tester.pump(const Duration(seconds: 1));
+  expect(find.byType(MainLayout), findsOneWidget);
 }
 
 Future<void> openBobsListing(WidgetTester tester) async {

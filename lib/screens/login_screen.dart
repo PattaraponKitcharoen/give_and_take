@@ -7,7 +7,6 @@ import '../repositories/auth_repository.dart';
 import '../widgets/google_sign_in_button.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ui/primary_button.dart';
-import 'main_layout.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -53,12 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
             password,
           );
 
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainLayout()),
-        );
-      }
+      // The app's root switches to MainLayout on its own once signed in.
     } on FirebaseAuthException catch (e) {
       debugPrint('Login failed: code=${e.code}, message=${e.message}');
       String message = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
@@ -103,12 +97,6 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(state.message), behavior: SnackBarBehavior.floating),
-      );
-    }
-    if (context.read<AuthRepository>().currentUser != null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const MainLayout()),
       );
     }
   }

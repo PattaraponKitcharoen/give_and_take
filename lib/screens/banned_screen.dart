@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../models/user_model.dart';
 import '../repositories/auth_repository.dart';
 import '../theme/app_theme.dart';
-import 'login_screen.dart';
 
 /// Shown instead of the app while the account is banned. The block itself
 /// is enforced by Firestore rules and the Cloud Functions; this screen
@@ -25,12 +24,8 @@ class BannedScreen extends StatelessWidget {
 
   Future<void> _logout(BuildContext context) async {
     await context.read<AuthRepository>().signOut();
-    if (context.mounted) {
-      Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false);
-    }
+    // The root shows LoginScreen once signed out; close what's on top.
+    if (context.mounted) Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override

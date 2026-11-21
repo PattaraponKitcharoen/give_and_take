@@ -7,7 +7,6 @@ import '../repositories/auth_repository.dart';
 import '../repositories/user_repository.dart';
 import '../models/user_model.dart';
 import '../widgets/google_sign_in_button.dart';
-import 'main_layout.dart';
 import 'package:flutter/gestures.dart';
 import '../constants/app_terms.dart';
 import '../theme/app_theme.dart';
@@ -111,12 +110,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await userRepo.createUser(userModel);
       }
 
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const MainLayout()),
-            (route) => false);
-      }
+      // Signed in now: the root shows MainLayout under this screen.
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } on FirebaseAuthException catch (e) {
       String message = 'เกิดข้อผิดพลาดในการสมัครสมาชิก';
       if (e.code == 'weak-password') {
@@ -307,10 +302,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           .showSnackBar(SnackBar(content: Text(state.message)));
     }
     if (context.read<AuthRepository>().currentUser != null) {
-      Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const MainLayout()),
-          (route) => false);
+      Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 

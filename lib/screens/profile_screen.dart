@@ -4,7 +4,6 @@ import '../widgets/star_rating.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart'; // 🟢 เพิ่ม BLoC
 import 'package:cloud_firestore/cloud_firestore.dart'; // For Timestamp in reviews
-import 'login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'wallet_history_screen.dart';
 import 'item_detail_screen.dart';
@@ -52,12 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _logout() async {
     await context.read<AuthRepository>().signOut();
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false);
-    }
+    // The root shows LoginScreen once signed out; close what's on top.
+    if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   double _calculateRating(List<Map<String, dynamic>> enrichedReviews) {
