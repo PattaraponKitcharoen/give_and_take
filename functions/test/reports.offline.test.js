@@ -64,6 +64,7 @@ let authUsers = {};
 const orig = Module._load;
 Module._load = function (req, ...a) {
   if (req === "firebase-admin") return adminMock;
+  if (req === "firebase-admin/firestore") return adminMock.firestore;
   if (req === "firebase-functions/v2/firestore") return { onDocumentCreated: (_p, f) => f };
   if (req === "firebase-functions/v2/https") return { onCall: (a, b) => b || a, HttpsError };
   if (req === "firebase-functions/logger") return { error() {}, warn() {}, info() {} };

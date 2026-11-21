@@ -56,6 +56,7 @@ class FakeGenAI {
 const orig = Module._load;
 Module._load = function (req, ...a) {
   if (req === "firebase-admin") return adminMock;
+  if (req === "firebase-admin/firestore") return adminMock.firestore;
   if (req === "firebase-functions") return {};
   if (req === "firebase-functions/v2") return { setGlobalOptions() {} };
   // onCall(handler) or onCall(options, handler)

@@ -13,6 +13,9 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
+// Modular import: the emulator's firebase-admin wrapper drops the
+// admin.firestore.FieldValue/Timestamp statics.
+const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 
 const db = () => admin.firestore();
 const BAN_FIELDS = ["ban_reason", "banned_until", "banned_at"];
@@ -61,7 +64,7 @@ exports.onUserBanChanged = onDocumentUpdated("users/{uid}", async (event) => {
     await commitInChunks(active.docs.map((d) => d.ref), {
       status: "banned",
       hidden_by_user_ban: true,
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
     });
     logger.info(`moderation: ${uid} banned, hid ${active.size} listings`);
   }
@@ -71,8 +74,8 @@ exports.onUserBanChanged = onDocumentUpdated("users/{uid}", async (event) => {
       .where("owner_id", "==", uid).where("hidden_by_user_ban", "==", true).get();
     await commitInChunks(hidden.docs.map((d) => d.ref), {
       status: "active",
-      hidden_by_user_ban: admin.firestore.FieldValue.delete(),
-      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      hidden_by_user_ban: FieldValue.delete(),
+      updated_at: FieldValue.serverTimestamp(),
     });
     logger.info(`moderation: ${uid} unbanned, restored ${hidden.size} listings`);
   }
@@ -89,11 +92,11 @@ exports.onUserBanChanged = onDocumentUpdated("users/{uid}", async (event) => {
 });
 
 /** Ends temporary bans whose banned_until has passed. */
-async function liftExpired(now = admin.firestore.Timestamp.now()) {
+async function liftExpired(now = Timestamp.now()) {
   const due = await db().collection("users")
     .where("status", "==", "banned").where("banned_until", "<=", now).get();
-  const clear = { status: "active", updated_at: admin.firestore.FieldValue.serverTimestamp() };
-  for (const f of BAN_FIELDS) clear[f] = admin.firestore.FieldValue.delete();
+  const clear = { status: "active", updated_at: FieldValue.serverTimestamp() };
+  for (const f of BAN_FIELDS) clear[f] = FieldValue.delete();
   await commitInChunks(due.docs.map((d) => d.ref), clear);
   if (due.size) logger.info(`moderation: lifted ${due.size} expired bans`);
   return due.size;

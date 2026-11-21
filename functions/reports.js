@@ -17,9 +17,11 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
+// Modular import: the emulator's firebase-admin wrapper drops the
+// admin.firestore.FieldValue/Timestamp statics.
+const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 
 const db = () => admin.firestore();
-const FieldValue = () => admin.firestore.FieldValue;
 const CHAT_EVIDENCE = 30;
 const MAX_REASON = 200;
 
@@ -40,7 +42,7 @@ async function sendPush(uid, title, body, data) {
     logger.error(`reports: push to ${uid} failed: ${e.message}`);
     if (e.code === "messaging/registration-token-not-registered" ||
         e.code === "messaging/invalid-registration-token") {
-      await ref.update({ fcm_token: FieldValue().delete() });
+      await ref.update({ fcm_token: FieldValue.delete() });
     }
   }
 }
@@ -110,7 +112,7 @@ exports.onReportCreated = onDocumentCreated("reports/{reportId}", async (event) 
     await snap.ref.update({ target_missing: true });
     return;
   }
-  await snap.ref.update({ ...evidence, snapshot_at: FieldValue().serverTimestamp() });
+  await snap.ref.update({ ...evidence, snapshot_at: FieldValue.serverTimestamp() });
 });
 
 /** Open reports about a target (and, for a user ban, about anything of theirs). */
@@ -158,7 +160,7 @@ exports.adminModerate = onCall(async (request) => {
   const reportType = typeof report.type === "string" ? report.type : "";
   const reportTargetId = typeof report.id === "string" ? report.id : "";
 
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   let targetUserId = userId;
 
   if (action === "ban_listing" || action === "unban_listing") {
@@ -174,15 +176,15 @@ exports.adminModerate = onCall(async (request) => {
       }
       await ref.update({
         status: "banned", ban_reason: reason,
-        hidden_by_user_ban: FieldValue().delete(), updated_at: FieldValue().serverTimestamp(),
+        hidden_by_user_ban: FieldValue.delete(), updated_at: FieldValue.serverTimestamp(),
       });
       await sendPush(targetUserId, "ประกาศของคุณถูกระงับ",
         `"${l.title || "ประกาศ"}" ถูกระงับ: ${reason}`, { type: "listing_banned", listing_id: listingId });
     } else {
       if (l.status !== "banned") throw new HttpsError("failed-precondition", "ประกาศนี้ไม่ได้ถูกระงับ");
       await ref.update({
-        status: "active", ban_reason: FieldValue().delete(),
-        hidden_by_user_ban: FieldValue().delete(), updated_at: FieldValue().serverTimestamp(),
+        status: "active", ban_reason: FieldValue.delete(),
+        hidden_by_user_ban: FieldValue.delete(), updated_at: FieldValue.serverTimestamp(),
       });
     }
   }
@@ -195,18 +197,18 @@ exports.adminModerate = onCall(async (request) => {
     if (!snap.exists) throw new HttpsError("not-found", "ไม่พบผู้ใช้");
     if (action === "ban_user") {
       if (snap.data().role === "admin") throw new HttpsError("failed-precondition", "ระงับบัญชีผู้ดูแลระบบไม่ได้");
-      const until = days === null ? null : admin.firestore.Timestamp.fromMillis(now.toMillis() + days * 864e5);
+      const until = days === null ? null : Timestamp.fromMillis(now.toMillis() + days * 864e5);
       // onUserBanChanged hides their listings and, if permanent, disables login.
       await ref.update({
         status: "banned", ban_reason: reason, banned_at: now,
-        banned_until: until || FieldValue().delete(), updated_at: FieldValue().serverTimestamp(),
+        banned_until: until || FieldValue.delete(), updated_at: FieldValue.serverTimestamp(),
       });
       await sendPush(userId, "บัญชีของคุณถูกระงับ",
         `${days === null ? "ระงับถาวร" : `ระงับ ${days} วัน`}: ${reason}`, { type: "account_banned" });
     } else {
       await ref.update({
-        status: "active", ban_reason: FieldValue().delete(), banned_at: FieldValue().delete(),
-        banned_until: FieldValue().delete(), updated_at: FieldValue().serverTimestamp(),
+        status: "active", ban_reason: FieldValue.delete(), banned_at: FieldValue.delete(),
+        banned_until: FieldValue.delete(), updated_at: FieldValue.serverTimestamp(),
       });
     }
   }

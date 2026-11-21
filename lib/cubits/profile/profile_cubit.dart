@@ -180,6 +180,13 @@ class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
+  // Fetches (trade count, reviews) can finish after MainLayout is gone,
+  // e.g. on sign-out; their result is simply dropped then.
+  @override
+  void emit(ProfileState state) {
+    if (!isClosed) super.emit(state);
+  }
+
   @override
   Future<void> close() {
     _userSubscription?.cancel();

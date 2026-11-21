@@ -14,6 +14,9 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
+// Modular import: the emulator's firebase-admin wrapper drops the
+// admin.firestore.FieldValue/Timestamp statics.
+const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 const crypto = require("crypto");
 const { GoogleGenAI } = require("@google/genai");
 const { assertNotBanned } = require("./moderation");
@@ -156,11 +159,11 @@ async function saveMatch(a, b) {
     want_ids: [a.want.id, b.want.id],
     sides: { [a.uid]: side(a, b), [b.uid]: side(b, a) },
     score: Math.round(score * 1000) / 1000,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   };
   const ref = db().collection("matches").doc(id);
   try {
-    await ref.create({ ...data, seen_by: [], created_at: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.create({ ...data, seen_by: [], created_at: FieldValue.serverTimestamp() });
   } catch (e) {
     if (e.code !== 6 && e.code !== "already-exists") throw e;
     await ref.update(data); // already known: refresh, keep who has seen it
@@ -190,7 +193,7 @@ async function notify(uid, myWant, matchId) {
     logger.error(`matching: push to ${uid} failed: ${error.message}`);
     if (error.code === "messaging/registration-token-not-registered" ||
         error.code === "messaging/invalid-registration-token") {
-      await ref.update({ fcm_token: admin.firestore.FieldValue.delete() });
+      await ref.update({ fcm_token: FieldValue.delete() });
     }
   }
 }
@@ -252,7 +255,7 @@ async function syncListingVector(listingId, d) {
   if (cur.exists && cur.data().hash === hash) {
     const was = cur.data();
     if (was.status !== status || was.estimated_coins !== coins) {
-      await ref.update({ status, estimated_coins: coins, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+      await ref.update({ status, estimated_coins: coins, updated_at: FieldValue.serverTimestamp() });
     }
     return { vec: toArray(was.embedding), changed: was.status !== "active" && status === "active" };
   }
@@ -261,9 +264,9 @@ async function syncListingVector(listingId, d) {
     owner_id: d.owner_id || "",
     status,
     estimated_coins: coins,
-    embedding: admin.firestore.FieldValue.vector(vec),
+    embedding: FieldValue.vector(vec),
     hash,
-    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
   });
   return { vec, changed: true };
 }
@@ -314,7 +317,7 @@ exports.onWantWrittenForMatching = onDocumentWritten(
 
     const vec = await embed(text, "RETRIEVAL_QUERY");
     await event.data.after.ref.update({
-      embedding: admin.firestore.FieldValue.vector(vec),
+      embedding: FieldValue.vector(vec),
       embedding_hash: hash,
     });
     // The text changed, so matches found for the old text no longer hold.
@@ -337,7 +340,7 @@ exports.onBackfillRequested = onDocumentWritten(
     // Our own status updates below re-fire this trigger; only act on a request.
     if (!after || after.status !== "requested") return;
     const ref = event.data.after.ref;
-    await ref.update({ status: "running", started_at: admin.firestore.FieldValue.serverTimestamp() });
+    await ref.update({ status: "running", started_at: FieldValue.serverTimestamp() });
 
     const [listings, vectors] = await Promise.all([
       db().collection("listings").where("status", "==", "active").get(),
@@ -357,7 +360,7 @@ exports.onBackfillRequested = onDocumentWritten(
     }
     await ref.update({
       status: "done", embedded, failed,
-      finished_at: admin.firestore.FieldValue.serverTimestamp(),
+      finished_at: FieldValue.serverTimestamp(),
     });
     logger.info(`matching: backfill embedded ${embedded}, failed ${failed}`);
   }
@@ -386,7 +389,7 @@ exports.rescanMatches = onCall(
       const lastMs = last && typeof last.toMillis === "function" ? last.toMillis() : 0;
       const left = lastMs + RESCAN_COOLDOWN_MS - Date.now();
       if (left > 0) return left;
-      tx.update(userRef, { last_rescan_at: admin.firestore.Timestamp.now() });
+      tx.update(userRef, { last_rescan_at: Timestamp.now() });
       return 0;
     });
     if (waitMs > 0) {

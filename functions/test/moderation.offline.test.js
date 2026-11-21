@@ -56,6 +56,7 @@ const adminMock = {
 const orig = Module._load;
 Module._load = function (req, ...a) {
   if (req === "firebase-admin") return adminMock;
+  if (req === "firebase-admin/firestore") return adminMock.firestore;
   if (req === "firebase-functions/v2/firestore") return { onDocumentUpdated: (_p, f) => f };
   if (req === "firebase-functions/v2/scheduler") return { onSchedule: (_o, f) => f };
   if (req === "firebase-functions/v2/https") return { HttpsError };

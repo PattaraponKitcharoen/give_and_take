@@ -4,6 +4,9 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
+// Modular import: the emulator's firebase-admin wrapper drops the
+// admin.firestore.FieldValue/Timestamp statics.
+const { FieldValue } = require("firebase-admin/firestore");
 const crypto = require("crypto");
 admin.initializeApp();
 
@@ -216,7 +219,7 @@ exports.acceptTradeOffer = onCall(async (request) => {
           status: "success",
           reference_id: offerId,
           description: "หักเหรียญเข้ากองกลางสำหรับข้อเสนอแลกเปลี่ยน",
-          created_at: admin.firestore.FieldValue.serverTimestamp(),
+          created_at: FieldValue.serverTimestamp(),
         });
       }
 
@@ -241,8 +244,8 @@ exports.acceptTradeOffer = onCall(async (request) => {
         cancel_reason: "",
         verification_codes: { [senderId]: code1, [targetUserId]: code2 },
         confirmed_by_user_ids: [],
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
       });
 
       // d) Atomically flip the offer and both listings to their
@@ -257,13 +260,13 @@ exports.acceptTradeOffer = onCall(async (request) => {
         const roomRef = db.collection("chat_rooms").doc(roomId);
         transaction.update(roomRef, {
           last_message_type: "system_accept",
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
         });
         const msgRef = roomRef.collection("messages").doc();
         transaction.set(msgRef, {
           sender_id: "system",
           content: `${callerName} ได้ตกลงรับข้อเสนอแลกเปลี่ยนแล้ว`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          timestamp: FieldValue.serverTimestamp(),
           type: "system_accept",
         });
       }
@@ -415,20 +418,20 @@ exports.confirmHandoverOtp = onCall(async (request) => {
             status: "success",
             reference_id: txRef.id,
             description: "ได้รับเหรียญจากระบบกองกลาง (แลกเปลี่ยนสำเร็จ)",
-            created_at: admin.firestore.FieldValue.serverTimestamp(),
+            created_at: FieldValue.serverTimestamp(),
           });
         }
 
         transaction.update(txRef, {
           confirmed_by_user_ids: confirmedByIds,
           status: "completed",
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
         });
         transaction.update(offerRef, { status: "completed" });
       } else {
         transaction.update(txRef, {
           confirmed_by_user_ids: confirmedByIds,
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
         });
       }
 
@@ -549,14 +552,14 @@ exports.cancelAcceptedTrade = onCall(async (request) => {
           status: "success",
           reference_id: txRef.id,
           description: "คืนเหรียญจากระบบกองกลาง (ยกเลิกการแลกเปลี่ยน)",
-          created_at: admin.firestore.FieldValue.serverTimestamp(),
+          created_at: FieldValue.serverTimestamp(),
         });
       }
 
       transaction.update(txRef, {
         status: "cancelled",
         cancel_reason: reason,
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
       });
       transaction.update(offerRef, { status: "cancelled" });
 
@@ -564,13 +567,13 @@ exports.cancelAcceptedTrade = onCall(async (request) => {
         const roomRef = db.collection("chat_rooms").doc(roomId);
         transaction.update(roomRef, {
           last_message_type: "system_cancel",
-          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
         });
         const msgRef = roomRef.collection("messages").doc();
         transaction.set(msgRef, {
           sender_id: "system",
           content: `${callerName} ได้ยกเลิกการแลกเปลี่ยน ระบบได้ทำการคืนสิ่งของและเหรียญเรียบร้อยแล้ว`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          timestamp: FieldValue.serverTimestamp(),
           type: "system_cancel",
         });
       }
@@ -709,7 +712,7 @@ exports.submitTradeReview = onCall(async (request) => {
         comment: comment,
         reviewer_item: itemOf(callerId),
         reviewee_item: itemOf(revieweeId),
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_at: FieldValue.serverTimestamp(),
       });
       transaction.update(userRef, {
         owner_rating_scores: newScores,
@@ -870,7 +873,7 @@ exports.onNewOfferCreated = onDocumentCreated(
         await db
           .collection("users")
           .doc(ownerId)
-          .update({ fcm_token: admin.firestore.FieldValue.delete() });
+          .update({ fcm_token: FieldValue.delete() });
         logger.info(
           `onNewOfferCreated: cleared stale fcm_token for user ${ownerId}.`
         );
