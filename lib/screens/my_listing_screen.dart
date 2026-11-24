@@ -22,17 +22,55 @@ class _MyListingScreenState extends State<MyListingScreen> {
   // ตัวแปรเก็บสถานะแท็บที่เลือก
   String _selectedFilter = 'All';
 
+  // Search by title: the app bar turns into a search field.
+  bool _searching = false;
+  final _searchController = TextEditingController();
+  String get _query => _searchController.text.trim().toLowerCase();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _closeSearch() {
+    _searchController.clear();
+    setState(() => _searching = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('My Listings', style: AppText.title),
+        title: _searching
+            ? TextField(
+                key: const Key('my-listings-search'),
+                controller: _searchController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                onChanged: (_) => setState(() {}),
+                style: AppText.body,
+                decoration: const InputDecoration(
+                  hintText: 'ค้นหาชื่อของของฉัน',
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  isDense: true,
+                ),
+              )
+            : const Text('My Listings', style: AppText.title),
         centerTitle: false, // จัดซ้ายตามภาพ
         actions: [
           IconButton(
-            icon: const Icon(Icons.tune_rounded, color: AppColors.ink),
-            onPressed: () {}, // สำหรับตั้งค่า Filter เพิ่มเติมในอนาคต
+            tooltip: _searching ? 'ปิดการค้นหา' : 'ค้นหา',
+            icon: Icon(
+                _searching ? Icons.close_rounded : Icons.search_rounded,
+                color: AppColors.ink),
+            onPressed: _searching
+                ? _closeSearch
+                : () => setState(() => _searching = true),
           ),
         ],
       ),
@@ -64,6 +102,10 @@ class _MyListingScreenState extends State<MyListingScreen> {
             if (_selectedFilter == 'Active' && status != 'active') return false;
             if (_selectedFilter == 'In Progress' && status != 'in_progress')
               return false;
+            if (_query.isNotEmpty &&
+                !doc.title.toLowerCase().contains(_query)) {
+              return false;
+            }
             return true;
           }).toList();
 
@@ -74,9 +116,14 @@ class _MyListingScreenState extends State<MyListingScreen> {
               _buildFilterTabs(),
               Expanded(
                 child: filteredDocs.isEmpty
-                    ? const Center(
-                        child: Text('ไม่พบสิ่งของในหมวดหมู่นี้',
-                            style: TextStyle(color: AppColors.inkTertiary)))
+                    ? Center(
+                        child: Text(
+                            _query.isNotEmpty
+                                ? 'ไม่พบของที่ชื่อตรงกับ "${_searchController.text.trim()}"'
+                                : 'ไม่พบสิ่งของในหมวดหมู่นี้',
+                            textAlign: TextAlign.center,
+                            style:
+                                const TextStyle(color: AppColors.inkTertiary)))
                     : ListView.builder(
                         padding: EdgeInsets.fromLTRB(
                             AppSpace.page,

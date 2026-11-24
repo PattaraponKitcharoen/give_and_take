@@ -5,13 +5,20 @@ import '../repositories/listing_repository.dart';
 import 'item_detail_screen.dart';
 import '../models/listing_model.dart';
 import '../theme/app_theme.dart';
+import '../utils/listing_search.dart';
 
 class ItemSearchDelegate extends SearchDelegate<String> {
   final Color tealColor = AppColors.primary;
 
   // เปลี่ยนคำใบ้ในช่องค้นหา
   @override
-  String get searchFieldLabel => 'ค้นหาสิ่งของ...';
+  String get searchFieldLabel => 'ค้นหาจากชื่อหรือรายละเอียด';
+
+  // One listings stream for the whole search session, made on first use.
+  // Building a new one on every keystroke re-opened the Firestore listener
+  // (and re-read every active listing) each time the query changed.
+  Stream<List<ListingModel>>? _listings;
+  List<ListingModel>? _latest;
 
   // ปุ่มด้านขวาของช่องค้นหา (ปุ่ม X สำหรับล้างคำ)
   @override
@@ -53,7 +60,7 @@ class ItemSearchDelegate extends SearchDelegate<String> {
           children: [
             Icon(Icons.search, size: 80, color: AppColors.hairline),
             const SizedBox(height: 16),
-            Text('พิมพ์ชื่อสิ่งของที่ต้องการค้นหา', style: TextStyle(color: AppColors.inkTertiary, fontSize: 16)),
+            Text('ค้นหาจากชื่อ หมวดหมู่ หรือรายละเอียดของสิ่งของ', textAlign: TextAlign.center, style: TextStyle(color: AppColors.inkTertiary, fontSize: 16)),
           ],
         ),
       );
@@ -63,10 +70,17 @@ class ItemSearchDelegate extends SearchDelegate<String> {
 
   Widget _buildSearchResults(BuildContext context) {
     final currentUserId = context.read<AuthRepository>().currentUser?.uid;
+    _listings ??=
+        context.read<ListingRepository>().getAllActiveListingsStream();
     return StreamBuilder<List<ListingModel>>(
-      stream: context.read<ListingRepository>().getAllActiveListingsStream(),
+      stream: _listings,
+      // Switching between suggestions and results starts a new builder;
+      // show what we already have instead of a spinner.
+      initialData: _latest,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.hasData) _latest = snapshot.data;
+        if (!snapshot.hasData &&
+            snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
@@ -76,14 +90,8 @@ class ItemSearchDelegate extends SearchDelegate<String> {
           return const Center(child: Text('ไม่พบสิ่งของในระบบ'));
         }
 
-        final rawDocs = snapshot.data!;
-        final searchQuery = query.toLowerCase().trim();
-
-        final filteredDocs = rawDocs.where((item) {
-          if (item.ownerId == currentUserId) return false;
-          if (!item.title.toLowerCase().contains(searchQuery)) return false;
-          return true;
-        }).toList();
+        final filteredDocs = searchListings(snapshot.data!, query,
+            excludeOwnerId: currentUserId);
 
         if (filteredDocs.isEmpty) {
           return Center(

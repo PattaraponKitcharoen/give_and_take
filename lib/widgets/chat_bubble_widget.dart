@@ -105,78 +105,80 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
               right: 60,
               top: 2,
               bottom: widget.showTimeByDefault ? 8 : 2),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            if (widget.showAvatar) ...[
-              GestureDetector(
-                onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) =>
-                            UserProfileScreen(userId: widget.msg.senderId))),
-                child: FutureBuilder<DocumentSnapshot>(
-                    future: FirebaseFirestore.instance
-                        .collection('public_profiles')
-                        .doc(widget.msg.senderId)
-                        .get(),
-                    builder: (context, userSnap) {
-                      String profileImg = '';
-                      if (userSnap.hasData && userSnap.data!.exists)
-                        profileImg = (userSnap.data!.data()
-                                as Map<String, dynamic>)['profile_img_url'] ??
-                            '';
-                      return CircleAvatar(
-                        radius: 14,
-                        backgroundColor: AppColors.hairline,
-                        backgroundImage: profileImg.isNotEmpty
-                            ? NetworkImage(profileImg)
-                            : null,
-                        child: profileImg.isEmpty
-                            ? const Icon(Icons.person,
-                                size: 14, color: Colors.white)
-                            : null,
-                      );
-                    }),
-              ),
-            ] else ...[
-              const SizedBox(width: 28),
-            ],
-            const SizedBox(width: 8),
-            Flexible(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  GestureDetector(
-                    onTap: () => setState(() => _isTapped = !_isTapped),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        boxShadow: AppShadows.raised,
-                        borderRadius: BorderRadius.only(
-                          topLeft: const Radius.circular(20),
-                          topRight: const Radius.circular(20),
-                          bottomRight: const Radius.circular(20),
-                          bottomLeft: Radius.circular(
-                              widget.showTimeByDefault ? 6 : 20),
-                        ),
+          // The avatar lines up with the bottom of the (last) bubble; the
+          // time sits on its own line underneath, indented past the avatar.
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              if (widget.showAvatar) ...[
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) =>
+                              UserProfileScreen(userId: widget.msg.senderId))),
+                  child: FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('public_profiles')
+                          .doc(widget.msg.senderId)
+                          .get(),
+                      builder: (context, userSnap) {
+                        String profileImg = '';
+                        if (userSnap.hasData && userSnap.data!.exists)
+                          profileImg = (userSnap.data!.data()
+                                  as Map<String, dynamic>)['profile_img_url'] ??
+                              '';
+                        return CircleAvatar(
+                          radius: 14,
+                          backgroundColor: AppColors.hairline,
+                          backgroundImage: profileImg.isNotEmpty
+                              ? NetworkImage(profileImg)
+                              : null,
+                          child: profileImg.isEmpty
+                              ? const Icon(Icons.person,
+                                  size: 14, color: Colors.white)
+                              : null,
+                        );
+                      }),
+                ),
+              ] else ...[
+                const SizedBox(width: 28),
+              ],
+              const SizedBox(width: 8),
+              Flexible(
+                child: GestureDetector(
+                  onTap: () => setState(() => _isTapped = !_isTapped),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      boxShadow: AppShadows.raised,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(20),
+                        topRight: const Radius.circular(20),
+                        bottomRight: const Radius.circular(20),
+                        bottomLeft:
+                            Radius.circular(widget.showTimeByDefault ? 6 : 20),
                       ),
-                      child: Text(widget.msg.content,
-                          style: AppText.body.copyWith(fontSize: 14.5)),
                     ),
+                    child: Text(widget.msg.content,
+                        style: AppText.body.copyWith(fontSize: 14.5)),
                   ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 200),
-                    child: showTime
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(widget.timeStr,
-                                style: TextStyle(
-                                    color: AppColors.inkTertiary,
-                                    fontSize: 10)))
-                        : const SizedBox.shrink(),
-                  )
-                ]))
+                ),
+              ),
+            ]),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              child: showTime
+                  ? Padding(
+                      // 28 avatar + 8 gap
+                      padding: const EdgeInsets.only(top: 4, left: 36),
+                      child: Text(widget.timeStr,
+                          style: TextStyle(
+                              color: AppColors.inkTertiary, fontSize: 10)))
+                  : const SizedBox.shrink(),
+            ),
           ]));
     }
   }

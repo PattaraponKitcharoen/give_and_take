@@ -12,6 +12,8 @@ ListingModel listing(
   int coins = 100,
   DateTime? createdAt,
   PlaceLocation? location,
+  String? title,
+  String description = '',
 }) =>
     ListingModel(
       listingId: id,
@@ -22,8 +24,8 @@ ListingModel listing(
       ownerName: 'Owner',
       ownerProfileImg: '',
       ownerRatingScores: 0,
-      title: 'Item $id',
-      description: '',
+      title: title ?? 'Item $id',
+      description: description,
       condition: 'มือสองสภาพดี',
       estimatedCoins: coins,
       thumbnailUrl: '',
