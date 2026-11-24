@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubits/auth/auth_cubit.dart';
 import '../cubits/auth/auth_state.dart';
 import '../repositories/auth_repository.dart';
+import '../widgets/apple_sign_in_button.dart';
 import '../widgets/google_sign_in_button.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ui/primary_button.dart';
@@ -20,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscureText = true;
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  bool _isAppleLoading = false;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -83,6 +85,21 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _loginWithApple() async {
+    setState(() => _isAppleLoading = true);
+    final authCubit = context.read<AuthCubit>();
+    await authCubit.signInWithApple();
+    if (!mounted) return;
+    setState(() => _isAppleLoading = false);
+    final state = authCubit.state;
+    if (state is AuthError) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(state.message), behavior: SnackBarBehavior.floating),
+      );
     }
   }
 
@@ -288,8 +305,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 28),
 
+                        if (AuthRepository.appleSignInAvailable) ...[
+                          AppleSignInButton(
+                            onPressed: _isLoading || _isGoogleLoading
+                                ? null
+                                : _loginWithApple,
+                            isLoading: _isAppleLoading,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         GoogleSignInButton(
-                          onPressed: _isLoading ? null : _loginWithGoogle,
+                          onPressed: _isLoading || _isAppleLoading
+                              ? null
+                              : _loginWithGoogle,
                           isLoading: _isGoogleLoading,
                         ),
 

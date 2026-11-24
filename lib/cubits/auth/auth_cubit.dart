@@ -62,26 +62,48 @@ class AuthCubit extends Cubit<AuthState> {
   /// user gets the same starting profile as email sign-up (1,000 coins,
   /// role user); name and photo come from the Google account, and the email
   /// already counts as verified.
-  Future<void> signInWithGoogle() async {
+  Future<void> signInWithGoogle() => _signInWithProvider(
+        _authRepository.signInWithGoogle,
+        label: 'Google',
+        fallbackName: null,
+      );
+
+  /// Sign in with Apple (iOS), same as Google. Apple gives the name only on
+  /// the very first sign-in, and the email may be a private relay address,
+  /// so the fallback name isn't taken from it.
+  Future<void> signInWithApple() => _signInWithProvider(
+        _authRepository.signInWithApple,
+        label: 'Apple',
+        fallbackName: 'ผู้ใช้ Apple',
+      );
+
+  Future<void> _signInWithProvider(
+    Future<UserCredential?> Function() signIn, {
+    required String label,
+    required String? fallbackName,
+  }) async {
     final previous = state;
     try {
       emit(AuthLoading());
-      final credential = await _authRepository.signInWithGoogle();
+      final credential = await signIn();
       final user = credential?.user;
       if (user == null) {
-        // Picker closed: back to where we were, no error.
+        // Sheet closed: back to where we were, no error.
         emit(previous is AuthLoading ? Unauthenticated() : previous);
         return;
       }
       if (!await _userRepository.userExists(user.uid)) {
         final now = DateTime.now();
+        final displayName = user.displayName?.trim() ?? '';
         // Signed in to Firebase but no profile yet: if creating it fails,
         // sign out again rather than leave an account the app can't load.
         await _userRepository
             .createUser(UserModel(
           uid: user.uid,
           email: user.email ?? '',
-          name: user.displayName ?? (user.email ?? '').split('@').first,
+          name: displayName.isNotEmpty
+              ? displayName
+              : fallbackName ?? (user.email ?? '').split('@').first,
           bio: '',
           tel: '',
           role: 'user',
@@ -105,12 +127,12 @@ class AuthCubit extends Cubit<AuthState> {
     } on FirebaseAuthException catch (e) {
       emit(AuthError(switch (e.code) {
         'account-exists-with-different-credential' =>
-          'อีเมลนี้สมัครไว้ด้วยวิธีอื่น กรุณาเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน',
+          'อีเมลนี้สมัครไว้ด้วยวิธีอื่น กรุณาเข้าสู่ระบบด้วยวิธีที่เคยใช้',
         'user-disabled' =>
           'บัญชีนี้ถูกระงับการใช้งานถาวร หากคิดว่าเป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ',
         'network-request-failed' =>
           'ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้ กรุณาตรวจสอบการเชื่อมต่อ',
-        _ => 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ (${e.code})',
+        _ => 'เข้าสู่ระบบด้วย $label ไม่สำเร็จ (${e.code})',
       }));
       emit(Unauthenticated());
     } on GoogleSignInException catch (e) {

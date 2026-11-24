@@ -6,6 +6,7 @@ import '../cubits/auth/auth_state.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/user_repository.dart';
 import '../models/user_model.dart';
+import '../widgets/apple_sign_in_button.dart';
 import '../widgets/google_sign_in_button.dart';
 import 'package:flutter/gestures.dart';
 import '../constants/app_terms.dart';
@@ -28,6 +29,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _agreeToTerms = false;
   bool _isGoogleLoading = false;
+  bool _isAppleLoading = false;
 
   // 🟢 1. ตัวแปรเก็บสถานะว่าอ่านจบหรือยัง
   bool _hasReadTerms = false;
@@ -284,18 +286,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Same terms gate as email sign-up: a first Google sign-in creates the
-  // account, so the user has to accept the terms first.
-  Future<void> _signUpWithGoogle() async {
+  // Same terms gate as email sign-up: a first Google/Apple sign-in creates
+  // the account, so the user has to accept the terms first.
+  Future<void> _signUpWithGoogle() => _signUpWith(
+      (cubit) => cubit.signInWithGoogle(),
+      (loading) => _isGoogleLoading = loading);
+
+  Future<void> _signUpWithApple() => _signUpWith(
+      (cubit) => cubit.signInWithApple(),
+      (loading) => _isAppleLoading = loading);
+
+  Future<void> _signUpWith(Future<void> Function(AuthCubit cubit) signIn,
+      void Function(bool loading) setLoading) async {
     if (!_agreeToTerms) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('กรุณายอมรับเงื่อนไขและข้อตกลงการใช้งาน')));
       return;
     }
-    setState(() => _isGoogleLoading = true);
-    await context.read<AuthCubit>().signInWithGoogle();
+    setState(() => setLoading(true));
+    await signIn(context.read<AuthCubit>());
     if (!mounted) return;
-    setState(() => _isGoogleLoading = false);
+    setState(() => setLoading(false));
     final state = context.read<AuthCubit>().state;
     if (state is AuthError) {
       ScaffoldMessenger.of(context)
@@ -475,8 +486,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 24),
 
+              if (AuthRepository.appleSignInAvailable) ...[
+                AppleSignInButton(
+                  onPressed: _isLoading || _isGoogleLoading
+                      ? null
+                      : _signUpWithApple,
+                  isLoading: _isAppleLoading,
+                  label: 'Sign up with Apple',
+                ),
+                const SizedBox(height: 12),
+              ],
               GoogleSignInButton(
-                onPressed: _isLoading ? null : _signUpWithGoogle,
+                onPressed:
+                    _isLoading || _isAppleLoading ? null : _signUpWithGoogle,
                 isLoading: _isGoogleLoading,
                 label: 'Sign up with Google',
               ),

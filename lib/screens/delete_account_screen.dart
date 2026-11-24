@@ -165,9 +165,11 @@ class _DeleteAccountViewState extends State<_DeleteAccountView> {
                           height: 22,
                           child: CircularProgressIndicator(
                               strokeWidth: 2.5, color: Colors.white))
-                      : Text(usesPassword
-                          ? 'ลบบัญชีถาวร'
-                          : 'ยืนยันด้วย Google และลบบัญชี'),
+                      : Text(switch (cubit.provider) {
+                          'password' => 'ลบบัญชีถาวร',
+                          'apple.com' => 'ยืนยันด้วย Apple และลบบัญชี',
+                          _ => 'ยืนยันด้วย Google และลบบัญชี',
+                        }),
                 ),
               ],
             ),

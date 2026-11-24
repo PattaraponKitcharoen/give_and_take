@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../constants/feature_flags.dart';
 import '../constants/firebase_config.dart';
 
 class AuthRepository {
@@ -57,6 +59,31 @@ class AuthRepository {
         .signInWithCredential(GoogleAuthProvider.credential(idToken: idToken));
   }
 
+  /// Sign in with Apple is offered on iOS only (App Store rule for apps
+  /// with Google sign-in); Android would need Apple's web flow. Off until
+  /// the Apple Developer Program is set up: see kAppleSignInEnabled.
+  static bool get appleSignInAvailable =>
+      kAppleSignInEnabled &&
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.iOS;
+
+  static bool _isAppleCancel(FirebaseAuthException e) =>
+      e.code == 'canceled' || e.code == 'web-context-canceled';
+
+  /// Signs in with the native Apple sheet. Returns null if it was closed.
+  /// Apple shares the name and email only the first time.
+  Future<UserCredential?> signInWithApple() async {
+    final provider = AppleAuthProvider()
+      ..addScope('email')
+      ..addScope('name');
+    try {
+      return await _firebaseAuth.signInWithProvider(provider);
+    } on FirebaseAuthException catch (e) {
+      if (_isAppleCancel(e)) return null;
+      rethrow;
+    }
+  }
+
   Future<bool> isEmailVerified() async {
     await _firebaseAuth.currentUser?.reload();
     final user = _firebaseAuth.currentUser;
@@ -97,7 +124,7 @@ class AuthRepository {
   }
 
   /// How the signed-in account proves who it is when asked again:
-  /// 'password' or 'google.com' (null if neither, e.g. not signed in).
+  /// 'password', 'google.com' or 'apple.com' (null if not signed in).
   String? get reauthProvider {
     final ids = _firebaseAuth.currentUser?.providerData
             .map((p) => p.providerId)
@@ -105,15 +132,29 @@ class AuthRepository {
         <String>{};
     if (ids.contains('password')) return 'password';
     if (ids.contains('google.com')) return 'google.com';
+    if (ids.contains('apple.com')) return 'apple.com';
     return null;
   }
 
   /// Signs in again as the current user (the server wants a fresh sign-in
   /// before deleting an account). Pass [password] for an email account;
-  /// a Google account shows the picker. Returns false if it was closed.
+  /// Google and Apple show their own sheet. Returns false if it was closed.
   Future<bool> reauthenticate({String? password}) async {
     final user = _firebaseAuth.currentUser;
     if (user == null) throw FirebaseAuthException(code: 'no-current-user');
+    if (reauthProvider == 'apple.com') {
+      try {
+        final result =
+            await user.reauthenticateWithProvider(AppleAuthProvider());
+        // Kept for deleteAccount: Apple wants the app's token revoked.
+        _appleAuthorizationCode = result.additionalUserInfo?.authorizationCode;
+      } on FirebaseAuthException catch (e) {
+        if (_isAppleCancel(e)) return false;
+        rethrow;
+      }
+      await user.getIdToken(true);
+      return true;
+    }
     final AuthCredential credential;
     if (reauthProvider == 'password') {
       credential = EmailAuthProvider.credential(
@@ -142,9 +183,23 @@ class AuthRepository {
   /// Deletes the account on the server (Cloud Function deleteAccount),
   /// then signs out here. Call [reauthenticate] first.
   Future<void> deleteAccount() async {
+    // Sign in with Apple accounts: revoke the app's Apple token first (App
+    // Store rule), while the Firebase user still exists. Best effort: it
+    // needs the Apple key set up in Firebase, and must not block deletion.
+    final code = _appleAuthorizationCode;
+    _appleAuthorizationCode = null;
+    if (code != null) {
+      try {
+        await _firebaseAuth.revokeTokenWithAuthorizationCode(code);
+      } catch (e) {
+        debugPrint('Apple token revoke failed: $e');
+      }
+    }
     await appFunctions().httpsCallable('deleteAccount').call();
     await signOut();
   }
+
+  String? _appleAuthorizationCode;
 
   Future<void> signOut() async {
     // Also forget the Google account, so the next Google sign-in shows the
