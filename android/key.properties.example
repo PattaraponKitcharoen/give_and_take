@@ -1,0 +1,7 @@
+# Copy to android/key.properties (never commit that file) and fill in the
+# upload keystore made with keytool. storeFile is relative to android/app/
+# or absolute; keep the .jks outside the repo and back it up.
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+storeFile=/Users/YOU/keys/give_and_take-upload.jks

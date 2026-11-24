@@ -1,4 +1,4 @@
-package com.example.give_and_take
+package com.giveandtake
 
 import io.flutter.embedding.android.FlutterActivity
 

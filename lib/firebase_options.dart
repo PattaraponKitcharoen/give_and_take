@@ -57,7 +57,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBfDGM1HMzeS57zbgiOZ_CBjtE-thidx5U',
-    appId: '1:341419249481:android:f5b3702b6a77eb2c445498',
+    appId: '1:341419249481:android:7cbf85af51078177445498',
     messagingSenderId: '341419249481',
     projectId: 'give-and-take-4d7d2',
     storageBucket: 'give-and-take-4d7d2.firebasestorage.app',
