@@ -49,6 +49,7 @@ jobs:
       - run: node test/moderation.offline.test.js
       - run: node test/reports.offline.test.js
       - run: node test/account.offline.test.js
+      - run: node test/publicProfile.offline.test.js
       # Rules, against the Firestore emulator (needs Java). demo-* project
       # ids never touch a real project, so no credentials are involved.
       - uses: actions/setup-java@v4

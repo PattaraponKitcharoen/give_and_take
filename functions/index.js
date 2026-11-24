@@ -905,3 +905,6 @@ exports.adminModerate = reports.adminModerate;
 const account = require("./account");
 exports.deleteAccount = account.deleteAccount;
 exports.onUserProfileCreated = account.onUserProfileCreated;
+
+// Public profile mirror (what other users may see): publicProfile.js
+exports.onUserWrittenSyncPublic = require("./publicProfile").onUserWrittenSyncPublic;

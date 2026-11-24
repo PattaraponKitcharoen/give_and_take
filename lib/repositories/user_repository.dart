@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/place_location.dart';
+import '../models/public_profile.dart';
 import '../models/user_model.dart';
 
 class UserRepository {
@@ -22,6 +23,20 @@ class UserRepository {
     return uploadTask.ref.getDownloadURL();
   }
 
+  /// Someone else's public profile (name, photo, bio, rating). Emits null
+  /// until the profile exists. For your own account use [getUserStream].
+  Stream<PublicProfile?> getPublicProfileStream(String uid) {
+    return _firestore
+        .collection('public_profiles')
+        .doc(uid)
+        .snapshots()
+        .map((snapshot) => snapshot.exists && snapshot.data() != null
+            ? PublicProfile.fromJson(snapshot.data()!, snapshot.id)
+            : null);
+  }
+
+  /// Your own full user doc. users/{uid} is private: reading someone else's
+  /// is refused by the rules, use [getPublicProfileStream] for them.
   Stream<UserModel> getUserStream(String uid) {
     return _firestore.collection('users').doc(uid).snapshots().map((snapshot) {
       if (snapshot.exists && snapshot.data() != null) {
@@ -39,7 +54,7 @@ class UserRepository {
   // listings stream client-side instead (see StudentListingsCubit).
   Stream<Set<String>> getStudentUserIdsStream() {
     return _firestore
-        .collection('users')
+        .collection('public_profiles')
         .where('is_student', isEqualTo: true)
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => doc.id).toSet());
@@ -158,8 +173,10 @@ class UserRepository {
         Map<String, dynamic>? theirItemData;
 
         if (reviewerId.isNotEmpty) {
-          final userDoc =
-              await _firestore.collection('users').doc(reviewerId).get();
+          final userDoc = await _firestore
+              .collection('public_profiles')
+              .doc(reviewerId)
+              .get();
           if (userDoc.exists) {
             final uData = userDoc.data()!;
             name = uData['name'] ?? 'ผู้ใช้งาน';

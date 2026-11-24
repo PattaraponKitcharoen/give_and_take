@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/public_profile.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/report_repository.dart';
 import '../widgets/report_sheet.dart';
@@ -6,7 +7,6 @@ import '../widgets/star_rating.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/listing_repository.dart';
-import '../models/user_model.dart';
 import '../models/listing_model.dart';
 import 'item_detail_screen.dart';
 import '../theme/app_theme.dart';
@@ -83,8 +83,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
         ],
       ),
-      body: StreamBuilder<UserModel>(
-          stream: context.read<UserRepository>().getUserStream(widget.userId),
+      body: StreamBuilder<PublicProfile?>(
+          stream: context
+              .read<UserRepository>()
+              .getPublicProfileStream(widget.userId),
           builder: (context, userSnapshot) {
             if (userSnapshot.hasError)
               return const Center(child: Text('เกิดข้อผิดพลาด'));

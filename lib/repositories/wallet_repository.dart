@@ -78,7 +78,8 @@ class WalletRepository {
 
   Future<String> _userName(String id) async {
     if (id.isEmpty) return 'ผู้ใช้งาน';
-    final data = (await _firestore.collection('users').doc(id).get()).data();
+    final data =
+        (await _firestore.collection('public_profiles').doc(id).get()).data();
     final name = (data?['name'] as String?)?.trim() ?? '';
     return name.isEmpty ? 'ผู้ใช้งาน' : name;
   }

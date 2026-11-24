@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import '../models/public_profile.dart';
 import '../models/listing_model.dart';
-import '../models/user_model.dart';
 import '../repositories/user_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../screens/item_detail_screen.dart';
@@ -183,10 +183,10 @@ class ListingGridCard extends StatelessWidget {
                           Expanded(
                             child: Row(
                               children: [
-                                StreamBuilder<UserModel>(
+                                StreamBuilder<PublicProfile?>(
                                   stream: context
                                       .read<UserRepository>()
-                                      .getUserStream(item.ownerId),
+                                      .getPublicProfileStream(item.ownerId),
                                   builder: (context, ownerSnapshot) {
                                     // Falls back to the listing's own (possibly
                                     // stale, snapshotted at creation time)

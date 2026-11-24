@@ -21,7 +21,9 @@ service cloud.firestore {
     
     // 1. คอลเลกชัน Users
     match /users/{userId} {
-      allow read: if request.auth != null;
+      // มีข้อมูลส่วนตัว (อีเมล เบอร์โทร token แจ้งเตือน ตำแหน่ง เหรียญ การระงับ)
+      // อ่านได้เฉพาะเจ้าของและผู้ดูแลระบบ คนอื่นอ่านจาก public_profiles แทน
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
       // ห้ามผู้ใช้ตั้ง/เปลี่ยน role ของตัวเอง ไม่งั้นใครก็ตั้งตัวเองเป็น admin ได้
       // สมัครสมาชิก: ต้องเริ่มด้วยค่าเริ่มต้นของระบบเท่านั้น (เหรียญ 1,000, role user, ไม่ถูกระงับ, ยังไม่มีคะแนน)
       allow create: if request.auth != null && request.auth.uid == userId &&
@@ -50,6 +52,13 @@ service cloud.firestore {
           ['status', 'is_verified', 'updated_at', 'ban_reason', 'banned_until', 'banned_at']);
     }
     
+    // 1.1 ข้อมูลโปรไฟล์ที่คนอื่นเห็นได้ (ชื่อ รูป แนะนำตัว คะแนนรีวิว สถานะนักศึกษา)
+    // Cloud Function onUserWrittenSyncPublic คัดลอกจาก users ให้ แอปเขียนเองไม่ได้
+    match /public_profiles/{userId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // 2. คอลเลกชัน Listings
     match /listings/{listingId} {
       // จุดรับของ (ไม่บังคับ): พิกัดปัดหยาบ ~1 กม. จากแอป ต้องเป็นตัวเลขในช่วงที่ถูกต้อง

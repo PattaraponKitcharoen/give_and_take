@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../models/public_profile.dart';
 import '../repositories/report_repository.dart';
 import '../widgets/report_sheet.dart';
 import '../cubits/location/location_cubit.dart';
@@ -753,9 +754,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       ),
       child: Column(
         children: [
-          StreamBuilder<UserModel>(
-            stream:
-                context.read<UserRepository>().getUserStream(listing.ownerId),
+          StreamBuilder<PublicProfile?>(
+            stream: context
+                .read<UserRepository>()
+                .getPublicProfileStream(listing.ownerId),
             builder: (context, ownerSnapshot) {
               // Falls back to the listing's own (possibly stale, snapshotted
               // at creation time) owner_profile_img / owner_rating_scores

@@ -73,7 +73,13 @@ add("users: edit another user's doc", DENY, A, "update", `/users/${B}`, u, { ...
 add("users: delete own doc (reset coins/ban)", DENY, A, "delete", `/users/${A}`, u);
 add("users: admin bans a user (admin web)", ALLOW, ADMIN, "update", `/users/${A}`, u, { ...u, status: "banned", updated_at: 1 });
 add("users: admin changes coins (ADM-12)", DENY, ADMIN, "update", `/users/${A}`, u, { ...u, coins_balance: 5 });
-add("users: read while signed in", ALLOW, A, "get", `/users/${B}`, u);
+add("users: read own doc (app)", ALLOW, A, "get", `/users/${A}`, u);
+add("users: read someone else's private doc (email, phone)", DENY, A, "get", `/users/${B}`, u);
+add("users: admin reads a user doc (admin web)", ALLOW, ADMIN, "get", `/users/${B}`, u);
+add("public_profiles: read someone's public profile (app)", ALLOW, A, "get", `/public_profiles/${B}`, { name: "B" });
+add("public_profiles: read while signed out", DENY, null, "get", `/public_profiles/${B}`, { name: "B" });
+add("public_profiles: write own public profile", DENY, A, "update", `/public_profiles/${A}`, { name: "A" }, { name: "Admin ✓" });
+add("public_profiles: create one directly", DENY, A, "create", `/public_profiles/${A}`, undefined, { name: "A" });
 add("users: read while signed out", DENY, null, "get", `/users/${B}`, u);
 
 // ---------------------------------------------------------------- listings

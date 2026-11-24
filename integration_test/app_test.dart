@@ -127,15 +127,38 @@ void main() {
             email: 'carol@test.dev', password: password),
         throwsA(isA<FirebaseAuthException>()));
 
-    // As someone else: her profile is a tombstone, her listing is gone.
+    // As someone else: her public profile shows a deleted account (the
+    // mirror trigger may take a moment), and her listing is gone.
     await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: 'alice@test.dev', password: password);
     final db = FirebaseFirestore.instance;
-    final carol = (await db.doc('users/carol').get()).data()!;
-    expect(carol['status'], 'deleted');
-    expect(carol['name'], 'ผู้ใช้ที่ลบบัญชีแล้ว');
-    expect(carol.containsKey('email'), isFalse);
+    Map<String, dynamic>? carol;
+    for (var i = 0; i < 20; i++) {
+      carol = (await db.doc('public_profiles/carol').get()).data();
+      if (carol?['status'] == 'deleted') break;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    expect(carol?['status'], 'deleted');
+    expect(carol?['name'], 'ผู้ใช้ที่ลบบัญชีแล้ว');
     expect((await db.doc('listings/carol-lamp').get()).exists, isFalse);
+    await FirebaseAuth.instance.signOut();
+  });
+
+  testWidgets('other people\'s private data stays private', (tester) async {
+    await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: 'alice@test.dev', password: password);
+    final db = FirebaseFirestore.instance;
+    // Bob's email, phone, coins...: refused.
+    await expectLater(db.doc('users/bob').get(),
+        throwsA(isA<FirebaseException>()
+            .having((e) => e.code, 'code', 'permission-denied')));
+    // His public profile: name only, nothing private.
+    final bob = (await db.doc('public_profiles/bob').get()).data()!;
+    expect(bob['name'], 'Bob');
+    expect(bob.containsKey('email'), isFalse);
+    expect(bob.containsKey('coins_balance'), isFalse);
+    // Her own doc: fine.
+    expect((await db.doc('users/alice').get()).data()!['email'], 'alice@test.dev');
     await FirebaseAuth.instance.signOut();
   });
 

@@ -115,7 +115,7 @@ class _ChatBubbleWidgetState extends State<ChatBubbleWidget> {
                             UserProfileScreen(userId: widget.msg.senderId))),
                 child: FutureBuilder<DocumentSnapshot>(
                     future: FirebaseFirestore.instance
-                        .collection('users')
+                        .collection('public_profiles')
                         .doc(widget.msg.senderId)
                         .get(),
                     builder: (context, userSnap) {
